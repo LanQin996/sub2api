@@ -99,9 +99,11 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 		"total_output_tokens":         stats.TotalOutputTokens,
 		"total_cache_creation_tokens": stats.TotalCacheCreationTokens,
 		"total_cache_read_tokens":     stats.TotalCacheReadTokens,
+		"total_cache_hit_rate":        stats.TotalCacheHitRate,
 		"total_tokens":                stats.TotalTokens,
 		"total_cost":                  stats.TotalCost,       // 标准计费
 		"total_actual_cost":           stats.TotalActualCost, // 实际扣除
+		"total_account_cost":          stats.TotalAccountCost,
 
 		// 今日 Token 使用统计
 		"today_requests":              stats.TodayRequests,
@@ -109,9 +111,11 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 		"today_output_tokens":         stats.TodayOutputTokens,
 		"today_cache_creation_tokens": stats.TodayCacheCreationTokens,
 		"today_cache_read_tokens":     stats.TodayCacheReadTokens,
+		"today_cache_hit_rate":        stats.TodayCacheHitRate,
 		"today_tokens":                stats.TodayTokens,
 		"today_cost":                  stats.TodayCost,       // 今日标准计费
 		"today_actual_cost":           stats.TodayActualCost, // 今日实际扣除
+		"today_account_cost":          stats.TodayAccountCost,
 
 		// 系统运行统计
 		"average_duration_ms": stats.AverageDurationMs,

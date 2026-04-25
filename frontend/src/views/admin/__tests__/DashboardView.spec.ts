@@ -10,6 +10,25 @@ const { getSnapshotV2, getUserUsageTrend, getUserSpendingRanking } = vi.hoisted(
   getUserSpendingRanking: vi.fn()
 }))
 
+vi.hoisted(() => {
+  const storage = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: {
+      getItem: vi.fn((key: string) => storage.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        storage.set(key, value)
+      }),
+      removeItem: vi.fn((key: string) => {
+        storage.delete(key)
+      }),
+      clear: vi.fn(() => {
+        storage.clear()
+      })
+    },
+    configurable: true
+  })
+})
+
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     dashboard: {
@@ -68,17 +87,21 @@ const createDashboardStats = (): DashboardStats => ({
   total_output_tokens: 0,
   total_cache_creation_tokens: 0,
   total_cache_read_tokens: 0,
+  total_cache_hit_rate: 0,
   total_tokens: 0,
   total_cost: 0,
   total_actual_cost: 0,
+  total_account_cost: 0,
   today_requests: 0,
   today_input_tokens: 0,
   today_output_tokens: 0,
   today_cache_creation_tokens: 0,
   today_cache_read_tokens: 0,
+  today_cache_hit_rate: 0,
   today_tokens: 0,
   today_cost: 0,
   today_actual_cost: 0,
+  today_account_cost: 0,
   average_duration_ms: 0,
   uptime: 0,
   rpm: 0,

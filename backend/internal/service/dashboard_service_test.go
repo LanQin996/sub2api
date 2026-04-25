@@ -214,6 +214,25 @@ func TestDashboardService_CacheMiss_StoresCache(t *testing.T) {
 	require.WithinDuration(t, time.Now(), time.Unix(entry.UpdatedAt, 0), time.Second)
 }
 
+func TestDashboardService_ComputesCacheHitRates(t *testing.T) {
+	stats := &usagestats.DashboardStats{
+		TotalInputTokens:         80,
+		TotalCacheCreationTokens: 20,
+		TotalCacheReadTokens:     100,
+		TodayInputTokens:         30,
+		TodayCacheCreationTokens: 10,
+		TodayCacheReadTokens:     10,
+	}
+	repo := &usageRepoStub{stats: stats}
+	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: false}}
+	svc := NewDashboardService(repo, nil, nil, cfg)
+
+	got, err := svc.GetDashboardStats(context.Background())
+	require.NoError(t, err)
+	require.InDelta(t, 0.5, got.TotalCacheHitRate, 0.000001)
+	require.InDelta(t, 0.2, got.TodayCacheHitRate, 0.000001)
+}
+
 func TestDashboardService_CacheDisabled_SkipsCache(t *testing.T) {
 	stats := &usagestats.DashboardStats{
 		TotalUsers:     3,

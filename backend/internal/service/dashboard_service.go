@@ -193,6 +193,7 @@ func (s *DashboardService) getCachedDashboardStats(ctx context.Context) (*usages
 		s.evictDashboardStatsCache(errors.New("仪表盘缓存缺少统计数据"))
 		return nil, false, ErrDashboardStatsCacheMiss
 	}
+	applyDashboardDerivedStats(entry.Stats)
 
 	age := time.Since(time.Unix(entry.UpdatedAt, 0))
 	return entry.Stats, age <= s.cacheFreshTTL, nil
@@ -204,6 +205,7 @@ func (s *DashboardService) refreshDashboardStats(ctx context.Context) (*usagesta
 		return nil, err
 	}
 	s.applyAggregationStatus(ctx, stats)
+	applyDashboardDerivedStats(stats)
 	cacheCtx, cancel := s.cacheOperationContext()
 	defer cancel()
 	s.saveDashboardStatsCache(cacheCtx, stats)
@@ -230,10 +232,35 @@ func (s *DashboardService) refreshDashboardStatsAsync() {
 			return
 		}
 		s.applyAggregationStatus(ctx, stats)
+		applyDashboardDerivedStats(stats)
 		cacheCtx, cancel := s.cacheOperationContext()
 		defer cancel()
 		s.saveDashboardStatsCache(cacheCtx, stats)
 	}()
+}
+
+func applyDashboardDerivedStats(stats *usagestats.DashboardStats) {
+	if stats == nil {
+		return
+	}
+	stats.TodayCacheHitRate = dashboardCacheHitRate(
+		stats.TodayCacheReadTokens,
+		stats.TodayInputTokens,
+		stats.TodayCacheCreationTokens,
+	)
+	stats.TotalCacheHitRate = dashboardCacheHitRate(
+		stats.TotalCacheReadTokens,
+		stats.TotalInputTokens,
+		stats.TotalCacheCreationTokens,
+	)
+}
+
+func dashboardCacheHitRate(cacheReadTokens, inputTokens, cacheCreationTokens int64) float64 {
+	totalInputSideTokens := inputTokens + cacheCreationTokens + cacheReadTokens
+	if totalInputSideTokens <= 0 {
+		return 0
+	}
+	return float64(cacheReadTokens) / float64(totalInputSideTokens)
 }
 
 func (s *DashboardService) fetchDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
