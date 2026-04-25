@@ -285,6 +285,7 @@ func (s *UsageService) GetUserDashboardStats(ctx context.Context, userID int64) 
 	if err != nil {
 		return nil, fmt.Errorf("get user dashboard stats: %w", err)
 	}
+	applyUserDashboardDerivedStats(stats)
 	return stats, nil
 }
 
@@ -294,7 +295,24 @@ func (s *UsageService) GetAPIKeyDashboardStats(ctx context.Context, apiKeyID int
 	if err != nil {
 		return nil, fmt.Errorf("get api key dashboard stats: %w", err)
 	}
+	applyUserDashboardDerivedStats(stats)
 	return stats, nil
+}
+
+func applyUserDashboardDerivedStats(stats *usagestats.UserDashboardStats) {
+	if stats == nil {
+		return
+	}
+	stats.TodayCacheHitRate = dashboardCacheHitRate(
+		stats.TodayCacheReadTokens,
+		stats.TodayInputTokens,
+		stats.TodayCacheCreationTokens,
+	)
+	stats.TotalCacheHitRate = dashboardCacheHitRate(
+		stats.TotalCacheReadTokens,
+		stats.TotalInputTokens,
+		stats.TotalCacheCreationTokens,
+	)
 }
 
 // GetUserUsageTrendByUserID returns per-user usage trend.

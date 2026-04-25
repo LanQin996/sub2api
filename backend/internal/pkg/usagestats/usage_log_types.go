@@ -212,6 +212,7 @@ type UserDashboardStats struct {
 	TotalOutputTokens        int64   `json:"total_output_tokens"`
 	TotalCacheCreationTokens int64   `json:"total_cache_creation_tokens"`
 	TotalCacheReadTokens     int64   `json:"total_cache_read_tokens"`
+	TotalCacheHitRate        float64 `json:"total_cache_hit_rate"`
 	TotalTokens              int64   `json:"total_tokens"`
 	TotalCost                float64 `json:"total_cost"`        // 累计标准计费
 	TotalActualCost          float64 `json:"total_actual_cost"` // 累计实际扣除
@@ -222,6 +223,7 @@ type UserDashboardStats struct {
 	TodayOutputTokens        int64   `json:"today_output_tokens"`
 	TodayCacheCreationTokens int64   `json:"today_cache_creation_tokens"`
 	TodayCacheReadTokens     int64   `json:"today_cache_read_tokens"`
+	TodayCacheHitRate        float64 `json:"today_cache_hit_rate"`
 	TodayTokens              int64   `json:"today_tokens"`
 	TodayCost                float64 `json:"today_cost"`        // 今日标准计费
 	TodayActualCost          float64 `json:"today_actual_cost"` // 今日实际扣除

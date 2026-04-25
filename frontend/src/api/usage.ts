@@ -23,6 +23,7 @@ export interface UserDashboardStats {
   total_output_tokens: number
   total_cache_creation_tokens: number
   total_cache_read_tokens: number
+  total_cache_hit_rate: number
   total_tokens: number
   total_cost: number // 标准计费
   total_actual_cost: number // 实际扣除
@@ -31,6 +32,7 @@ export interface UserDashboardStats {
   today_output_tokens: number
   today_cache_creation_tokens: number
   today_cache_read_tokens: number
+  today_cache_hit_rate: number
   today_tokens: number
   today_cost: number // 今日标准计费
   today_actual_cost: number // 今日实际扣除
