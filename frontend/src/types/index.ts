@@ -1376,6 +1376,31 @@ export interface UserSpendingRankingResponse {
   end_date: string
 }
 
+export type RankingPeriod = 'daily' | 'weekly' | 'monthly'
+
+export interface PublicUserSpendingRankingItem {
+  rank: number
+  user_id: number
+  display_name: string
+  avatar_url?: string | null
+  actual_cost: number
+  requests: number
+  tokens: number
+  is_current_user: boolean
+}
+
+export interface PublicUserSpendingRankingResponse {
+  period: RankingPeriod
+  ranking: PublicUserSpendingRankingItem[]
+  current_user?: PublicUserSpendingRankingItem | null
+  total_actual_cost: number
+  total_requests: number
+  total_tokens: number
+  start_date: string
+  end_date: string
+  stats_updated_at: string
+}
+
 export interface ApiKeyUsageTrendPoint {
   date: string
   api_key_id: number

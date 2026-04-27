@@ -345,6 +345,7 @@ export default {
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
+    ranking: 'Ranking',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     profile: 'Profile',
@@ -861,6 +862,30 @@ export default {
     exportExcelFailed: 'Failed to export usage data',
     imageUnit: ' images',
     userAgent: 'User-Agent'
+  },
+
+  ranking: {
+    title: 'Ranking',
+    description: 'View user spending rankings for the current period',
+    daily: 'Daily',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    currentRanking: 'Current Ranking',
+    myRanking: 'My Ranking',
+    totalSpend: 'Ranking Spend',
+    totalRequests: 'Total Requests',
+    totalTokens: 'Total Tokens',
+    rank: 'Rank',
+    spend: 'Spend',
+    requests: 'Requests',
+    tokens: 'Tokens',
+    notRanked: 'Not ranked',
+    noUsage: 'No ranking data for this period',
+    currentUser: 'Me',
+    outsideTop: 'Outside the current Top list',
+    updatedAt: 'Updated {time}',
+    periodRange: '{start} to {end}',
+    loadFailed: 'Failed to load ranking'
   },
 
   // Shared keys for channel monitor (admin + user views)

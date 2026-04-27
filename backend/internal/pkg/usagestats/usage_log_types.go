@@ -164,6 +164,34 @@ type UserSpendingRankingResponse struct {
 	TotalTokens     int64                     `json:"total_tokens"`
 }
 
+// PublicUserSpendingRankingItem represents a user-facing ranking row.
+type PublicUserSpendingRankingItem struct {
+	Rank          int64   `json:"rank"`
+	UserID        int64   `json:"user_id"`
+	DisplayName   string  `json:"display_name"`
+	AvatarURL     string  `json:"avatar_url,omitempty"`
+	ActualCost    float64 `json:"actual_cost"`
+	Requests      int64   `json:"requests"`
+	Tokens        int64   `json:"tokens"`
+	IsCurrentUser bool    `json:"is_current_user"`
+
+	Username string `json:"-"`
+	Email    string `json:"-"`
+}
+
+// PublicUserSpendingRankingResponse represents a privacy-safe user-facing ranking response.
+type PublicUserSpendingRankingResponse struct {
+	Period          string                          `json:"period"`
+	Ranking         []PublicUserSpendingRankingItem `json:"ranking"`
+	CurrentUser     *PublicUserSpendingRankingItem  `json:"current_user,omitempty"`
+	TotalActualCost float64                         `json:"total_actual_cost"`
+	TotalRequests   int64                           `json:"total_requests"`
+	TotalTokens     int64                           `json:"total_tokens"`
+	StartDate       string                          `json:"start_date"`
+	EndDate         string                          `json:"end_date"`
+	StatsUpdatedAt  string                          `json:"stats_updated_at"`
+}
+
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
 	UserID      int64   `json:"user_id"`

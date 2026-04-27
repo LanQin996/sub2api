@@ -10,7 +10,9 @@ import type {
   UsageStatsResponse,
   PaginatedResponse,
   TrendDataPoint,
-  ModelStat
+  ModelStat,
+  PublicUserSpendingRankingResponse,
+  RankingPeriod
 } from '@/types'
 
 // ==================== Dashboard Types ====================
@@ -58,6 +60,11 @@ export interface ModelStatsResponse {
   models: ModelStat[]
   start_date: string
   end_date: string
+}
+
+export interface RankingParams {
+  period?: RankingPeriod
+  limit?: number
 }
 
 /**
@@ -225,6 +232,16 @@ export async function getDashboardModels(params?: {
   return data
 }
 
+/**
+ * Get user-facing spending ranking.
+ * @param params - Ranking period and limit
+ * @returns Spending ranking for current period
+ */
+export async function getRanking(params?: RankingParams): Promise<PublicUserSpendingRankingResponse> {
+  const { data } = await apiClient.get<PublicUserSpendingRankingResponse>('/usage/ranking', { params })
+  return data
+}
+
 export interface BatchApiKeyUsageStats {
   api_key_id: number
   today_actual_cost: number
@@ -270,6 +287,7 @@ export const usageAPI = {
   getDashboardStats,
   getDashboardTrend,
   getDashboardModels,
+  getRanking,
   getDashboardApiKeysUsage
 }
 

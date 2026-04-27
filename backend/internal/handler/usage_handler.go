@@ -298,6 +298,58 @@ func parseUserTimeRange(c *gin.Context) (time.Time, time.Time) {
 	return startTime, endTime
 }
 
+func parseRankingTimeRange(c *gin.Context) (string, time.Time, time.Time, bool) {
+	userTZ := c.Query("timezone")
+	now := timezone.NowInUserLocation(userTZ)
+	period := strings.ToLower(strings.TrimSpace(c.DefaultQuery("period", "daily")))
+
+	var startTime time.Time
+	switch period {
+	case "daily", "day", "today":
+		period = "daily"
+		startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+	case "weekly", "week":
+		period = "weekly"
+		startTime = startOfWeekInLocation(now)
+	case "monthly", "month":
+		period = "monthly"
+		startTime = startOfMonthInLocation(now)
+	default:
+		return "", time.Time{}, time.Time{}, false
+	}
+
+	return period, startTime, now, true
+}
+
+func startOfWeekInLocation(t time.Time) time.Time {
+	loc := t.Location()
+	t = t.In(loc)
+	weekday := int(t.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	return time.Date(t.Year(), t.Month(), t.Day()-weekday+1, 0, 0, 0, 0, loc)
+}
+
+func startOfMonthInLocation(t time.Time) time.Time {
+	loc := t.Location()
+	t = t.In(loc)
+	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, loc)
+}
+
+func parseRankingLimit(c *gin.Context) int {
+	limit := 50
+	if value := strings.TrimSpace(c.Query("limit")); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	if limit > 100 {
+		return 100
+	}
+	return limit
+}
+
 // DashboardStats handles getting user dashboard statistics
 // GET /api/v1/usage/dashboard/stats
 func (h *UsageHandler) DashboardStats(c *gin.Context) {
@@ -364,6 +416,37 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 		"start_date": startTime.Format("2006-01-02"),
 		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 	})
+}
+
+// Ranking handles getting user-facing spending ranking data.
+// GET /api/v1/usage/ranking
+func (h *UsageHandler) Ranking(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	period, startTime, endTime, ok := parseRankingTimeRange(c)
+	if !ok {
+		response.BadRequest(c, "Invalid period, use daily, weekly, or monthly")
+		return
+	}
+
+	ranking, err := h.usageService.GetPublicUserSpendingRanking(
+		c.Request.Context(),
+		subject.UserID,
+		startTime,
+		endTime,
+		period,
+		parseRankingLimit(c),
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, ranking)
 }
 
 // BatchAPIKeysUsageRequest represents the request for batch API keys usage

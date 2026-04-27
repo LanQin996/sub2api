@@ -345,6 +345,7 @@ export default {
     announcements: '公告',
     apiKeys: 'API 密钥',
     usage: '使用记录',
+    ranking: '排行榜',
     redeem: '兑换',
     affiliate: '邀请返利',
     profile: '个人资料',
@@ -865,6 +866,30 @@ export default {
     exportExcelFailed: '使用数据导出失败',
     imageUnit: '张',
     userAgent: 'User-Agent'
+  },
+
+  ranking: {
+    title: '排行榜',
+    description: '查看当前周期的用户消费排行',
+    daily: '日榜',
+    weekly: '周榜',
+    monthly: '月榜',
+    currentRanking: '当前榜单',
+    myRanking: '我的排名',
+    totalSpend: '榜单消费',
+    totalRequests: '总请求数',
+    totalTokens: '总 Token',
+    rank: '排名',
+    spend: '消费',
+    requests: '请求',
+    tokens: 'Token',
+    notRanked: '暂无排名',
+    noUsage: '当前周期暂无排行数据',
+    currentUser: '我',
+    outsideTop: '未进入当前 Top 榜单',
+    updatedAt: '更新于 {time}',
+    periodRange: '{start} 至 {end}',
+    loadFailed: '加载排行榜失败'
   },
 
   // Shared keys for channel monitor (admin + user views)
