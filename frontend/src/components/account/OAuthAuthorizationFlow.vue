@@ -386,7 +386,17 @@
                     <button
                       type="button"
                       class="btn btn-secondary p-2"
-                      title="Copy URL"
+                      :title="t('admin.accounts.oauth.openAuthUrl')"
+                      :aria-label="t('admin.accounts.oauth.openAuthUrl')"
+                      @click="handleOpenUrl"
+                    >
+                      <Icon name="externalLink" size="sm" />
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary p-2"
+                      :title="t('admin.accounts.oauth.copyAuthUrl')"
+                      :aria-label="t('admin.accounts.oauth.copyAuthUrl')"
                       @click="handleCopyUrl"
                     >
                       <svg
@@ -702,7 +712,13 @@ const handleGenerateUrl = () => {
 
 const handleCopyUrl = () => {
   if (props.authUrl) {
-    copyToClipboard(props.authUrl, 'URL copied to clipboard')
+    copyToClipboard(props.authUrl, t('admin.accounts.oauth.authUrlCopied'))
+  }
+}
+
+const handleOpenUrl = () => {
+  if (props.authUrl) {
+    window.open(props.authUrl, '_blank', 'noopener,noreferrer')
   }
 }
 

@@ -2670,6 +2670,7 @@ export default {
       setPrivacy: 'Set Privacy',
       subscriptionAbnormal: 'Abnormal',
       subscriptionExpires: 'Expires',
+      subscriptionExpired: 'Expired',
       // Capacity status tooltips
       capacity: {
         windowCost: {
@@ -3158,6 +3159,9 @@ export default {
         step1GenerateUrl: 'Click the button below to generate the authorization URL',
         generateAuthUrl: 'Generate Auth URL',
         generating: 'Generating...',
+        openAuthUrl: 'Open authorization link',
+        copyAuthUrl: 'Copy authorization link',
+        authUrlCopied: 'Authorization link copied to clipboard',
         regenerate: 'Regenerate',
         step2OpenUrl: 'Open the URL in your browser and complete authorization',
         openUrlDesc:

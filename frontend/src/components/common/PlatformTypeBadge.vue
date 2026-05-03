@@ -47,7 +47,16 @@
       </span>
     </div>
     <!-- Row 3: Subscription expiration (non-free paid accounts only) -->
-    <div v-if="expiresLabel" class="text-[10px] leading-tight text-gray-400 dark:text-gray-500 pl-0.5" :title="subscriptionExpiresAt">
+    <div
+      v-if="expiresLabel"
+      :class="[
+        'pl-0.5 text-[10px] leading-tight',
+        subscriptionExpired
+          ? 'font-medium text-amber-600 dark:text-amber-400'
+          : 'text-gray-400 dark:text-gray-500'
+      ]"
+      :title="subscriptionExpiresAt"
+    >
       {{ expiresLabel }}
     </div>
   </div>
@@ -149,20 +158,32 @@ const planBadgeClass = computed(() => {
   return typeClass.value
 })
 
-// Subscription expiration label (non-free only)
-const expiresLabel = computed(() => {
-  if (!props.subscriptionExpiresAt || !props.planType) return ''
-  if (props.planType.toLowerCase() === 'free') return ''
+const subscriptionExpiresDate = computed(() => {
+  if (!props.subscriptionExpiresAt || !props.planType) return null
+  if (props.planType.toLowerCase() === 'free') return null
   try {
     const d = new Date(props.subscriptionExpiresAt)
-    if (isNaN(d.getTime())) return ''
-    const yyyy = d.getFullYear()
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    const dd = String(d.getDate()).padStart(2, '0')
-    return `${t('admin.accounts.subscriptionExpires')} ${yyyy}-${mm}-${dd}`
+    return isNaN(d.getTime()) ? null : d
   } catch {
-    return ''
+    return null
   }
+})
+
+const subscriptionExpired = computed(() => {
+  return subscriptionExpiresDate.value ? subscriptionExpiresDate.value.getTime() <= Date.now() : false
+})
+
+// Subscription expiration label (non-free only)
+const expiresLabel = computed(() => {
+  if (!subscriptionExpiresDate.value) return ''
+  const d = subscriptionExpiresDate.value
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const prefix = subscriptionExpired.value
+    ? t('admin.accounts.subscriptionExpired')
+    : t('admin.accounts.subscriptionExpires')
+  return `${prefix} ${yyyy}-${mm}-${dd}`
 })
 
 // Privacy badge — shows different states for OpenAI/Antigravity OAuth privacy setting

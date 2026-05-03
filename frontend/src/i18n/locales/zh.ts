@@ -2708,6 +2708,7 @@ export default {
       setPrivacy: '设置隐私',
       subscriptionAbnormal: '异常',
       subscriptionExpires: '到期',
+      subscriptionExpired: '已到期',
       // 容量状态提示
       capacity: {
         windowCost: {
@@ -3298,6 +3299,9 @@ export default {
         step1GenerateUrl: '点击下方按钮生成授权 URL',
         generateAuthUrl: '生成授权 URL',
         generating: '生成中...',
+        openAuthUrl: '打开授权链接',
+        copyAuthUrl: '复制授权链接',
+        authUrlCopied: '授权链接已复制到剪贴板',
         regenerate: '重新生成',
         step2OpenUrl: '在浏览器中打开 URL 并完成授权',
         openUrlDesc: '在新标签页中打开授权 URL，登录您的 Claude 账号并授权。',
