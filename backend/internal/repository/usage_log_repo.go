@@ -2271,6 +2271,114 @@ func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, e
 	return results, nil
 }
 
+const userSpendingRollupCTE = `
+		bounds AS (
+			SELECT
+				$1::timestamptz AS start_time,
+				$2::timestamptz AS end_time
+		),
+		daily_buckets AS (
+			SELECT
+				coverage.bucket_date,
+				coverage.bucket_date::timestamp AT TIME ZONE 'UTC' AS range_start,
+				(coverage.bucket_date::timestamp + interval '1 day') AT TIME ZONE 'UTC' AS range_end
+			FROM usage_user_daily_spending_coverage coverage
+			CROSS JOIN bounds
+			WHERE coverage.bucket_date::timestamp AT TIME ZONE 'UTC' >= bounds.start_time
+			  AND (coverage.bucket_date::timestamp + interval '1 day') AT TIME ZONE 'UTC' <= bounds.end_time
+		),
+		daily_rollup AS (
+			SELECT
+				spending.user_id,
+				COALESCE(SUM(spending.actual_cost), 0) AS actual_cost,
+				COALESCE(SUM(spending.requests), 0)::bigint AS requests,
+				COALESCE(SUM(
+					spending.input_tokens +
+					spending.output_tokens +
+					spending.cache_creation_tokens +
+					spending.cache_read_tokens
+				), 0)::bigint AS tokens
+			FROM usage_user_daily_spending spending
+			JOIN daily_buckets buckets ON buckets.bucket_date = spending.bucket_date
+			GROUP BY spending.user_id
+		),
+		hourly_buckets AS (
+			SELECT
+				coverage.bucket_start,
+				coverage.bucket_start AS range_start,
+				coverage.bucket_start + interval '1 hour' AS range_end
+			FROM usage_user_hourly_spending_coverage coverage
+			CROSS JOIN bounds
+			WHERE coverage.bucket_start >= bounds.start_time
+			  AND coverage.bucket_start + interval '1 hour' <= bounds.end_time
+			  AND NOT EXISTS (
+				SELECT 1
+				FROM daily_buckets daily
+				WHERE coverage.bucket_start >= daily.range_start
+				  AND coverage.bucket_start < daily.range_end
+			  )
+		),
+		hourly_rollup AS (
+			SELECT
+				spending.user_id,
+				COALESCE(SUM(spending.actual_cost), 0) AS actual_cost,
+				COALESCE(SUM(spending.requests), 0)::bigint AS requests,
+				COALESCE(SUM(
+					spending.input_tokens +
+					spending.output_tokens +
+					spending.cache_creation_tokens +
+					spending.cache_read_tokens
+				), 0)::bigint AS tokens
+			FROM usage_user_hourly_spending spending
+			JOIN hourly_buckets buckets ON buckets.bucket_start = spending.bucket_start
+			GROUP BY spending.user_id
+		),
+		raw_spend AS (
+			SELECT
+				logs.user_id,
+				COALESCE(SUM(logs.actual_cost), 0) AS actual_cost,
+				COUNT(*)::bigint AS requests,
+				COALESCE(SUM(
+					logs.input_tokens +
+					logs.output_tokens +
+					logs.cache_creation_tokens +
+					logs.cache_read_tokens
+				), 0)::bigint AS tokens
+			FROM usage_logs logs
+			CROSS JOIN bounds
+			WHERE logs.created_at >= bounds.start_time
+			  AND logs.created_at < bounds.end_time
+			  AND NOT EXISTS (
+				SELECT 1
+				FROM daily_buckets daily
+				WHERE logs.created_at >= daily.range_start
+				  AND logs.created_at < daily.range_end
+			  )
+			  AND NOT EXISTS (
+				SELECT 1
+				FROM hourly_buckets hourly
+				WHERE logs.created_at >= hourly.range_start
+				  AND logs.created_at < hourly.range_end
+			  )
+			GROUP BY logs.user_id
+		),
+		user_spend AS (
+			SELECT
+				spend.user_id,
+				COALESCE(SUM(spend.actual_cost), 0) AS actual_cost,
+				COALESCE(SUM(spend.requests), 0)::bigint AS requests,
+				COALESCE(SUM(spend.tokens), 0)::bigint AS tokens
+			FROM (
+				SELECT user_id, actual_cost, requests, tokens FROM daily_rollup
+				UNION ALL
+				SELECT user_id, actual_cost, requests, tokens FROM hourly_rollup
+				UNION ALL
+				SELECT user_id, actual_cost, requests, tokens FROM raw_spend
+			) spend
+			GROUP BY spend.user_id
+		)
+`
+
 // GetUserSpendingRanking returns user spending ranking aggregated within the time range.
 func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (result *UserSpendingRankingResponse, err error) {
 	if limit <= 0 {
@@ -2278,30 +2386,20 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	}
 
 	query := `
-		WITH user_spend AS (
-			SELECT
-				u.user_id,
-				COALESCE(us.email, '') as email,
-				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
-				COUNT(*) as requests,
-				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
-			FROM usage_logs u
-			LEFT JOIN users us ON u.user_id = us.id
-			WHERE u.created_at >= $1 AND u.created_at < $2
-			GROUP BY u.user_id, us.email
-		),
+		WITH ` + userSpendingRollupCTE + `,
 		ranked AS (
 			SELECT
-				user_id,
-				email,
-				actual_cost,
-				requests,
-				tokens,
-				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost,
-				COALESCE(SUM(requests) OVER (), 0) as total_requests,
-				COALESCE(SUM(tokens) OVER (), 0) as total_tokens
+				user_spend.user_id,
+				COALESCE(users.email, '') AS email,
+				user_spend.actual_cost,
+				user_spend.requests,
+				user_spend.tokens,
+				COALESCE(SUM(user_spend.actual_cost) OVER (), 0) AS total_actual_cost,
+				COALESCE(SUM(user_spend.requests) OVER (), 0)::bigint AS total_requests,
+				COALESCE(SUM(user_spend.tokens) OVER (), 0)::bigint AS total_tokens
 			FROM user_spend
-			ORDER BY actual_cost DESC, tokens DESC, user_id ASC
+			LEFT JOIN users ON user_spend.user_id = users.id
+			ORDER BY user_spend.actual_cost DESC, user_spend.tokens DESC, user_spend.user_id ASC
 			LIMIT $3
 		)
 		SELECT
@@ -2358,32 +2456,20 @@ func (r *usageLogRepository) GetPublicUserSpendingRanking(ctx context.Context, s
 	}
 
 	query := `
-		WITH user_spend AS (
-			SELECT
-				u.user_id,
-				COALESCE(us.email, '') as email,
-				COALESCE(us.username, '') as username,
-				COALESCE(ua.url, '') as avatar_url,
-				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
-				COUNT(*) as requests,
-				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
-			FROM usage_logs u
-			LEFT JOIN users us ON u.user_id = us.id
-			LEFT JOIN user_avatars ua ON u.user_id = ua.user_id
-			WHERE u.created_at >= $1 AND u.created_at < $2
-			GROUP BY u.user_id, us.email, us.username, ua.url
-		),
+		WITH ` + userSpendingRollupCTE + `,
 		ranked AS (
 			SELECT
-				ROW_NUMBER() OVER (ORDER BY actual_cost DESC, tokens DESC, user_id ASC) as rank,
-				user_id,
-				email,
-				username,
-				avatar_url,
-				actual_cost,
-				requests,
-				tokens
+				ROW_NUMBER() OVER (ORDER BY user_spend.actual_cost DESC, user_spend.tokens DESC, user_spend.user_id ASC) AS rank,
+				user_spend.user_id,
+				COALESCE(users.email, '') AS email,
+				COALESCE(users.username, '') AS username,
+				COALESCE(user_avatars.url, '') AS avatar_url,
+				user_spend.actual_cost,
+				user_spend.requests,
+				user_spend.tokens
 			FROM user_spend
+			LEFT JOIN users ON user_spend.user_id = users.id
+			LEFT JOIN user_avatars ON user_spend.user_id = user_avatars.user_id
 		),
 		selected AS (
 			SELECT *
@@ -2392,9 +2478,9 @@ func (r *usageLogRepository) GetPublicUserSpendingRanking(ctx context.Context, s
 		),
 		totals AS (
 			SELECT
-				COALESCE(SUM(actual_cost), 0) as total_actual_cost,
-				COALESCE(SUM(requests), 0)::bigint as total_requests,
-				COALESCE(SUM(tokens), 0)::bigint as total_tokens
+				COALESCE(SUM(actual_cost), 0) AS total_actual_cost,
+				COALESCE(SUM(requests), 0)::bigint AS total_requests,
+				COALESCE(SUM(tokens), 0)::bigint AS total_tokens
 			FROM user_spend
 		)
 		SELECT

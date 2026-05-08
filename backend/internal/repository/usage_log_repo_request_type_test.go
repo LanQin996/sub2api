@@ -448,7 +448,7 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 		AddRow(int64(1), "alpha@example.com", 12.5, int64(8), int64(800), 40.0, int64(30), int64(2600)).
 		AddRow(int64(3), "gamma@example.com", 4.25, int64(5), int64(300), 40.0, int64(30), int64(2600))
 
-	mock.ExpectQuery("WITH user_spend AS \\(").
+	mock.ExpectQuery("WITH bounds AS \\(").
 		WithArgs(start, end, 12).
 		WillReturnRows(rows)
 
@@ -490,7 +490,7 @@ func TestUsageLogRepositoryGetPublicUserSpendingRanking(t *testing.T) {
 		AddRow(int64(1), int64(2), "beta@example.com", "Beta", "https://cdn.example/beta.png", 12.5, int64(9), int64(900), 40.0, int64(30), int64(2600)).
 		AddRow(int64(12), int64(7), "alice@example.com", "", "", 0.5, int64(1), int64(50), 40.0, int64(30), int64(2600))
 
-	mock.ExpectQuery("WITH user_spend AS \\(").
+	mock.ExpectQuery("WITH bounds AS \\(").
 		WithArgs(start, end, 3, int64(7)).
 		WillReturnRows(rows)
 
