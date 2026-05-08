@@ -433,20 +433,26 @@ func (h *UsageHandler) Ranking(c *gin.Context) {
 		return
 	}
 
-	ranking, err := h.usageService.GetPublicUserSpendingRanking(
-		c.Request.Context(),
-		subject.UserID,
-		startTime,
-		endTime,
-		period,
-		parseRankingLimit(c),
-	)
+	limit := parseRankingLimit(c)
+	cacheKey := buildUsageRankingCacheKey(subject.UserID, period, startTime, limit)
+	entry, hit, err := usageRankingCache.GetOrLoad(cacheKey, func() (any, error) {
+		return h.usageService.GetPublicUserSpendingRanking(
+			c.Request.Context(),
+			subject.UserID,
+			startTime,
+			endTime,
+			period,
+			limit,
+		)
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
-	response.Success(c, ranking)
+	ranking, _ := entry.Payload.(*usagestats.PublicUserSpendingRankingResponse)
+	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
+	response.Success(c, clonePublicUserSpendingRankingResponse(ranking))
 }
 
 // BatchAPIKeysUsageRequest represents the request for batch API keys usage
