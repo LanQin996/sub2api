@@ -25,11 +25,10 @@ type AuthHandler struct {
 	promoService  *service.PromoService
 	redeemService *service.RedeemService
 	totpService   *service.TotpService
-	affiliateSvc  *service.AffiliateService
 }
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, redeemService *service.RedeemService, totpService *service.TotpService, affiliateService *service.AffiliateService) *AuthHandler {
+func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, redeemService *service.RedeemService, totpService *service.TotpService) *AuthHandler {
 	return &AuthHandler{
 		cfg:           cfg,
 		authService:   authService,
@@ -38,7 +37,6 @@ func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userSe
 		promoService:  promoService,
 		redeemService: redeemService,
 		totpService:   totpService,
-		affiliateSvc:  affiliateService,
 	}
 }
 
@@ -427,14 +425,8 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		runMode = h.cfg.RunMode
 	}
 
-	profile, err := userProfileResponseWithAffiliate(c.Request.Context(), subject.UserID, user, identities, h.affiliateSvc)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
 	response.Success(c, UserResponse{
-		userProfileResponse: profile,
+		userProfileResponse: userProfileResponseFromService(user, identities),
 		RunMode:             runMode,
 	})
 }

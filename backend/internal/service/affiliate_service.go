@@ -12,12 +12,11 @@ import (
 )
 
 var (
-	ErrAffiliateProfileNotFound  = infraerrors.NotFound("AFFILIATE_PROFILE_NOT_FOUND", "affiliate profile not found")
-	ErrAffiliateCodeInvalid      = infraerrors.BadRequest("AFFILIATE_CODE_INVALID", "invalid affiliate code")
-	ErrAffiliateCodeTaken        = infraerrors.Conflict("AFFILIATE_CODE_TAKEN", "affiliate code already in use")
-	ErrAffiliateAlreadyBound     = infraerrors.Conflict("AFFILIATE_ALREADY_BOUND", "affiliate inviter already bound")
-	ErrAffiliateQuotaEmpty       = infraerrors.BadRequest("AFFILIATE_QUOTA_EMPTY", "no affiliate quota available to transfer")
-	ErrAffiliatePermissionDenied = infraerrors.Forbidden("AFFILIATE_PERMISSION_DENIED", "affiliate permission is not enabled for this user")
+	ErrAffiliateProfileNotFound = infraerrors.NotFound("AFFILIATE_PROFILE_NOT_FOUND", "affiliate profile not found")
+	ErrAffiliateCodeInvalid     = infraerrors.BadRequest("AFFILIATE_CODE_INVALID", "invalid affiliate code")
+	ErrAffiliateCodeTaken       = infraerrors.Conflict("AFFILIATE_CODE_TAKEN", "affiliate code already in use")
+	ErrAffiliateAlreadyBound    = infraerrors.Conflict("AFFILIATE_ALREADY_BOUND", "affiliate inviter already bound")
+	ErrAffiliateQuotaEmpty      = infraerrors.BadRequest("AFFILIATE_QUOTA_EMPTY", "no affiliate quota available to transfer")
 )
 
 const (
@@ -61,7 +60,6 @@ func isValidAffiliateCodeFormat(code string) bool {
 type AffiliateSummary struct {
 	UserID               int64     `json:"user_id"`
 	AffCode              string    `json:"aff_code"`
-	AffEnabled           bool      `json:"aff_enabled"`
 	AffCodeCustom        bool      `json:"aff_code_custom"`
 	AffRebateRatePercent *float64  `json:"aff_rebate_rate_percent,omitempty"`
 	InviterID            *int64    `json:"inviter_id,omitempty"`
@@ -84,7 +82,6 @@ type AffiliateInvitee struct {
 type AffiliateDetail struct {
 	UserID          int64   `json:"user_id"`
 	AffCode         string  `json:"aff_code"`
-	AffEnabled      bool    `json:"aff_enabled"`
 	InviterID       *int64  `json:"inviter_id,omitempty"`
 	AffCount        int     `json:"aff_count"`
 	AffQuota        float64 `json:"aff_quota"`
@@ -110,8 +107,6 @@ type AffiliateRepository interface {
 	// 管理端：用户级专属配置
 	UpdateUserAffCode(ctx context.Context, userID int64, newCode string) error
 	ResetUserAffCode(ctx context.Context, userID int64) (string, error)
-	SetUserAffiliateEnabled(ctx context.Context, userID int64, enabled bool) error
-	BatchSetUserAffiliateEnabled(ctx context.Context, userIDs []int64, enabled bool) error
 	SetUserRebateRate(ctx context.Context, userID int64, ratePercent *float64) error
 	BatchSetUserRebateRate(ctx context.Context, userIDs []int64, ratePercent *float64) error
 	ListUsersWithCustomSettings(ctx context.Context, filter AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error)
@@ -134,7 +129,6 @@ type AffiliateAdminEntry struct {
 	Email                string   `json:"email"`
 	Username             string   `json:"username"`
 	AffCode              string   `json:"aff_code"`
-	AffEnabled           bool     `json:"aff_enabled"`
 	AffCodeCustom        bool     `json:"aff_code_custom"`
 	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent,omitempty"`
 	AffCount             int      `json:"aff_count"`
@@ -202,7 +196,6 @@ type AffiliateUserOverview struct {
 	Email               string  `json:"email"`
 	Username            string  `json:"username"`
 	AffCode             string  `json:"aff_code"`
-	AffEnabled          bool    `json:"aff_enabled"`
 	RebateRatePercent   float64 `json:"rebate_rate_percent"`
 	RebateRateCustom    bool    `json:"-"`
 	InvitedCount        int     `json:"invited_count"`
@@ -245,57 +238,16 @@ func (s *AffiliateService) EnsureUserAffiliate(ctx context.Context, userID int64
 	return s.repo.EnsureUserAffiliate(ctx, userID)
 }
 
-func (s *AffiliateService) HasAffiliatePermission(ctx context.Context, userID int64) (bool, error) {
-	if userID <= 0 {
-		return false, infraerrors.BadRequest("INVALID_USER", "invalid user")
-	}
-	if s == nil || s.repo == nil {
-		return false, nil
-	}
-	summary, err := s.repo.EnsureUserAffiliate(ctx, userID)
-	if err != nil {
-		return false, err
-	}
-	return summary != nil && summary.AffEnabled, nil
-}
-
-func (s *AffiliateService) CanUseAffiliate(ctx context.Context, userID int64) (bool, error) {
-	if !s.IsEnabled(ctx) {
-		return false, nil
-	}
-	return s.HasAffiliatePermission(ctx, userID)
-}
-
-func (s *AffiliateService) requireAffiliatePermission(ctx context.Context, userID int64) error {
-	allowed, err := s.HasAffiliatePermission(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if !allowed {
-		return ErrAffiliatePermissionDenied
-	}
-	return nil
-}
-
 func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64) (*AffiliateDetail, error) {
-	if !s.IsEnabled(ctx) {
-		return nil, ErrAffiliatePermissionDenied
+	// Lazy thaw: move any matured frozen quota to available before reading.
+	if s != nil && s.repo != nil {
+		// best-effort: thaw failure is non-fatal
+		_, _ = s.repo.ThawFrozenQuota(ctx, userID)
 	}
 
 	summary, err := s.EnsureUserAffiliate(ctx, userID)
 	if err != nil {
 		return nil, err
-	}
-	if summary == nil || !summary.AffEnabled {
-		return nil, ErrAffiliatePermissionDenied
-	}
-	// Lazy thaw: move any matured frozen quota to available before reading.
-	if s != nil && s.repo != nil {
-		// best-effort: thaw failure is non-fatal
-		_, _ = s.repo.ThawFrozenQuota(ctx, userID)
-		if refreshed, refreshErr := s.repo.EnsureUserAffiliate(ctx, userID); refreshErr == nil && refreshed != nil {
-			summary = refreshed
-		}
 	}
 	invitees, err := s.listInvitees(ctx, userID)
 	if err != nil {
@@ -304,7 +256,6 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 	return &AffiliateDetail{
 		UserID:                     summary.UserID,
 		AffCode:                    summary.AffCode,
-		AffEnabled:                 summary.AffEnabled,
 		InviterID:                  summary.InviterID,
 		AffCount:                   summary.AffCount,
 		AffQuota:                   summary.AffQuota,
@@ -349,9 +300,6 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 	if inviterSummary == nil || inviterSummary.UserID <= 0 || inviterSummary.UserID == userID {
 		return ErrAffiliateCodeInvalid
 	}
-	if !inviterSummary.AffEnabled {
-		return ErrAffiliateCodeInvalid
-	}
 
 	bound, err := s.repo.BindInviter(ctx, userID, inviterSummary.UserID)
 	if err != nil {
@@ -391,9 +339,6 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 	inviterSummary, err := s.repo.EnsureUserAffiliate(ctx, *inviteeSummary.InviterID)
 	if err != nil {
 		return 0, err
-	}
-	if inviterSummary == nil || !inviterSummary.AffEnabled {
-		return 0, nil
 	}
 	// 有效期检查：超过返利有效期后不再产生返利
 	if s.settingService != nil {
@@ -466,9 +411,6 @@ func (s *AffiliateService) globalRebateRatePercent(ctx context.Context) float64 
 func (s *AffiliateService) TransferAffiliateQuota(ctx context.Context, userID int64) (float64, float64, error) {
 	if s == nil || s.repo == nil {
 		return 0, 0, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
-	}
-	if err := s.requireAffiliatePermission(ctx, userID); err != nil {
-		return 0, 0, err
 	}
 
 	transferred, balance, err := s.repo.TransferQuotaToBalance(ctx, userID)
@@ -584,32 +526,6 @@ func (s *AffiliateService) AdminResetUserAffCode(ctx context.Context, userID int
 		return "", infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
 	}
 	return s.repo.ResetUserAffCode(ctx, userID)
-}
-
-func (s *AffiliateService) AdminSetUserAffiliateEnabled(ctx context.Context, userID int64, enabled bool) error {
-	if s == nil || s.repo == nil {
-		return infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
-	}
-	if userID <= 0 {
-		return infraerrors.BadRequest("INVALID_USER", "invalid user")
-	}
-	return s.repo.SetUserAffiliateEnabled(ctx, userID, enabled)
-}
-
-func (s *AffiliateService) AdminBatchSetUserAffiliateEnabled(ctx context.Context, userIDs []int64, enabled bool) error {
-	if s == nil || s.repo == nil {
-		return infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
-	}
-	cleaned := make([]int64, 0, len(userIDs))
-	for _, uid := range userIDs {
-		if uid > 0 {
-			cleaned = append(cleaned, uid)
-		}
-	}
-	if len(cleaned) == 0 {
-		return nil
-	}
-	return s.repo.BatchSetUserAffiliateEnabled(ctx, cleaned, enabled)
 }
 
 // AdminSetUserRebateRate 设置/清除用户专属返利比例。ratePercent==nil 表示清除。

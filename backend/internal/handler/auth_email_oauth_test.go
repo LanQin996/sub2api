@@ -332,7 +332,7 @@ func newOAuthEmailAffiliateRepoStub(codeOwners map[string]int64) *oauthEmailAffi
 
 func (r *oauthEmailAffiliateRepoStub) EnsureUserAffiliate(_ context.Context, userID int64) (*service.AffiliateSummary, error) {
 	r.ensureUserIDs = append(r.ensureUserIDs, userID)
-	return &service.AffiliateSummary{UserID: userID, AffCode: "SELF", AffEnabled: true}, nil
+	return &service.AffiliateSummary{UserID: userID, AffCode: "SELF"}, nil
 }
 
 func (r *oauthEmailAffiliateRepoStub) GetAffiliateByCode(_ context.Context, code string) (*service.AffiliateSummary, error) {
@@ -340,7 +340,7 @@ func (r *oauthEmailAffiliateRepoStub) GetAffiliateByCode(_ context.Context, code
 	if !ok {
 		return nil, service.ErrAffiliateProfileNotFound
 	}
-	return &service.AffiliateSummary{UserID: userID, AffCode: strings.ToUpper(strings.TrimSpace(code)), AffEnabled: true}, nil
+	return &service.AffiliateSummary{UserID: userID, AffCode: strings.ToUpper(strings.TrimSpace(code))}, nil
 }
 
 func (r *oauthEmailAffiliateRepoStub) BindInviter(_ context.Context, userID, inviterID int64) (bool, error) {
@@ -374,14 +374,6 @@ func (r *oauthEmailAffiliateRepoStub) UpdateUserAffCode(context.Context, int64, 
 
 func (r *oauthEmailAffiliateRepoStub) ResetUserAffCode(context.Context, int64) (string, error) {
 	panic("unexpected ResetUserAffCode call")
-}
-
-func (r *oauthEmailAffiliateRepoStub) SetUserAffiliateEnabled(context.Context, int64, bool) error {
-	panic("unexpected SetUserAffiliateEnabled call")
-}
-
-func (r *oauthEmailAffiliateRepoStub) BatchSetUserAffiliateEnabled(context.Context, []int64, bool) error {
-	panic("unexpected BatchSetUserAffiliateEnabled call")
 }
 
 func (r *oauthEmailAffiliateRepoStub) SetUserRebateRate(context.Context, int64, *float64) error {

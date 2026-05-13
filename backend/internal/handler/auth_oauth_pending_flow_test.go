@@ -2166,7 +2166,6 @@ CREATE TABLE IF NOT EXISTS user_avatars (
 CREATE TABLE IF NOT EXISTS user_affiliates (
 	user_id INTEGER PRIMARY KEY,
 	aff_code TEXT NOT NULL UNIQUE,
-	aff_enabled BOOLEAN NOT NULL DEFAULT false,
 	aff_code_custom BOOLEAN NOT NULL DEFAULT false,
 	aff_rebate_rate_percent REAL NULL,
 	inviter_id INTEGER NULL,

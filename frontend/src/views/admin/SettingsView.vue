@@ -4922,22 +4922,6 @@
                   >
                     {{ t('admin.settings.features.affiliate.customUsers.batchButton', { count: affiliateState.selected.length }) }}
                   </button>
-                  <button
-                    v-if="affiliateState.selected.length > 0"
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    @click="batchSetAffiliateEnabled(true)"
-                  >
-                    {{ t('admin.settings.features.affiliate.customUsers.batchEnableButton', { count: affiliateState.selected.length }) }}
-                  </button>
-                  <button
-                    v-if="affiliateState.selected.length > 0"
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    @click="batchSetAffiliateEnabled(false)"
-                  >
-                    {{ t('admin.settings.features.affiliate.customUsers.batchDisableButton', { count: affiliateState.selected.length }) }}
-                  </button>
                 </div>
 
                 <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700">
@@ -4953,7 +4937,6 @@
                         </th>
                         <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">{{ t('admin.settings.features.affiliate.customUsers.col.email') }}</th>
                         <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">{{ t('admin.settings.features.affiliate.customUsers.col.username') }}</th>
-                        <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">{{ t('admin.settings.features.affiliate.customUsers.col.enabled') }}</th>
                         <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">{{ t('admin.settings.features.affiliate.customUsers.col.code') }}</th>
                         <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">{{ t('admin.settings.features.affiliate.customUsers.col.rate') }}</th>
                         <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">{{ t('admin.settings.features.affiliate.customUsers.col.actions') }}</th>
@@ -4961,12 +4944,12 @@
                     </thead>
                     <tbody class="divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
                       <tr v-if="affiliateState.loading">
-                        <td colspan="7" class="px-3 py-6 text-center text-sm text-gray-500">
+                        <td colspan="6" class="px-3 py-6 text-center text-sm text-gray-500">
                           {{ t('common.loading') }}
                         </td>
                       </tr>
                       <tr v-else-if="affiliateState.entries.length === 0">
-                        <td colspan="7" class="px-3 py-6 text-center text-sm text-gray-500">
+                        <td colspan="6" class="px-3 py-6 text-center text-sm text-gray-500">
                           {{ t('admin.settings.features.affiliate.customUsers.empty') }}
                         </td>
                       </tr>
@@ -4980,16 +4963,6 @@
                         </td>
                         <td class="px-3 py-2 text-sm text-gray-900 dark:text-white">{{ entry.email }}</td>
                         <td class="px-3 py-2 text-sm text-gray-600 dark:text-gray-300">{{ entry.username }}</td>
-                        <td class="px-3 py-2 text-sm">
-                          <button
-                            type="button"
-                            class="rounded px-2 py-1 text-xs font-medium"
-                            :class="entry.aff_enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-300'"
-                            @click="toggleAffiliateEnabled(entry)"
-                          >
-                            {{ entry.aff_enabled ? t('common.enabled') : t('common.disabled') }}
-                          </button>
-                        </td>
                         <td class="px-3 py-2 text-sm font-mono">
                           {{ entry.aff_code }}
                           <span
@@ -5113,20 +5086,6 @@
                   :value="affiliateModal.editingEntry ? affiliateModal.editingEntry.email : ''"
                   disabled
                 />
-              </div>
-
-              <div>
-                <div class="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 dark:border-dark-700">
-                  <div>
-                    <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {{ t('admin.settings.features.affiliate.modal.enabledLabel') }}
-                    </p>
-                    <p class="mt-0.5 text-xs text-gray-400">
-                      {{ t('admin.settings.features.affiliate.modal.enabledHint') }}
-                    </p>
-                  </div>
-                  <Toggle v-model="affiliateModal.enabled" />
-                </div>
               </div>
 
               <div>
@@ -8714,7 +8673,6 @@ interface AffiliateModalState {
   open: boolean;
   mode: "add" | "edit";
   saving: boolean;
-  enabled: boolean;
   userQuery: string;
   userResults: AffiliateSimpleUser[];
   selectedUser: AffiliateSimpleUser | null;
@@ -8728,7 +8686,6 @@ const affiliateModal = reactive<AffiliateModalState>({
   open: false,
   mode: "add",
   saving: false,
-  enabled: true,
   userQuery: "",
   userResults: [],
   selectedUser: null,
@@ -8873,7 +8830,6 @@ function toggleAffiliateSelect(userId: number) {
 function openAffiliateModal(entry: AffiliateAdminEntry | null) {
   affiliateModal.open = true;
   affiliateModal.mode = entry ? "edit" : "add";
-  affiliateModal.enabled = entry ? entry.aff_enabled : true;
   affiliateModal.userQuery = "";
   affiliateModal.userResults = [];
   affiliateModal.selectedUser = null;
@@ -8930,10 +8886,6 @@ const affiliateModalCanSubmit = computed(() => {
   }
   const codeFilled = affiliateModal.code.trim() !== "";
   const rateFilled = String(affiliateModal.rate ?? "").trim() !== "";
-  const enabledChanged =
-    affiliateModal.mode === "add" ||
-    affiliateModal.enabled !== affiliateModal.editingEntry?.aff_enabled;
-  if (enabledChanged) return true;
   if (codeFilled || rateFilled) return true;
   // Edit mode + empty rate input is a meaningful "clear" only if the user
   // currently has an exclusive rate to clear.
@@ -8958,9 +8910,6 @@ async function submitAffiliateModal() {
   }
 
   const payload: Parameters<typeof affiliatesAPI.updateUserSettings>[1] = {};
-  if (affiliateModal.mode === "add" || affiliateModal.enabled !== affiliateModal.editingEntry?.aff_enabled) {
-    payload.aff_enabled = affiliateModal.enabled;
-  }
   const codeRaw = affiliateModal.code.trim();
   if (codeRaw) payload.aff_code = codeRaw.toUpperCase();
 
@@ -9000,31 +8949,6 @@ function askResetAffiliateUser(entry: AffiliateAdminEntry) {
     t("common.delete"),
     () => affiliatesAPI.clearUserSettings(entry.user_id),
   );
-}
-
-async function toggleAffiliateEnabled(entry: AffiliateAdminEntry) {
-  try {
-    await affiliatesAPI.updateUserSettings(entry.user_id, {
-      aff_enabled: !entry.aff_enabled,
-    });
-    appStore.showSuccess(t("common.saved"));
-    await loadAffiliateUsers();
-  } catch (err) {
-    appStore.showError(extractApiErrorMessage(err, t("common.error")));
-  }
-}
-
-async function batchSetAffiliateEnabled(enabled: boolean) {
-  const userIDs = [...affiliateState.selected];
-  if (userIDs.length === 0) return;
-  try {
-    await affiliatesAPI.batchSetEnabled({ user_ids: userIDs, enabled });
-    appStore.showSuccess(t("common.saved"));
-    affiliateState.selected = [];
-    await loadAffiliateUsers();
-  } catch (err) {
-    appStore.showError(extractApiErrorMessage(err, t("common.error")));
-  }
 }
 
 function openAffiliateBatchModal() {

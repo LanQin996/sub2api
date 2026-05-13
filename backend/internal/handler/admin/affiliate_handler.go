@@ -52,7 +52,6 @@ func (h *AffiliateHandler) ListUsers(c *gin.Context) {
 // Both fields are optional and applied independently.
 type UpdateAffiliateUserRequest struct {
 	AffCode              *string  `json:"aff_code"`
-	AffEnabled           *bool    `json:"aff_enabled"`
 	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent"`
 	// ClearRebateRate explicitly clears the per-user rate (sets it to NULL).
 	// Used to disambiguate from "field not provided".
@@ -74,13 +73,6 @@ func (h *AffiliateHandler) UpdateUserSettings(c *gin.Context) {
 
 	if req.AffCode != nil {
 		if err := h.affiliateService.AdminUpdateUserAffCode(c.Request.Context(), userID, *req.AffCode); err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-	}
-
-	if req.AffEnabled != nil {
-		if err := h.affiliateService.AdminSetUserAffiliateEnabled(c.Request.Context(), userID, *req.AffEnabled); err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
@@ -115,10 +107,6 @@ func (h *AffiliateHandler) ClearUserSettings(c *gin.Context) {
 		return
 	}
 	if err := h.affiliateService.AdminSetUserRebateRate(c.Request.Context(), userID, nil); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if err := h.affiliateService.AdminSetUserAffiliateEnabled(c.Request.Context(), userID, false); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -163,29 +151,6 @@ func (h *AffiliateHandler) BatchSetRate(c *gin.Context) {
 		rate = nil
 	}
 	if err := h.affiliateService.AdminBatchSetUserRebateRate(c.Request.Context(), req.UserIDs, rate); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, gin.H{"affected": len(req.UserIDs)})
-}
-
-// POST /api/v1/admin/affiliates/users/batch-enabled
-type BatchSetEnabledRequest struct {
-	UserIDs []int64 `json:"user_ids" binding:"required"`
-	Enabled *bool   `json:"enabled" binding:"required"`
-}
-
-func (h *AffiliateHandler) BatchSetEnabled(c *gin.Context) {
-	var req BatchSetEnabledRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-	if len(req.UserIDs) == 0 {
-		response.BadRequest(c, "user_ids cannot be empty")
-		return
-	}
-	if err := h.affiliateService.AdminBatchSetUserAffiliateEnabled(c.Request.Context(), req.UserIDs, *req.Enabled); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

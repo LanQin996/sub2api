@@ -93,7 +93,6 @@ export interface User {
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
-  affiliate_enabled?: boolean
   subscriptions?: UserSubscription[] // User's active subscriptions
   last_active_at?: string | null
   created_at: string
@@ -137,7 +136,6 @@ export interface AffiliateInvitee {
 export interface UserAffiliateDetail {
   user_id: number
   aff_code: string
-  aff_enabled: boolean
   inviter_id?: number | null
   aff_count: number
   aff_quota: number

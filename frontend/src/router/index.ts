@@ -226,7 +226,6 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      requiresAffiliate: true,
       title: 'Affiliate',
       titleKey: 'affiliate.title',
       descriptionKey: 'affiliate.description'
@@ -707,7 +706,7 @@ function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: bo
   return false
 }
 
-router.beforeEach(async (to, _from, next) => {
+router.beforeEach((to, _from, next) => {
   // 开始导航加载状态
   navigationLoading.startNavigation()
 
@@ -787,10 +786,6 @@ router.beforeEach(async (to, _from, next) => {
 
 
   // Check payment requirement (internal payment system only)
-  if ((to.meta.requiresPayment || to.meta.requiresRiskControl || to.meta.requiresAffiliate) && !appStore.cachedPublicSettings) {
-    await appStore.fetchPublicSettings()
-  }
-
   if (to.meta.requiresPayment) {
     const paymentEnabled = appStore.cachedPublicSettings?.payment_enabled
     if (!paymentEnabled) {
@@ -803,23 +798,6 @@ router.beforeEach(async (to, _from, next) => {
     const riskControlEnabled = appStore.cachedPublicSettings?.risk_control_enabled === true
     if (!riskControlEnabled) {
       next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
-      return
-    }
-  }
-
-  if (to.meta.requiresAffiliate) {
-    const affiliateEnabled = appStore.cachedPublicSettings?.affiliate_enabled === true
-    if (affiliateEnabled && authStore.user && authStore.user.affiliate_enabled === undefined) {
-      try {
-        await authStore.refreshUser()
-      } catch {
-        next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
-        return
-      }
-    }
-    const userAffiliateEnabled = authStore.user?.affiliate_enabled === true
-    if (!affiliateEnabled || !userAffiliateEnabled) {
-      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
     }
   }

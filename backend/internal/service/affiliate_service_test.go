@@ -57,20 +57,6 @@ func TestIsEnabled_NilSettingServiceReturnsDefault(t *testing.T) {
 	require.Equal(t, AffiliateEnabledDefault, svc.IsEnabled(context.Background()))
 }
 
-func TestHasAffiliatePermission(t *testing.T) {
-	t.Parallel()
-
-	svc := &AffiliateService{repo: affiliatePermissionRepoStub{enabled: true}}
-	allowed, err := svc.HasAffiliatePermission(context.Background(), 123)
-	require.NoError(t, err)
-	require.True(t, allowed)
-
-	svc = &AffiliateService{repo: affiliatePermissionRepoStub{enabled: false}}
-	allowed, err = svc.HasAffiliatePermission(context.Background(), 123)
-	require.NoError(t, err)
-	require.False(t, allowed)
-}
-
 // TestValidateExclusiveRate_BoundaryAndInvalid covers the validator used by
 // admin-facing rate setters: nil is always valid (clear), in-range values
 // are accepted, NaN/Inf and out-of-range values produce a typed BadRequest.
@@ -94,86 +80,6 @@ func TestValidateExclusiveRate_BoundaryAndInvalid(t *testing.T) {
 	require.Error(t, validateExclusiveRate(&posInf))
 	negInf := math.Inf(-1)
 	require.Error(t, validateExclusiveRate(&negInf))
-}
-
-type affiliatePermissionRepoStub struct {
-	enabled bool
-}
-
-func (r affiliatePermissionRepoStub) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {
-	return &AffiliateSummary{UserID: userID, AffCode: "SELF", AffEnabled: r.enabled}, nil
-}
-
-func (r affiliatePermissionRepoStub) GetAffiliateByCode(context.Context, string) (*AffiliateSummary, error) {
-	return nil, ErrAffiliateProfileNotFound
-}
-
-func (r affiliatePermissionRepoStub) BindInviter(context.Context, int64, int64) (bool, error) {
-	return false, nil
-}
-
-func (r affiliatePermissionRepoStub) AccrueQuota(context.Context, int64, int64, float64, int, *int64) (bool, error) {
-	return false, nil
-}
-
-func (r affiliatePermissionRepoStub) GetAccruedRebateFromInvitee(context.Context, int64, int64) (float64, error) {
-	return 0, nil
-}
-
-func (r affiliatePermissionRepoStub) ThawFrozenQuota(context.Context, int64) (float64, error) {
-	return 0, nil
-}
-
-func (r affiliatePermissionRepoStub) TransferQuotaToBalance(context.Context, int64) (float64, float64, error) {
-	return 0, 0, nil
-}
-
-func (r affiliatePermissionRepoStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
-	return nil, nil
-}
-
-func (r affiliatePermissionRepoStub) UpdateUserAffCode(context.Context, int64, string) error {
-	return nil
-}
-
-func (r affiliatePermissionRepoStub) ResetUserAffCode(context.Context, int64) (string, error) {
-	return "", nil
-}
-
-func (r affiliatePermissionRepoStub) SetUserAffiliateEnabled(context.Context, int64, bool) error {
-	return nil
-}
-
-func (r affiliatePermissionRepoStub) BatchSetUserAffiliateEnabled(context.Context, []int64, bool) error {
-	return nil
-}
-
-func (r affiliatePermissionRepoStub) SetUserRebateRate(context.Context, int64, *float64) error {
-	return nil
-}
-
-func (r affiliatePermissionRepoStub) BatchSetUserRebateRate(context.Context, []int64, *float64) error {
-	return nil
-}
-
-func (r affiliatePermissionRepoStub) ListUsersWithCustomSettings(context.Context, AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error) {
-	return nil, 0, nil
-}
-
-func (r affiliatePermissionRepoStub) ListAffiliateInviteRecords(context.Context, AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error) {
-	return nil, 0, nil
-}
-
-func (r affiliatePermissionRepoStub) ListAffiliateRebateRecords(context.Context, AffiliateRecordFilter) ([]AffiliateRebateRecord, int64, error) {
-	return nil, 0, nil
-}
-
-func (r affiliatePermissionRepoStub) ListAffiliateTransferRecords(context.Context, AffiliateRecordFilter) ([]AffiliateTransferRecord, int64, error) {
-	return nil, 0, nil
-}
-
-func (r affiliatePermissionRepoStub) GetAffiliateUserOverview(context.Context, int64) (*AffiliateUserOverview, error) {
-	return nil, nil
 }
 
 func TestMaskEmail(t *testing.T) {
