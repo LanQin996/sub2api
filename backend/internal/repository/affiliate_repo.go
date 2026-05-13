@@ -27,6 +27,7 @@ SELECT ua.user_id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        ua.aff_code,
+       ua.aff_enabled,
        COALESCE(ua.aff_rebate_rate_percent, 0)::double precision,
        (ua.aff_rebate_rate_percent IS NOT NULL) AS has_custom_rate,
        ua.aff_count,
@@ -656,6 +657,7 @@ func (r *affiliateRepository) GetAffiliateUserOverview(ctx context.Context, user
 		&overview.Email,
 		&overview.Username,
 		&overview.AffCode,
+		&overview.AffEnabled,
 		&customRate,
 		&hasCustomRate,
 		&overview.InvitedCount,
@@ -782,6 +784,7 @@ func queryAffiliateByUserID(ctx context.Context, client affiliateQueryExecer, us
 	rows, err := client.QueryContext(ctx, `
 SELECT user_id,
        aff_code,
+       aff_enabled,
        aff_code_custom,
        aff_rebate_rate_percent,
        inviter_id,
@@ -810,6 +813,7 @@ WHERE user_id = $1`, userID)
 	if err := rows.Scan(
 		&out.UserID,
 		&out.AffCode,
+		&out.AffEnabled,
 		&out.AffCodeCustom,
 		&rebateRate,
 		&inviterID,
@@ -836,6 +840,7 @@ func queryAffiliateByCode(ctx context.Context, client affiliateQueryExecer, code
 	rows, err := client.QueryContext(ctx, `
 SELECT user_id,
        aff_code,
+       aff_enabled,
        aff_code_custom,
        aff_rebate_rate_percent,
        inviter_id,
@@ -866,6 +871,7 @@ LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
 	if err := rows.Scan(
 		&out.UserID,
 		&out.AffCode,
+		&out.AffEnabled,
 		&out.AffCodeCustom,
 		&rebateRate,
 		&inviterID,
@@ -1054,6 +1060,55 @@ WHERE user_id = $2`, candidate, userID)
 	return newCode, nil
 }
 
+func (r *affiliateRepository) SetUserAffiliateEnabled(ctx context.Context, userID int64, enabled bool) error {
+	if userID <= 0 {
+		return service.ErrUserNotFound
+	}
+	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		if _, err := ensureUserAffiliateWithClient(txCtx, txClient, userID); err != nil {
+			return err
+		}
+		res, err := txClient.ExecContext(txCtx, `
+UPDATE user_affiliates
+SET aff_enabled = $1,
+    updated_at = NOW()
+WHERE user_id = $2`, enabled, userID)
+		if err != nil {
+			return fmt.Errorf("set aff_enabled: %w", err)
+		}
+		affected, _ := res.RowsAffected()
+		if affected == 0 {
+			return service.ErrUserNotFound
+		}
+		return nil
+	})
+}
+
+func (r *affiliateRepository) BatchSetUserAffiliateEnabled(ctx context.Context, userIDs []int64, enabled bool) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		for _, uid := range userIDs {
+			if uid <= 0 {
+				continue
+			}
+			if _, err := ensureUserAffiliateWithClient(txCtx, txClient, uid); err != nil {
+				return err
+			}
+		}
+		_, err := txClient.ExecContext(txCtx, `
+UPDATE user_affiliates
+SET aff_enabled = $1,
+    updated_at = NOW()
+WHERE user_id = ANY($2)`, enabled, pq.Array(userIDs))
+		if err != nil {
+			return fmt.Errorf("batch set aff_enabled: %w", err)
+		}
+		return nil
+	})
+}
+
 // SetUserRebateRate 设置或清除用户专属返利比例。ratePercent==nil 表示清除（沿用全局）。
 func (r *affiliateRepository) SetUserRebateRate(ctx context.Context, userID int64, ratePercent *float64) error {
 	if userID <= 0 {
@@ -1143,7 +1198,7 @@ func (r *affiliateRepository) ListUsersWithCustomSettings(ctx context.Context, f
 	const baseFrom = `
 FROM user_affiliates ua
 JOIN users u ON u.id = ua.user_id
-WHERE (ua.aff_code_custom = true OR ua.aff_rebate_rate_percent IS NOT NULL)
+WHERE (ua.aff_enabled = true OR ua.aff_code_custom = true OR ua.aff_rebate_rate_percent IS NOT NULL)
   AND (u.email ILIKE $1 OR u.username ILIKE $1)`
 
 	client := clientFromContext(ctx, r.client)
@@ -1158,6 +1213,7 @@ SELECT ua.user_id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        ua.aff_code,
+       ua.aff_enabled,
        ua.aff_code_custom,
        ua.aff_rebate_rate_percent,
        ua.aff_count` + baseFrom + `
@@ -1175,7 +1231,7 @@ LIMIT $2 OFFSET $3`
 		var e service.AffiliateAdminEntry
 		var rebate sql.NullFloat64
 		if err := rows.Scan(&e.UserID, &e.Email, &e.Username, &e.AffCode,
-			&e.AffCodeCustom, &rebate, &e.AffCount); err != nil {
+			&e.AffEnabled, &e.AffCodeCustom, &rebate, &e.AffCount); err != nil {
 			return nil, 0, err
 		}
 		if rebate.Valid {

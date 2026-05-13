@@ -12,6 +12,7 @@ export interface AffiliateAdminEntry {
   email: string
   username: string
   aff_code: string
+  aff_enabled: boolean
   aff_code_custom: boolean
   aff_rebate_rate_percent?: number | null
   aff_count: number
@@ -82,6 +83,7 @@ export interface AffiliateUserOverview {
   email: string
   username: string
   aff_code: string
+  aff_enabled: boolean
   rebate_rate_percent: number
   invited_count: number
   rebated_invitee_count: number
@@ -91,6 +93,7 @@ export interface AffiliateUserOverview {
 
 export interface UpdateAffiliateUserRequest {
   aff_code?: string
+  aff_enabled?: boolean
   aff_rebate_rate_percent?: number | null
   /** Set true to explicitly clear the per-user rate (sets it to NULL). */
   clear_rebate_rate?: boolean
@@ -101,6 +104,11 @@ export interface BatchSetRateRequest {
   aff_rebate_rate_percent?: number | null
   /** Set true to clear rates instead of setting. */
   clear?: boolean
+}
+
+export interface BatchSetEnabledRequest {
+  user_ids: number[]
+  enabled: boolean
 }
 
 export interface SimpleUser {
@@ -163,6 +171,16 @@ export async function batchSetRate(
   return data
 }
 
+export async function batchSetEnabled(
+  payload: BatchSetEnabledRequest,
+): Promise<{ affected: number }> {
+  const { data } = await apiClient.post<{ affected: number }>(
+    '/admin/affiliates/users/batch-enabled',
+    payload,
+  )
+  return data
+}
+
 function recordParams(params: ListAffiliateRecordsParams = {}) {
   return {
     page: params.page ?? 1,
@@ -220,6 +238,7 @@ export const affiliatesAPI = {
   lookupUsers,
   updateUserSettings,
   clearUserSettings,
+  batchSetEnabled,
   batchSetRate,
   listInviteRecords,
   listRebateRecords,

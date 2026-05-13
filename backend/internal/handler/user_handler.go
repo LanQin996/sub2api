@@ -67,6 +67,7 @@ type userProfileResponse struct {
 	LinuxDoBound      bool                                   `json:"linuxdo_bound"`
 	OIDCBound         bool                                   `json:"oidc_bound"`
 	WeChatBound       bool                                   `json:"wechat_bound"`
+	AffiliateEnabled  bool                                   `json:"affiliate_enabled"`
 }
 
 type userProfileSourceContext struct {
@@ -503,7 +504,20 @@ func (h *UserHandler) buildUserProfileResponse(ctx context.Context, userID int64
 	if err != nil {
 		return userProfileResponse{}, err
 	}
-	return userProfileResponseFromService(user, identities), nil
+	return userProfileResponseWithAffiliate(ctx, userID, user, identities, h.affiliateService)
+}
+
+func userProfileResponseWithAffiliate(ctx context.Context, userID int64, user *service.User, identities service.UserIdentitySummarySet, affiliateService *service.AffiliateService) (userProfileResponse, error) {
+	resp := userProfileResponseFromService(user, identities)
+	if affiliateService == nil {
+		return resp, nil
+	}
+	allowed, err := affiliateService.CanUseAffiliate(ctx, userID)
+	if err != nil {
+		return userProfileResponse{}, err
+	}
+	resp.AffiliateEnabled = allowed
+	return resp, nil
 }
 
 func userProfileResponseFromService(user *service.User, identities service.UserIdentitySummarySet) userProfileResponse {

@@ -303,6 +303,9 @@ export const useAuthStore = defineStore('auth', () => {
 
     // Start auto-refresh interval for user data
     startAutoRefresh()
+    refreshUser().catch((error) => {
+      console.error('Failed to refresh user after auth:', error)
+    })
 
     // Start proactive token refresh if we have refresh token and expiry info
     // scheduleTokenRefresh will also store the expiry timestamp
