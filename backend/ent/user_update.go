@@ -410,6 +410,20 @@ func (_u *UserUpdate) AddRpmLimit(v int) *UserUpdate {
 	return _u
 }
 
+// SetInvitationEnabled sets the "invitation_enabled" field.
+func (_u *UserUpdate) SetInvitationEnabled(v bool) *UserUpdate {
+	_u.mutation.SetInvitationEnabled(v)
+	return _u
+}
+
+// SetNillableInvitationEnabled sets the "invitation_enabled" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableInvitationEnabled(v *bool) *UserUpdate {
+	if v != nil {
+		_u.SetInvitationEnabled(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdate) AddAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -438,6 +452,21 @@ func (_u *UserUpdate) AddRedeemCodes(v ...*RedeemCode) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddRedeemCodeIDs(ids...)
+}
+
+// AddCreatedInvitationCodeIDs adds the "created_invitation_codes" edge to the RedeemCode entity by IDs.
+func (_u *UserUpdate) AddCreatedInvitationCodeIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddCreatedInvitationCodeIDs(ids...)
+	return _u
+}
+
+// AddCreatedInvitationCodes adds the "created_invitation_codes" edges to the RedeemCode entity.
+func (_u *UserUpdate) AddCreatedInvitationCodes(v ...*RedeemCode) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddCreatedInvitationCodeIDs(ids...)
 }
 
 // AddSubscriptionIDs adds the "subscriptions" edge to the UserSubscription entity by IDs.
@@ -635,6 +664,27 @@ func (_u *UserUpdate) RemoveRedeemCodes(v ...*RedeemCode) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveRedeemCodeIDs(ids...)
+}
+
+// ClearCreatedInvitationCodes clears all "created_invitation_codes" edges to the RedeemCode entity.
+func (_u *UserUpdate) ClearCreatedInvitationCodes() *UserUpdate {
+	_u.mutation.ClearCreatedInvitationCodes()
+	return _u
+}
+
+// RemoveCreatedInvitationCodeIDs removes the "created_invitation_codes" edge to RedeemCode entities by IDs.
+func (_u *UserUpdate) RemoveCreatedInvitationCodeIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveCreatedInvitationCodeIDs(ids...)
+	return _u
+}
+
+// RemoveCreatedInvitationCodes removes "created_invitation_codes" edges to RedeemCode entities.
+func (_u *UserUpdate) RemoveCreatedInvitationCodes(v ...*RedeemCode) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveCreatedInvitationCodeIDs(ids...)
 }
 
 // ClearSubscriptions clears all "subscriptions" edges to the UserSubscription entity.
@@ -1035,6 +1085,9 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(user.FieldRpmLimit, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.InvitationEnabled(); ok {
+		_spec.SetField(user.FieldInvitationEnabled, field.TypeBool, value)
+	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1115,6 +1168,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Inverse: false,
 			Table:   user.RedeemCodesTable,
 			Columns: []string{user.RedeemCodesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcode.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CreatedInvitationCodesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedInvitationCodesTable,
+			Columns: []string{user.CreatedInvitationCodesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcode.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedCreatedInvitationCodesIDs(); len(nodes) > 0 && !_u.mutation.CreatedInvitationCodesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedInvitationCodesTable,
+			Columns: []string{user.CreatedInvitationCodesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcode.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CreatedInvitationCodesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedInvitationCodesTable,
+			Columns: []string{user.CreatedInvitationCodesColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(redeemcode.FieldID, field.TypeInt64),
@@ -1978,6 +2076,20 @@ func (_u *UserUpdateOne) AddRpmLimit(v int) *UserUpdateOne {
 	return _u
 }
 
+// SetInvitationEnabled sets the "invitation_enabled" field.
+func (_u *UserUpdateOne) SetInvitationEnabled(v bool) *UserUpdateOne {
+	_u.mutation.SetInvitationEnabled(v)
+	return _u
+}
+
+// SetNillableInvitationEnabled sets the "invitation_enabled" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableInvitationEnabled(v *bool) *UserUpdateOne {
+	if v != nil {
+		_u.SetInvitationEnabled(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdateOne) AddAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2006,6 +2118,21 @@ func (_u *UserUpdateOne) AddRedeemCodes(v ...*RedeemCode) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.AddRedeemCodeIDs(ids...)
+}
+
+// AddCreatedInvitationCodeIDs adds the "created_invitation_codes" edge to the RedeemCode entity by IDs.
+func (_u *UserUpdateOne) AddCreatedInvitationCodeIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddCreatedInvitationCodeIDs(ids...)
+	return _u
+}
+
+// AddCreatedInvitationCodes adds the "created_invitation_codes" edges to the RedeemCode entity.
+func (_u *UserUpdateOne) AddCreatedInvitationCodes(v ...*RedeemCode) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddCreatedInvitationCodeIDs(ids...)
 }
 
 // AddSubscriptionIDs adds the "subscriptions" edge to the UserSubscription entity by IDs.
@@ -2203,6 +2330,27 @@ func (_u *UserUpdateOne) RemoveRedeemCodes(v ...*RedeemCode) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveRedeemCodeIDs(ids...)
+}
+
+// ClearCreatedInvitationCodes clears all "created_invitation_codes" edges to the RedeemCode entity.
+func (_u *UserUpdateOne) ClearCreatedInvitationCodes() *UserUpdateOne {
+	_u.mutation.ClearCreatedInvitationCodes()
+	return _u
+}
+
+// RemoveCreatedInvitationCodeIDs removes the "created_invitation_codes" edge to RedeemCode entities by IDs.
+func (_u *UserUpdateOne) RemoveCreatedInvitationCodeIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveCreatedInvitationCodeIDs(ids...)
+	return _u
+}
+
+// RemoveCreatedInvitationCodes removes "created_invitation_codes" edges to RedeemCode entities.
+func (_u *UserUpdateOne) RemoveCreatedInvitationCodes(v ...*RedeemCode) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveCreatedInvitationCodeIDs(ids...)
 }
 
 // ClearSubscriptions clears all "subscriptions" edges to the UserSubscription entity.
@@ -2633,6 +2781,9 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(user.FieldRpmLimit, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.InvitationEnabled(); ok {
+		_spec.SetField(user.FieldInvitationEnabled, field.TypeBool, value)
+	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -2713,6 +2864,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Inverse: false,
 			Table:   user.RedeemCodesTable,
 			Columns: []string{user.RedeemCodesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcode.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CreatedInvitationCodesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedInvitationCodesTable,
+			Columns: []string{user.CreatedInvitationCodesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcode.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedCreatedInvitationCodesIDs(); len(nodes) > 0 && !_u.mutation.CreatedInvitationCodesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedInvitationCodesTable,
+			Columns: []string{user.CreatedInvitationCodesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcode.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CreatedInvitationCodesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedInvitationCodesTable,
+			Columns: []string{user.CreatedInvitationCodesColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(redeemcode.FieldID, field.TypeInt64),

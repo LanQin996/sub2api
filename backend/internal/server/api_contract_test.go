@@ -1815,6 +1815,10 @@ func (r *stubRedeemCodeRepo) ListByUser(ctx context.Context, userID int64, limit
 	return append([]service.RedeemCode(nil), codes...), nil
 }
 
+func (stubRedeemCodeRepo) ListByCreator(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
 func (stubRedeemCodeRepo) ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 }

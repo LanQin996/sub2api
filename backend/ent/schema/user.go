@@ -112,6 +112,8 @@ func (User) Fields() []ent.Field {
 		// 用户级每分钟请求数上限（0 = 不限制）。仅当所在分组未设置 rpm_limit 时作为兜底生效。
 		field.Int("rpm_limit").
 			Default(0),
+		field.Bool("invitation_enabled").
+			Default(false),
 	}
 }
 
@@ -119,6 +121,7 @@ func (User) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("api_keys", APIKey.Type),
 		edge.To("redeem_codes", RedeemCode.Type),
+		edge.To("created_invitation_codes", RedeemCode.Type),
 		edge.To("subscriptions", UserSubscription.Type),
 		edge.To("assigned_subscriptions", UserSubscription.Type),
 		edge.To("announcement_reads", AnnouncementRead.Type),

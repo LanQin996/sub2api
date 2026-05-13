@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -24,6 +25,10 @@ func NewRedeemHandler(redeemService *service.RedeemService) *RedeemHandler {
 // RedeemRequest represents the redeem code request payload
 type RedeemRequest struct {
 	Code string `json:"code" binding:"required"`
+}
+
+type GenerateInvitationCodesRequest struct {
+	Count int `json:"count" binding:"required,min=1,max=100"`
 }
 
 // RedeemResponse represents the redeem response
@@ -72,6 +77,54 @@ func (h *RedeemHandler) GetHistory(c *gin.Context) {
 	limit := 25
 
 	codes, err := h.redeemService.GetUserHistory(c.Request.Context(), subject.UserID, limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]dto.RedeemCode, 0, len(codes))
+	for i := range codes {
+		out = append(out, *dto.RedeemCodeFromService(&codes[i]))
+	}
+	response.Success(c, out)
+}
+
+func (h *RedeemHandler) ListInvitationCodes(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+	codes, result, err := h.redeemService.ListInvitationCodesByCreator(c.Request.Context(), subject.UserID, params)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]dto.RedeemCode, 0, len(codes))
+	for i := range codes {
+		out = append(out, *dto.RedeemCodeFromService(&codes[i]))
+	}
+	response.Paginated(c, out, result.Total, result.Page, result.PageSize)
+}
+
+func (h *RedeemHandler) GenerateInvitationCodes(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	var req GenerateInvitationCodesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	codes, err := h.redeemService.GenerateInvitationCodesForUser(c.Request.Context(), subject.UserID, req.Count)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

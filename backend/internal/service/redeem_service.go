@@ -16,11 +16,12 @@ import (
 )
 
 var (
-	ErrRedeemCodeNotFound  = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
-	ErrRedeemCodeUsed      = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
-	ErrInsufficientBalance = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
-	ErrRedeemRateLimited   = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrRedeemCodeLocked    = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
+	ErrRedeemCodeNotFound         = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
+	ErrRedeemCodeUsed             = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
+	ErrInsufficientBalance        = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
+	ErrRedeemRateLimited          = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrRedeemCodeLocked           = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
+	ErrInvitationPermissionDenied = infraerrors.Forbidden("INVITATION_PERMISSION_DENIED", "invitation code generation is not enabled for this user")
 )
 
 const (
@@ -59,6 +60,7 @@ type RedeemCodeRepository interface {
 	List(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error)
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]RedeemCode, *pagination.PaginationResult, error)
 	ListByUser(ctx context.Context, userID int64, limit int) ([]RedeemCode, error)
+	ListByCreator(ctx context.Context, userID int64, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error)
 	// ListByUserPaginated returns paginated balance/concurrency history for a specific user.
 	// codeType filter is optional - pass empty string to return all types.
 	ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]RedeemCode, *pagination.PaginationResult, error)
@@ -68,9 +70,10 @@ type RedeemCodeRepository interface {
 
 // GenerateCodesRequest 生成兑换码请求
 type GenerateCodesRequest struct {
-	Count int     `json:"count"`
-	Value float64 `json:"value"`
-	Type  string  `json:"type"`
+	Count     int     `json:"count"`
+	Value     float64 `json:"value"`
+	Type      string  `json:"type"`
+	CreatedBy *int64  `json:"created_by,omitempty"`
 }
 
 // RedeemCodeResponse 兑换码响应
@@ -172,10 +175,11 @@ func (s *RedeemService) GenerateCodes(ctx context.Context, req GenerateCodesRequ
 		}
 
 		codes = append(codes, RedeemCode{
-			Code:   code,
-			Type:   codeType,
-			Value:  value,
-			Status: StatusUnused,
+			Code:      code,
+			Type:      codeType,
+			Value:     value,
+			Status:    StatusUnused,
+			CreatedBy: req.CreatedBy,
 		})
 	}
 
@@ -185,6 +189,29 @@ func (s *RedeemService) GenerateCodes(ctx context.Context, req GenerateCodesRequ
 	}
 
 	return codes, nil
+}
+
+func (s *RedeemService) GenerateInvitationCodesForUser(ctx context.Context, userID int64, count int) ([]RedeemCode, error) {
+	if count <= 0 {
+		return nil, errors.New("count must be greater than 0")
+	}
+	if count > 100 {
+		return nil, errors.New("cannot generate more than 100 invitation codes at once")
+	}
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	if user == nil || (!user.InvitationEnabled && !user.IsAdmin()) {
+		return nil, ErrInvitationPermissionDenied
+	}
+
+	return s.GenerateCodes(ctx, GenerateCodesRequest{
+		Count:     count,
+		Type:      RedeemTypeInvitation,
+		CreatedBy: &userID,
+	})
 }
 
 // CreateCode creates a redeem code with caller-provided code value.
@@ -526,6 +553,22 @@ func (s *RedeemService) GetUserHistory(ctx context.Context, userID int64, limit 
 		return nil, fmt.Errorf("get user redeem history: %w", err)
 	}
 	return codes, nil
+}
+
+func (s *RedeemService) ListInvitationCodesByCreator(ctx context.Context, userID int64, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get user: %w", err)
+	}
+	if user == nil || (!user.InvitationEnabled && !user.IsAdmin()) {
+		return nil, nil, ErrInvitationPermissionDenied
+	}
+
+	codes, result, err := s.redeemRepo.ListByCreator(ctx, userID, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list invitation codes: %w", err)
+	}
+	return codes, result, nil
 }
 
 // reduceOrCancelSubscription 缩短订阅天数，剩余天数 <= 0 时取消订阅

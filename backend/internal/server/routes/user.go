@@ -102,6 +102,8 @@ func RegisterUserRoutes(
 		{
 			redeem.POST("", h.Redeem.Redeem)
 			redeem.GET("/history", h.Redeem.GetHistory)
+			redeem.GET("/invitation-codes", h.Redeem.ListInvitationCodes)
+			redeem.POST("/invitation-codes/generate", h.Redeem.GenerateInvitationCodes)
 		}
 
 		// 用户订阅

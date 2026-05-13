@@ -61,10 +61,14 @@ const (
 	FieldTotalRecharged = "total_recharged"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldInvitationEnabled holds the string denoting the invitation_enabled field in the database.
+	FieldInvitationEnabled = "invitation_enabled"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
 	EdgeRedeemCodes = "redeem_codes"
+	// EdgeCreatedInvitationCodes holds the string denoting the created_invitation_codes edge name in mutations.
+	EdgeCreatedInvitationCodes = "created_invitation_codes"
 	// EdgeSubscriptions holds the string denoting the subscriptions edge name in mutations.
 	EdgeSubscriptions = "subscriptions"
 	// EdgeAssignedSubscriptions holds the string denoting the assigned_subscriptions edge name in mutations.
@@ -103,6 +107,13 @@ const (
 	RedeemCodesInverseTable = "redeem_codes"
 	// RedeemCodesColumn is the table column denoting the redeem_codes relation/edge.
 	RedeemCodesColumn = "used_by"
+	// CreatedInvitationCodesTable is the table that holds the created_invitation_codes relation/edge.
+	CreatedInvitationCodesTable = "redeem_codes"
+	// CreatedInvitationCodesInverseTable is the table name for the RedeemCode entity.
+	// It exists in this package in order to avoid circular dependency with the "redeemcode" package.
+	CreatedInvitationCodesInverseTable = "redeem_codes"
+	// CreatedInvitationCodesColumn is the table column denoting the created_invitation_codes relation/edge.
+	CreatedInvitationCodesColumn = "created_by"
 	// SubscriptionsTable is the table that holds the subscriptions relation/edge.
 	SubscriptionsTable = "user_subscriptions"
 	// SubscriptionsInverseTable is the table name for the UserSubscription entity.
@@ -206,6 +217,7 @@ var Columns = []string{
 	FieldBalanceNotifyExtraEmails,
 	FieldTotalRecharged,
 	FieldRpmLimit,
+	FieldInvitationEnabled,
 }
 
 var (
@@ -276,6 +288,8 @@ var (
 	DefaultTotalRecharged float64
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultInvitationEnabled holds the default value on creation for the "invitation_enabled" field.
+	DefaultInvitationEnabled bool
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -401,6 +415,11 @@ func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
 }
 
+// ByInvitationEnabled orders the results by the invitation_enabled field.
+func ByInvitationEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldInvitationEnabled, opts...).ToFunc()
+}
+
 // ByAPIKeysCount orders the results by api_keys count.
 func ByAPIKeysCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -426,6 +445,20 @@ func ByRedeemCodesCount(opts ...sql.OrderTermOption) OrderOption {
 func ByRedeemCodes(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newRedeemCodesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByCreatedInvitationCodesCount orders the results by created_invitation_codes count.
+func ByCreatedInvitationCodesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCreatedInvitationCodesStep(), opts...)
+	}
+}
+
+// ByCreatedInvitationCodes orders the results by created_invitation_codes terms.
+func ByCreatedInvitationCodes(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCreatedInvitationCodesStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 
@@ -594,6 +627,13 @@ func newRedeemCodesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(RedeemCodesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, RedeemCodesTable, RedeemCodesColumn),
+	)
+}
+func newCreatedInvitationCodesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CreatedInvitationCodesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CreatedInvitationCodesTable, CreatedInvitationCodesColumn),
 	)
 }
 func newSubscriptionsStep() *sqlgraph.Step {

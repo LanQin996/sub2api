@@ -1123,6 +1123,7 @@ var (
 		{Name: "validity_days", Type: field.TypeInt, Default: 30},
 		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "used_by", Type: field.TypeInt64, Nullable: true},
+		{Name: "created_by", Type: field.TypeInt64, Nullable: true},
 	}
 	// RedeemCodesTable holds the schema information for the "redeem_codes" table.
 	RedeemCodesTable = &schema.Table{
@@ -1142,6 +1143,12 @@ var (
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
+			{
+				Symbol:     "redeem_codes_users_created_invitation_codes",
+				Columns:    []*schema.Column{RedeemCodesColumns[11]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
 		},
 		Indexes: []*schema.Index{
 			{
@@ -1153,6 +1160,11 @@ var (
 				Name:    "redeemcode_used_by",
 				Unique:  false,
 				Columns: []*schema.Column{RedeemCodesColumns[10]},
+			},
+			{
+				Name:    "redeemcode_created_by_type_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{RedeemCodesColumns[11], RedeemCodesColumns[2], RedeemCodesColumns[7]},
 			},
 			{
 				Name:    "redeemcode_group_id",
@@ -1452,6 +1464,7 @@ var (
 		{Name: "balance_notify_extra_emails", Type: field.TypeString, Default: "[]", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "total_recharged", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
+		{Name: "invitation_enabled", Type: field.TypeBool, Default: false},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{
@@ -1805,6 +1818,7 @@ func init() {
 	}
 	RedeemCodesTable.ForeignKeys[0].RefTable = GroupsTable
 	RedeemCodesTable.ForeignKeys[1].RefTable = UsersTable
+	RedeemCodesTable.ForeignKeys[2].RefTable = UsersTable
 	RedeemCodesTable.Annotation = &entsql.Annotation{
 		Table: "redeem_codes",
 	}

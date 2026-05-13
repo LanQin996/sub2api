@@ -31,6 +31,7 @@ func (r *redeemCodeRepository) Create(ctx context.Context, code *service.RedeemC
 		SetNotes(code.Notes).
 		SetValidityDays(code.ValidityDays).
 		SetNillableUsedBy(code.UsedBy).
+		SetNillableCreatedBy(code.CreatedBy).
 		SetNillableUsedAt(code.UsedAt).
 		SetNillableGroupID(code.GroupID).
 		Save(ctx)
@@ -57,6 +58,7 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 			SetNotes(c.Notes).
 			SetValidityDays(c.ValidityDays).
 			SetNillableUsedBy(c.UsedBy).
+			SetNillableCreatedBy(c.CreatedBy).
 			SetNillableUsedAt(c.UsedAt).
 			SetNillableGroupID(c.GroupID)
 		builders = append(builders, b)
@@ -184,6 +186,11 @@ func (r *redeemCodeRepository) Update(ctx context.Context, code *service.RedeemC
 	} else {
 		up.ClearUsedBy()
 	}
+	if code.CreatedBy != nil {
+		up.SetCreatedBy(*code.CreatedBy)
+	} else {
+		up.ClearCreatedBy()
+	}
 	if code.UsedAt != nil {
 		up.SetUsedAt(*code.UsedAt)
 	} else {
@@ -240,6 +247,31 @@ func (r *redeemCodeRepository) ListByUser(ctx context.Context, userID int64, lim
 	}
 
 	return redeemCodeEntitiesToService(codes), nil
+}
+
+func (r *redeemCodeRepository) ListByCreator(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	q := r.client.RedeemCode.Query().
+		Where(
+			redeemcode.CreatedByEQ(userID),
+			redeemcode.TypeEQ(service.RedeemTypeInvitation),
+		)
+
+	total, err := q.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	codes, err := q.
+		WithUser().
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		Order(dbent.Desc(redeemcode.FieldCreatedAt), dbent.Desc(redeemcode.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return redeemCodeEntitiesToService(codes), paginationResultFromTotal(int64(total), params), nil
 }
 
 // ListByUserPaginated returns paginated balance/concurrency history for a user.
@@ -304,6 +336,7 @@ func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
 		Value:        m.Value,
 		Status:       m.Status,
 		UsedBy:       m.UsedBy,
+		CreatedBy:    m.CreatedBy,
 		UsedAt:       m.UsedAt,
 		Notes:        derefString(m.Notes),
 		CreatedAt:    m.CreatedAt,

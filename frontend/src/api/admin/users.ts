@@ -118,6 +118,7 @@ export async function create(userData: {
   balance?: number
   concurrency?: number
   allowed_groups?: number[] | null
+  invitation_enabled?: boolean
 }): Promise<AdminUser> {
   const { data } = await apiClient.post<AdminUser>('/admin/users', userData)
   return data

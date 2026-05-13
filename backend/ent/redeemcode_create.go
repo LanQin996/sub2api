@@ -86,6 +86,20 @@ func (_c *RedeemCodeCreate) SetNillableUsedBy(v *int64) *RedeemCodeCreate {
 	return _c
 }
 
+// SetCreatedBy sets the "created_by" field.
+func (_c *RedeemCodeCreate) SetCreatedBy(v int64) *RedeemCodeCreate {
+	_c.mutation.SetCreatedBy(v)
+	return _c
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableCreatedBy(v *int64) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetCreatedBy(*v)
+	}
+	return _c
+}
+
 // SetUsedAt sets the "used_at" field.
 func (_c *RedeemCodeCreate) SetUsedAt(v time.Time) *RedeemCodeCreate {
 	_c.mutation.SetUsedAt(v)
@@ -173,6 +187,25 @@ func (_c *RedeemCodeCreate) SetNillableUserID(id *int64) *RedeemCodeCreate {
 // SetUser sets the "user" edge to the User entity.
 func (_c *RedeemCodeCreate) SetUser(v *User) *RedeemCodeCreate {
 	return _c.SetUserID(v.ID)
+}
+
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (_c *RedeemCodeCreate) SetCreatorID(id int64) *RedeemCodeCreate {
+	_c.mutation.SetCreatorID(id)
+	return _c
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableCreatorID(id *int64) *RedeemCodeCreate {
+	if id != nil {
+		_c = _c.SetCreatorID(*id)
+	}
+	return _c
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (_c *RedeemCodeCreate) SetCreator(v *User) *RedeemCodeCreate {
+	return _c.SetCreatorID(v.ID)
 }
 
 // SetGroup sets the "group" edge to the Group entity.
@@ -348,6 +381,23 @@ func (_c *RedeemCodeCreate) createSpec() (*RedeemCode, *sqlgraph.CreateSpec) {
 		_node.UsedBy = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   redeemcode.CreatorTable,
+			Columns: []string{redeemcode.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.CreatedBy = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -486,6 +536,24 @@ func (u *RedeemCodeUpsert) UpdateUsedBy() *RedeemCodeUpsert {
 // ClearUsedBy clears the value of the "used_by" field.
 func (u *RedeemCodeUpsert) ClearUsedBy() *RedeemCodeUpsert {
 	u.SetNull(redeemcode.FieldUsedBy)
+	return u
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *RedeemCodeUpsert) SetCreatedBy(v int64) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldCreatedBy, v)
+	return u
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateCreatedBy() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldCreatedBy)
+	return u
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *RedeemCodeUpsert) ClearCreatedBy() *RedeemCodeUpsert {
+	u.SetNull(redeemcode.FieldCreatedBy)
 	return u
 }
 
@@ -687,6 +755,27 @@ func (u *RedeemCodeUpsertOne) UpdateUsedBy() *RedeemCodeUpsertOne {
 func (u *RedeemCodeUpsertOne) ClearUsedBy() *RedeemCodeUpsertOne {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.ClearUsedBy()
+	})
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *RedeemCodeUpsertOne) SetCreatedBy(v int64) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetCreatedBy(v)
+	})
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateCreatedBy() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateCreatedBy()
+	})
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *RedeemCodeUpsertOne) ClearCreatedBy() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearCreatedBy()
 	})
 }
 
@@ -1066,6 +1155,27 @@ func (u *RedeemCodeUpsertBulk) UpdateUsedBy() *RedeemCodeUpsertBulk {
 func (u *RedeemCodeUpsertBulk) ClearUsedBy() *RedeemCodeUpsertBulk {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.ClearUsedBy()
+	})
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *RedeemCodeUpsertBulk) SetCreatedBy(v int64) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetCreatedBy(v)
+	})
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateCreatedBy() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateCreatedBy()
+	})
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *RedeemCodeUpsertBulk) ClearCreatedBy() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearCreatedBy()
 	})
 }
 

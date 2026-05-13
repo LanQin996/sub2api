@@ -51,6 +51,9 @@ func (RedeemCode) Fields() []ent.Field {
 		field.Int64("used_by").
 			Optional().
 			Nillable(),
+		field.Int64("created_by").
+			Optional().
+			Nillable(),
 		field.Time("used_at").
 			Optional().
 			Nillable().
@@ -77,6 +80,10 @@ func (RedeemCode) Edges() []ent.Edge {
 			Ref("redeem_codes").
 			Field("used_by").
 			Unique(),
+		edge.From("creator", User.Type).
+			Ref("created_invitation_codes").
+			Field("created_by").
+			Unique(),
 		edge.From("group", Group.Type).
 			Ref("redeem_codes").
 			Field("group_id").
@@ -89,6 +96,7 @@ func (RedeemCode) Indexes() []ent.Index {
 		// code 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
 		index.Fields("used_by"),
+		index.Fields("created_by", "type", "created_at"),
 		index.Fields("group_id"),
 	}
 }

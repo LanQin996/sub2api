@@ -158,6 +158,10 @@ func (s *redeemRepoStubForAdminList) ListByUserPaginated(_ context.Context, user
 	panic("unexpected ListByUserPaginated call")
 }
 
+func (s *redeemRepoStubForAdminList) ListByCreator(_ context.Context, userID int64, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListByCreator call")
+}
+
 func (s *redeemRepoStubForAdminList) SumPositiveBalanceByUser(_ context.Context, userID int64) (float64, error) {
 	panic("unexpected SumPositiveBalanceByUser call")
 }

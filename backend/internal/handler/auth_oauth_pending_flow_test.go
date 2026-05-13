@@ -2524,6 +2524,10 @@ func (r *oauthPendingFlowRedeemCodeRepo) ListByUser(context.Context, int64, int)
 	panic("unexpected ListByUser call")
 }
 
+func (r *oauthPendingFlowRedeemCodeRepo) ListByCreator(context.Context, int64, pagination.PaginationParams) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListByCreator call")
+}
+
 func (r *oauthPendingFlowRedeemCodeRepo) ListByUserPaginated(context.Context, int64, pagination.PaginationParams, string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected ListByUserPaginated call")
 }

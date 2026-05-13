@@ -13,6 +13,7 @@ type RedeemCode struct {
 	Value     float64
 	Status    string
 	UsedBy    *int64
+	CreatedBy *int64
 	UsedAt    *time.Time
 	Notes     string
 	CreatedAt time.Time

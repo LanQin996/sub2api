@@ -24,6 +24,8 @@ const (
 	FieldStatus = "status"
 	// FieldUsedBy holds the string denoting the used_by field in the database.
 	FieldUsedBy = "used_by"
+	// FieldCreatedBy holds the string denoting the created_by field in the database.
+	FieldCreatedBy = "created_by"
 	// FieldUsedAt holds the string denoting the used_at field in the database.
 	FieldUsedAt = "used_at"
 	// FieldNotes holds the string denoting the notes field in the database.
@@ -36,6 +38,8 @@ const (
 	FieldValidityDays = "validity_days"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
+	// EdgeCreator holds the string denoting the creator edge name in mutations.
+	EdgeCreator = "creator"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
 	// Table holds the table name of the redeemcode in the database.
@@ -47,6 +51,13 @@ const (
 	UserInverseTable = "users"
 	// UserColumn is the table column denoting the user relation/edge.
 	UserColumn = "used_by"
+	// CreatorTable is the table that holds the creator relation/edge.
+	CreatorTable = "redeem_codes"
+	// CreatorInverseTable is the table name for the User entity.
+	// It exists in this package in order to avoid circular dependency with the "user" package.
+	CreatorInverseTable = "users"
+	// CreatorColumn is the table column denoting the creator relation/edge.
+	CreatorColumn = "created_by"
 	// GroupTable is the table that holds the group relation/edge.
 	GroupTable = "redeem_codes"
 	// GroupInverseTable is the table name for the Group entity.
@@ -64,6 +75,7 @@ var Columns = []string{
 	FieldValue,
 	FieldStatus,
 	FieldUsedBy,
+	FieldCreatedBy,
 	FieldUsedAt,
 	FieldNotes,
 	FieldCreatedAt,
@@ -133,6 +145,11 @@ func ByUsedBy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUsedBy, opts...).ToFunc()
 }
 
+// ByCreatedBy orders the results by the created_by field.
+func ByCreatedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCreatedBy, opts...).ToFunc()
+}
+
 // ByUsedAt orders the results by the used_at field.
 func ByUsedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUsedAt, opts...).ToFunc()
@@ -165,6 +182,13 @@ func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 	}
 }
 
+// ByCreatorField orders the results by creator field.
+func ByCreatorField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCreatorStep(), sql.OrderByField(field, opts...))
+	}
+}
+
 // ByGroupField orders the results by group field.
 func ByGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -176,6 +200,13 @@ func newUserStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, UserTable, UserColumn),
+	)
+}
+func newCreatorStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CreatorInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, CreatorTable, CreatorColumn),
 	)
 }
 func newGroupStep() *sqlgraph.Step {

@@ -93,6 +93,7 @@ export interface User {
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
+  invitation_enabled?: boolean
   subscriptions?: UserSubscription[] // User's active subscriptions
   last_active_at?: string | null
   created_at: string
@@ -1273,6 +1274,7 @@ export interface RedeemCode {
   value: number
   status: 'active' | 'used' | 'expired' | 'unused'
   used_by: number | null
+  created_by?: number | null
   used_at: string | null
   created_at: string
   updated_at?: string
@@ -1490,6 +1492,7 @@ export interface UpdateUserRequest {
   concurrency?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
+  invitation_enabled?: boolean
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>

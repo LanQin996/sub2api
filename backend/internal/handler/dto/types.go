@@ -7,17 +7,18 @@ import (
 )
 
 type User struct {
-	ID            int64      `json:"id"`
-	Email         string     `json:"email"`
-	Username      string     `json:"username"`
-	Role          string     `json:"role"`
-	Balance       float64    `json:"balance"`
-	Concurrency   int        `json:"concurrency"`
-	Status        string     `json:"status"`
-	AllowedGroups []int64    `json:"allowed_groups"`
-	LastActiveAt  *time.Time `json:"last_active_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID                int64      `json:"id"`
+	Email             string     `json:"email"`
+	Username          string     `json:"username"`
+	Role              string     `json:"role"`
+	Balance           float64    `json:"balance"`
+	Concurrency       int        `json:"concurrency"`
+	InvitationEnabled bool       `json:"invitation_enabled"`
+	Status            string     `json:"status"`
+	AllowedGroups     []int64    `json:"allowed_groups"`
+	LastActiveAt      *time.Time `json:"last_active_at,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 
 	// 余额不足通知
 	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
@@ -333,6 +334,7 @@ type RedeemCode struct {
 	Value     float64    `json:"value"`
 	Status    string     `json:"status"`
 	UsedBy    *int64     `json:"used_by"`
+	CreatedBy *int64     `json:"created_by,omitempty"`
 	UsedAt    *time.Time `json:"used_at"`
 	CreatedAt time.Time  `json:"created_at"`
 

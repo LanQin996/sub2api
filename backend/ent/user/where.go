@@ -170,6 +170,11 @@ func RpmLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// InvitationEnabled applies equality check predicate on the "invitation_enabled" field. It's identical to InvitationEnabledEQ.
+func InvitationEnabled(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldInvitationEnabled, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1340,6 +1345,16 @@ func RpmLimitLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldRpmLimit, v))
 }
 
+// InvitationEnabledEQ applies the EQ predicate on the "invitation_enabled" field.
+func InvitationEnabledEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldInvitationEnabled, v))
+}
+
+// InvitationEnabledNEQ applies the NEQ predicate on the "invitation_enabled" field.
+func InvitationEnabledNEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldInvitationEnabled, v))
+}
+
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
 func HasAPIKeys() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -1378,6 +1393,29 @@ func HasRedeemCodes() predicate.User {
 func HasRedeemCodesWith(preds ...predicate.RedeemCode) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newRedeemCodesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCreatedInvitationCodes applies the HasEdge predicate on the "created_invitation_codes" edge.
+func HasCreatedInvitationCodes() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, CreatedInvitationCodesTable, CreatedInvitationCodesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCreatedInvitationCodesWith applies the HasEdge predicate on the "created_invitation_codes" edge with a given conditions (other predicates).
+func HasCreatedInvitationCodesWith(preds ...predicate.RedeemCode) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newCreatedInvitationCodesStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

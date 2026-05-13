@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from './client'
-import type { RedeemCodeRequest } from '@/types'
+import type { PaginatedResponse, RedeemCode, RedeemCodeRequest } from '@/types'
 
 export interface RedeemHistoryItem {
   id: number
@@ -24,6 +24,8 @@ export interface RedeemHistoryItem {
     name: string
   }
 }
+
+export interface InvitationCodeItem extends RedeemCode {}
 
 /**
  * Redeem a code
@@ -59,9 +61,34 @@ export async function getHistory(): Promise<RedeemHistoryItem[]> {
   return data
 }
 
+export async function listInvitationCodes(
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedResponse<InvitationCodeItem>> {
+  const { data } = await apiClient.get<PaginatedResponse<InvitationCodeItem>>(
+    '/redeem/invitation-codes',
+    {
+      params: {
+        page,
+        page_size: pageSize
+      }
+    }
+  )
+  return data
+}
+
+export async function generateInvitationCodes(count: number): Promise<InvitationCodeItem[]> {
+  const { data } = await apiClient.post<InvitationCodeItem[]>('/redeem/invitation-codes/generate', {
+    count
+  })
+  return data
+}
+
 export const redeemAPI = {
   redeem,
-  getHistory
+  getHistory,
+  listInvitationCodes,
+  generateInvitationCodes
 }
 
 export default redeemAPI

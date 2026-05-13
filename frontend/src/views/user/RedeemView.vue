@@ -198,6 +198,167 @@
         </div>
       </div>
 
+      <!-- Invitation Distribution -->
+      <div v-if="canDistributeInvitations" class="card">
+        <div
+          class="flex flex-col gap-3 border-b border-gray-100 px-6 py-4 dark:border-dark-700 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('redeem.invitationDistribution') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+              {{ t('redeem.invitationDistributionHint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="fetchInvitationCodes"
+            :disabled="loadingInvitationCodes"
+            class="btn btn-secondary self-start sm:self-auto"
+            :title="t('common.refresh')"
+          >
+            <Icon
+              name="refresh"
+              size="md"
+              :class="loadingInvitationCodes ? 'animate-spin' : ''"
+            />
+          </button>
+        </div>
+        <div class="space-y-5 p-6">
+          <form
+            @submit.prevent="handleGenerateInvitationCodes"
+            class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]"
+          >
+            <div>
+              <label for="invitation-count" class="input-label">
+                {{ t('redeem.invitationCount') }}
+              </label>
+              <input
+                id="invitation-count"
+                v-model.number="invitationCount"
+                type="number"
+                min="1"
+                max="100"
+                :disabled="generatingInvitationCodes"
+                class="input"
+              />
+            </div>
+            <button
+              type="submit"
+              :disabled="generatingInvitationCodes || invitationCount < 1 || invitationCount > 100"
+              class="btn btn-primary self-end"
+            >
+              <Icon
+                v-if="!generatingInvitationCodes"
+                name="plus"
+                size="md"
+                class="mr-2"
+              />
+              <svg
+                v-else
+                class="mr-2 h-5 w-5 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              {{
+                generatingInvitationCodes
+                  ? t('redeem.generatingInvitationCodes')
+                  : t('redeem.generateInvitationCodes')
+              }}
+            </button>
+          </form>
+
+          <div v-if="invitationCodes.length > 0" class="space-y-3">
+            <div
+              v-for="item in invitationCodes"
+              :key="item.id"
+              class="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800"
+            >
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                  <div class="flex min-w-0 items-center gap-2">
+                    <code
+                      class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-white"
+                      :title="item.code"
+                    >
+                      {{ item.code }}
+                    </code>
+                    <button
+                      type="button"
+                      @click="copyInvitationCode(item.code)"
+                      class="shrink-0 rounded-lg p-1 text-gray-400 transition-colors hover:bg-white hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+                      :title="t('common.copy')"
+                    >
+                      <Icon name="copy" size="sm" :stroke-width="2" />
+                    </button>
+                  </div>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">
+                    {{ t('redeem.invitationCreatedAt') }}:
+                    {{ formatDateTime(item.created_at) }}
+                  </p>
+                  <p v-if="item.used_at" class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                    {{ t('redeem.invitationUsedAt') }}:
+                    {{ formatDateTime(item.used_at) }}
+                  </p>
+                </div>
+                <span
+                  :class="[
+                    'badge self-start',
+                    item.status === 'unused' ? 'badge-success' : 'badge-gray'
+                  ]"
+                >
+                  {{ invitationStatusLabel(item.status) }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="loadingInvitationCodes" class="flex items-center justify-center py-8">
+            <svg class="h-6 w-6 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+          </div>
+
+          <div v-else class="empty-state py-8">
+            <div
+              class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-dark-800"
+            >
+              <Icon name="gift" size="xl" class="text-gray-400 dark:text-dark-500" />
+            </div>
+            <p class="text-sm text-gray-500 dark:text-dark-400">
+              {{ t('redeem.noInvitationCodes') }}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <!-- Recent Activity -->
       <div class="card">
         <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -347,17 +508,22 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useSubscriptionStore } from '@/stores/subscriptions'
-import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
+import { redeemAPI, authAPI, type InvitationCodeItem, type RedeemHistoryItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
+import { useClipboard } from '@/composables/useClipboard'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
 const appStore = useAppStore()
 const subscriptionStore = useSubscriptionStore()
+const { copyToClipboard } = useClipboard()
 
 const user = computed(() => authStore.user)
+const canDistributeInvitations = computed(() => {
+  return Boolean(user.value?.invitation_enabled || user.value?.role === 'admin')
+})
 
 const redeemCode = ref('')
 const submitting = ref(false)
@@ -376,6 +542,10 @@ const errorMessage = ref('')
 const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const contactInfo = ref('')
+const invitationCodes = ref<InvitationCodeItem[]>([])
+const invitationCount = ref(1)
+const loadingInvitationCodes = ref(false)
+const generatingInvitationCodes = ref(false)
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {
@@ -431,6 +601,52 @@ const fetchHistory = async () => {
   }
 }
 
+const fetchInvitationCodes = async () => {
+  if (!canDistributeInvitations.value) {
+    invitationCodes.value = []
+    return
+  }
+  loadingInvitationCodes.value = true
+  try {
+    const result = await redeemAPI.listInvitationCodes(1, 20)
+    invitationCodes.value = result.items
+  } catch (error) {
+    console.error('Failed to fetch invitation codes:', error)
+    appStore.showError(t('redeem.failedToLoadInvitationCodes'))
+  } finally {
+    loadingInvitationCodes.value = false
+  }
+}
+
+const handleGenerateInvitationCodes = async () => {
+  if (invitationCount.value < 1 || invitationCount.value > 100) {
+    appStore.showError(t('redeem.invitationCountInvalid'))
+    return
+  }
+
+  generatingInvitationCodes.value = true
+  try {
+    const codes = await redeemAPI.generateInvitationCodes(invitationCount.value)
+    invitationCodes.value = [...codes, ...invitationCodes.value].slice(0, 20)
+    appStore.showSuccess(t('redeem.invitationCodesGenerated', { count: codes.length }))
+  } catch (error: any) {
+    appStore.showError(error?.message || t('redeem.failedToGenerateInvitationCodes'))
+  } finally {
+    generatingInvitationCodes.value = false
+  }
+}
+
+const copyInvitationCode = async (code: string) => {
+  await copyToClipboard(code, t('redeem.invitationCodeCopied'))
+}
+
+const invitationStatusLabel = (status: string) => {
+  if (status === 'unused') return t('redeem.invitationStatus.unused')
+  if (status === 'used') return t('redeem.invitationStatus.used')
+  if (status === 'expired') return t('redeem.invitationStatus.expired')
+  return status
+}
+
 const handleRedeem = async () => {
   if (!redeemCode.value.trim()) {
     appStore.showError(t('redeem.pleaseEnterCode'))
@@ -478,6 +694,9 @@ const handleRedeem = async () => {
 
 onMounted(async () => {
   fetchHistory()
+  if (canDistributeInvitations.value) {
+    fetchInvitationCodes()
+  }
   try {
     const settings = await authAPI.getPublicSettings()
     contactInfo.value = settings.contact_info || ''

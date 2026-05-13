@@ -1382,11 +1382,11 @@ func init() {
 	// redeemcode.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	redeemcode.StatusValidator = redeemcodeDescStatus.Validators[0].(func(string) error)
 	// redeemcodeDescCreatedAt is the schema descriptor for created_at field.
-	redeemcodeDescCreatedAt := redeemcodeFields[7].Descriptor()
+	redeemcodeDescCreatedAt := redeemcodeFields[8].Descriptor()
 	// redeemcode.DefaultCreatedAt holds the default value on creation for the created_at field.
 	redeemcode.DefaultCreatedAt = redeemcodeDescCreatedAt.Default.(func() time.Time)
 	// redeemcodeDescValidityDays is the schema descriptor for validity_days field.
-	redeemcodeDescValidityDays := redeemcodeFields[9].Descriptor()
+	redeemcodeDescValidityDays := redeemcodeFields[10].Descriptor()
 	// redeemcode.DefaultValidityDays holds the default value on creation for the validity_days field.
 	redeemcode.DefaultValidityDays = redeemcodeDescValidityDays.Default.(int)
 	securitysecretMixin := schema.SecuritySecret{}.Mixin()
@@ -1845,6 +1845,10 @@ func init() {
 	userDescRpmLimit := userFields[19].Descriptor()
 	// user.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	user.DefaultRpmLimit = userDescRpmLimit.Default.(int)
+	// userDescInvitationEnabled is the schema descriptor for invitation_enabled field.
+	userDescInvitationEnabled := userFields[20].Descriptor()
+	// user.DefaultInvitationEnabled holds the default value on creation for the invitation_enabled field.
+	user.DefaultInvitationEnabled = userDescInvitationEnabled.Default.(bool)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

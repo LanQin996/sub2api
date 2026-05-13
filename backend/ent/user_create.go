@@ -339,6 +339,20 @@ func (_c *UserCreate) SetNillableRpmLimit(v *int) *UserCreate {
 	return _c
 }
 
+// SetInvitationEnabled sets the "invitation_enabled" field.
+func (_c *UserCreate) SetInvitationEnabled(v bool) *UserCreate {
+	_c.mutation.SetInvitationEnabled(v)
+	return _c
+}
+
+// SetNillableInvitationEnabled sets the "invitation_enabled" field if the given value is not nil.
+func (_c *UserCreate) SetNillableInvitationEnabled(v *bool) *UserCreate {
+	if v != nil {
+		_c.SetInvitationEnabled(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *UserCreate) AddAPIKeyIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -367,6 +381,21 @@ func (_c *UserCreate) AddRedeemCodes(v ...*RedeemCode) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddRedeemCodeIDs(ids...)
+}
+
+// AddCreatedInvitationCodeIDs adds the "created_invitation_codes" edge to the RedeemCode entity by IDs.
+func (_c *UserCreate) AddCreatedInvitationCodeIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddCreatedInvitationCodeIDs(ids...)
+	return _c
+}
+
+// AddCreatedInvitationCodes adds the "created_invitation_codes" edges to the RedeemCode entity.
+func (_c *UserCreate) AddCreatedInvitationCodes(v ...*RedeemCode) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddCreatedInvitationCodeIDs(ids...)
 }
 
 // AddSubscriptionIDs adds the "subscriptions" edge to the UserSubscription entity by IDs.
@@ -622,6 +651,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 	}
+	if _, ok := _c.mutation.InvitationEnabled(); !ok {
+		v := user.DefaultInvitationEnabled
+		_c.mutation.SetInvitationEnabled(v)
+	}
 	return nil
 }
 
@@ -707,6 +740,9 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "User.rpm_limit"`)}
+	}
+	if _, ok := _c.mutation.InvitationEnabled(); !ok {
+		return &ValidationError{Name: "invitation_enabled", err: errors.New(`ent: missing required field "User.invitation_enabled"`)}
 	}
 	return nil
 }
@@ -827,6 +863,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
 	}
+	if value, ok := _c.mutation.InvitationEnabled(); ok {
+		_spec.SetField(user.FieldInvitationEnabled, field.TypeBool, value)
+		_node.InvitationEnabled = value
+	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -849,6 +889,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Inverse: false,
 			Table:   user.RedeemCodesTable,
 			Columns: []string{user.RedeemCodesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcode.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.CreatedInvitationCodesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedInvitationCodesTable,
+			Columns: []string{user.CreatedInvitationCodesColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(redeemcode.FieldID, field.TypeInt64),
@@ -1405,6 +1461,18 @@ func (u *UserUpsert) AddRpmLimit(v int) *UserUpsert {
 	return u
 }
 
+// SetInvitationEnabled sets the "invitation_enabled" field.
+func (u *UserUpsert) SetInvitationEnabled(v bool) *UserUpsert {
+	u.Set(user.FieldInvitationEnabled, v)
+	return u
+}
+
+// UpdateInvitationEnabled sets the "invitation_enabled" field to the value that was provided on create.
+func (u *UserUpsert) UpdateInvitationEnabled() *UserUpsert {
+	u.SetExcluded(user.FieldInvitationEnabled)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1832,6 +1900,20 @@ func (u *UserUpsertOne) AddRpmLimit(v int) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateRpmLimit() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetInvitationEnabled sets the "invitation_enabled" field.
+func (u *UserUpsertOne) SetInvitationEnabled(v bool) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetInvitationEnabled(v)
+	})
+}
+
+// UpdateInvitationEnabled sets the "invitation_enabled" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateInvitationEnabled() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateInvitationEnabled()
 	})
 }
 
@@ -2428,6 +2510,20 @@ func (u *UserUpsertBulk) AddRpmLimit(v int) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateRpmLimit() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetInvitationEnabled sets the "invitation_enabled" field.
+func (u *UserUpsertBulk) SetInvitationEnabled(v bool) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetInvitationEnabled(v)
+	})
+}
+
+// UpdateInvitationEnabled sets the "invitation_enabled" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateInvitationEnabled() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateInvitationEnabled()
 	})
 }
 

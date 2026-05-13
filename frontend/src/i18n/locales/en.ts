@@ -1103,7 +1103,25 @@ export default {
     codeRedeemSuccess: 'Code redeemed successfully!',
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
-    pleaseEnterCode: 'Please enter a redeem code'
+    pleaseEnterCode: 'Please enter a redeem code',
+    invitationDistribution: 'Invitation Distribution',
+    invitationDistributionHint: 'Generate one-time registration invitation codes for users who need access.',
+    invitationCount: 'Code count',
+    generateInvitationCodes: 'Generate Invitations',
+    generatingInvitationCodes: 'Generating...',
+    invitationCodesGenerated: '{count} invitation code(s) generated',
+    invitationCodeCopied: 'Invitation code copied',
+    failedToLoadInvitationCodes: 'Failed to load invitation codes',
+    failedToGenerateInvitationCodes: 'Failed to generate invitation codes',
+    invitationCountInvalid: 'Invitation code count must be between 1 and 100',
+    noInvitationCodes: 'No invitation codes generated yet',
+    invitationCreatedAt: 'Created',
+    invitationUsedAt: 'Used',
+    invitationStatus: {
+      unused: 'Unused',
+      used: 'Used',
+      expired: 'Expired'
+    }
   },
 
   // Profile
@@ -1759,7 +1777,9 @@ export default {
       form: {
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
-        rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.'
+        rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.',
+        invitationEnabled: 'Allow invitation distribution',
+        invitationEnabledHint: 'Allows this user to generate one-time registration invitation codes for distribution.'
       },
       columns: {
         user: 'User',

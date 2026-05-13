@@ -1107,7 +1107,25 @@ export default {
     codeRedeemSuccess: '兑换成功！',
     failedToRedeem: '兑换失败，请检查兑换码后重试。',
     subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
-    pleaseEnterCode: '请输入兑换码'
+    pleaseEnterCode: '请输入兑换码',
+    invitationDistribution: '邀请码分发',
+    invitationDistributionHint: '生成一次性注册邀请码，分发给需要注册的用户。',
+    invitationCount: '生成数量',
+    generateInvitationCodes: '生成邀请码',
+    generatingInvitationCodes: '生成中...',
+    invitationCodesGenerated: '已生成 {count} 个邀请码',
+    invitationCodeCopied: '邀请码已复制',
+    failedToLoadInvitationCodes: '加载邀请码失败',
+    failedToGenerateInvitationCodes: '生成邀请码失败',
+    invitationCountInvalid: '邀请码数量必须在 1 到 100 之间',
+    noInvitationCodes: '暂无已生成的邀请码',
+    invitationCreatedAt: '生成时间',
+    invitationUsedAt: '使用时间',
+    invitationStatus: {
+      unused: '未使用',
+      used: '已使用',
+      expired: '已过期'
+    }
   },
 
   // Profile
@@ -1858,7 +1876,9 @@ export default {
         selectStatus: '选择状态',
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
-        rpmLimitHint: '该用户每分钟最大请求数，0 = 不限制；仅在所用分组未设置 rpm_limit 时作为兜底生效'
+        rpmLimitHint: '该用户每分钟最大请求数，0 = 不限制；仅在所用分组未设置 rpm_limit 时作为兜底生效',
+        invitationEnabled: '允许分发邀请码',
+        invitationEnabledHint: '开启后该用户可以生成一次性注册邀请码，帮助管理员分发注册入口。'
       },
       adjustBalance: '调整余额',
       adjustConcurrency: '调整并发数',

@@ -136,6 +136,10 @@ func (r *paymentOrderLifecycleRedeemRepo) ListByUser(context.Context, int64, int
 	panic("unexpected call")
 }
 
+func (r *paymentOrderLifecycleRedeemRepo) ListByCreator(context.Context, int64, pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected call")
+}
+
 func (r *paymentOrderLifecycleRedeemRepo) ListByUserPaginated(context.Context, int64, pagination.PaginationParams, string) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected call")
 }
