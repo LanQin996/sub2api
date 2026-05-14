@@ -5,10 +5,18 @@ on:
     branches:
       - main
       - master
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/workflows/*.disabled'
   pull_request:
     branches:
       - main
       - master
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/workflows/*.disabled'
   workflow_dispatch:
     inputs:
       version:
@@ -27,6 +35,7 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  DEFAULT_IMAGE_VERSION: cache1.4
 
 jobs:
   build:
@@ -43,7 +52,7 @@ jobs:
       - name: Set build metadata
         id: build_meta
         run: |
-          CUSTOM_VERSION="${{ github.event.inputs.version }}"
+          CUSTOM_VERSION="${{ github.event.inputs.version || env.DEFAULT_IMAGE_VERSION }}"
           if [[ -n "${CUSTOM_VERSION}" ]]; then
             VERSION="${CUSTOM_VERSION#v}"
             IS_CUSTOM=true
@@ -60,9 +69,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "is_custom=${IS_CUSTOM}" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+          echo "Building version: ${VERSION}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -98,13 +105,15 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
+          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || '' }}
           push: ${{ github.event_name != 'pull_request' }}
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.build_meta.outputs.version }}
             COMMIT=${{ github.sha }}
             DATE=${{ steps.build_meta.outputs.date }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: ${{ github.event_name == 'pull_request' && 'type=gha,scope=sub2api-amd64' || format('type=registry,ref={0}:cache-amd64', steps.image.outputs.name) }}
+          cache-to: ${{ github.event_name == 'pull_request' && 'type=gha,mode=max,scope=sub2api-amd64' || format('type=registry,ref={0}:cache-amd64,mode=max', steps.image.outputs.name) }}
