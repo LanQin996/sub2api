@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"strings"
 	"sync"
 	"time"
 
@@ -127,19 +126,4 @@ func cacheStatusValue(hit bool) string {
 		return "hit"
 	}
 	return "miss"
-}
-
-func parseBoolQueryWithDefault(raw string, def bool) bool {
-	value := strings.TrimSpace(strings.ToLower(raw))
-	if value == "" {
-		return def
-	}
-	switch value {
-	case "1", "true", "yes", "on":
-		return true
-	case "0", "false", "no", "off":
-		return false
-	default:
-		return def
-	}
 }
