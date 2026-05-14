@@ -127,18 +127,7 @@ func (s *RedeemService) GenerateRandomCode() (string, error) {
 		return "", fmt.Errorf("generate random bytes: %w", err)
 	}
 
-	// 转换为十六进制字符串
-	code := hex.EncodeToString(bytes)
-
-	// 格式化为 XXXX-XXXX-XXXX-XXXX 格式
-	parts := []string{
-		strings.ToUpper(code[0:8]),
-		strings.ToUpper(code[8:16]),
-		strings.ToUpper(code[16:24]),
-		strings.ToUpper(code[24:32]),
-	}
-
-	return strings.Join(parts, "-"), nil
+	return strings.ToUpper(hex.EncodeToString(bytes)), nil
 }
 
 // GenerateCodes 批量生成兑换码
