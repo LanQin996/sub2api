@@ -288,7 +288,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
-	if handleErr == nil && result != nil {
+	if result != nil {
 		if responsesReq.ServiceTier != "" {
 			st := responsesReq.ServiceTier
 			result.ServiceTier = &st
@@ -297,6 +297,10 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 			re := responsesReq.Reasoning.Effort
 			result.ReasoningEffort = &re
 		}
+	}
+
+	if handleErr != nil && result != nil && result.PartialUsage && IsOpenAIStreamPartialUsageError(handleErr) {
+		applyOpenAIApproxPartialUsage(&result.Usage, responsesBody, 0, result.FirstTokenMs != nil)
 	}
 
 	// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
@@ -429,6 +433,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	clientOutputStarted := false
+	approxOutputChars := 0
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -463,14 +469,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			FirstTokenMs:  firstTokenMs,
 		}
 	}
+	partialResult := func(err error) (*OpenAIForwardResult, error) {
+		applyOpenAIApproxPartialUsage(&usage, nil, approxOutputChars, clientOutputStarted)
+		result := resultWithUsage()
+		result.PartialUsage = true
+		return result, newOpenAIStreamPartialUsageError(err)
+	}
 
 	processDataLine := func(payload string) bool {
-		if firstChunk {
-			firstChunk = false
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
-		}
-
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			logger.L().Warn("openai chat_completions stream: failed to parse event",
@@ -487,6 +493,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
+		if len(chunks) > 0 {
+			if firstChunk {
+				firstChunk = false
+				ms := int(time.Since(startTime).Milliseconds())
+				firstTokenMs = &ms
+			}
+			approxOutputChars += openAIStreamDeltaOutputChars([]byte(payload), event.Type)
+		}
 		if !clientDisconnected {
 			for _, chunk := range chunks {
 				sse, err := apicompat.ChatChunkToSSE(chunk)
@@ -508,6 +522,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		if len(chunks) > 0 && !clientDisconnected {
 			c.Writer.Flush()
+			clientOutputStarted = true
 		}
 		return isTerminalEvent
 	}
@@ -552,6 +567,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 	}
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
+		if clientOutputStarted || clientDisconnected {
+			return partialResult(fmt.Errorf("stream usage incomplete: missing terminal event"))
+		}
 		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 	}
 
@@ -578,6 +596,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		if err := scanner.Err(); err != nil {
 			handleScanErr(err)
+			if clientOutputStarted || clientDisconnected {
+				return partialResult(fmt.Errorf("stream usage incomplete: %w", err))
+			}
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
 		}
 		return missingTerminalErr()
@@ -633,6 +654,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			}
 			if ev.err != nil {
 				handleScanErr(ev.err)
+				if clientOutputStarted || clientDisconnected {
+					return partialResult(fmt.Errorf("stream usage incomplete: %w", ev.err))
+				}
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ev.err)
 			}
 			lastDataAt = time.Now()
@@ -654,7 +678,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				continue
 			}
 			if clientDisconnected {
-				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
+				return partialResult(fmt.Errorf("stream usage incomplete after timeout"))
 			}
 			logger.L().Warn("openai chat_completions stream: data interval timeout",
 				zap.String("request_id", requestID),

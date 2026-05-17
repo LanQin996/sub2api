@@ -200,6 +200,11 @@ func Stream(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldStream, v))
 }
 
+// PartialUsage applies equality check predicate on the "partial_usage" field. It's identical to PartialUsageEQ.
+func PartialUsage(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldPartialUsage, v))
+}
+
 // DurationMs applies equality check predicate on the "duration_ms" field. It's identical to DurationMsEQ.
 func DurationMs(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldDurationMs, v))
@@ -1533,6 +1538,16 @@ func StreamEQ(v bool) predicate.UsageLog {
 // StreamNEQ applies the NEQ predicate on the "stream" field.
 func StreamNEQ(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNEQ(FieldStream, v))
+}
+
+// PartialUsageEQ applies the EQ predicate on the "partial_usage" field.
+func PartialUsageEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldPartialUsage, v))
+}
+
+// PartialUsageNEQ applies the NEQ predicate on the "partial_usage" field.
+func PartialUsageNEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldPartialUsage, v))
 }
 
 // DurationMsEQ applies the EQ predicate on the "duration_ms" field.

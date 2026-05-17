@@ -112,6 +112,8 @@ func (UsageLog) Fields() []ent.Field {
 			Default(0),
 		field.Bool("stream").
 			Default(false),
+		field.Bool("partial_usage").
+			Default(false),
 		field.Int("duration_ms").
 			Optional().
 			Nillable(),

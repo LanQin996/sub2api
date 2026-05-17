@@ -72,6 +72,8 @@ const (
 	FieldBillingType = "billing_type"
 	// FieldStream holds the string denoting the stream field in the database.
 	FieldStream = "stream"
+	// FieldPartialUsage holds the string denoting the partial_usage field in the database.
+	FieldPartialUsage = "partial_usage"
 	// FieldDurationMs holds the string denoting the duration_ms field in the database.
 	FieldDurationMs = "duration_ms"
 	// FieldFirstTokenMs holds the string denoting the first_token_ms field in the database.
@@ -169,6 +171,7 @@ var Columns = []string{
 	FieldAccountRateMultiplier,
 	FieldBillingType,
 	FieldStream,
+	FieldPartialUsage,
 	FieldDurationMs,
 	FieldFirstTokenMs,
 	FieldUserAgent,
@@ -234,6 +237,8 @@ var (
 	DefaultBillingType int8
 	// DefaultStream holds the default value on creation for the "stream" field.
 	DefaultStream bool
+	// DefaultPartialUsage holds the default value on creation for the "partial_usage" field.
+	DefaultPartialUsage bool
 	// UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
 	UserAgentValidator func(string) error
 	// IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
@@ -399,6 +404,11 @@ func ByBillingType(opts ...sql.OrderTermOption) OrderOption {
 // ByStream orders the results by the stream field.
 func ByStream(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStream, opts...).ToFunc()
+}
+
+// ByPartialUsage orders the results by the partial_usage field.
+func ByPartialUsage(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPartialUsage, opts...).ToFunc()
 }
 
 // ByDurationMs orders the results by the duration_ms field.

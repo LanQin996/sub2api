@@ -198,6 +198,14 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					zap.Int("image_count", result.ImageCount),
 					zap.Error(err),
 				)
+			} else if result != nil && service.IsOpenAIStreamPartialUsageError(err) {
+				result.PartialUsage = true
+				reqLog.Warn("openai_chat_completions.forward_partial_usage_recorded",
+					zap.Int64("account_id", account.ID),
+					zap.Int("input_tokens", result.Usage.InputTokens),
+					zap.Int("output_tokens", result.Usage.OutputTokens),
+					zap.Error(err),
+				)
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {

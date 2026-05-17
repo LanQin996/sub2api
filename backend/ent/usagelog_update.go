@@ -604,6 +604,20 @@ func (_u *UsageLogUpdate) SetNillableStream(v *bool) *UsageLogUpdate {
 	return _u
 }
 
+// SetPartialUsage sets the "partial_usage" field.
+func (_u *UsageLogUpdate) SetPartialUsage(v bool) *UsageLogUpdate {
+	_u.mutation.SetPartialUsage(v)
+	return _u
+}
+
+// SetNillablePartialUsage sets the "partial_usage" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillablePartialUsage(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetPartialUsage(*v)
+	}
+	return _u
+}
+
 // SetDurationMs sets the "duration_ms" field.
 func (_u *UsageLogUpdate) SetDurationMs(v int) *UsageLogUpdate {
 	_u.mutation.ResetDurationMs()
@@ -1056,6 +1070,9 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Stream(); ok {
 		_spec.SetField(usagelog.FieldStream, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PartialUsage(); ok {
+		_spec.SetField(usagelog.FieldPartialUsage, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.DurationMs(); ok {
 		_spec.SetField(usagelog.FieldDurationMs, field.TypeInt, value)
@@ -1839,6 +1856,20 @@ func (_u *UsageLogUpdateOne) SetNillableStream(v *bool) *UsageLogUpdateOne {
 	return _u
 }
 
+// SetPartialUsage sets the "partial_usage" field.
+func (_u *UsageLogUpdateOne) SetPartialUsage(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetPartialUsage(v)
+	return _u
+}
+
+// SetNillablePartialUsage sets the "partial_usage" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillablePartialUsage(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetPartialUsage(*v)
+	}
+	return _u
+}
+
 // SetDurationMs sets the "duration_ms" field.
 func (_u *UsageLogUpdateOne) SetDurationMs(v int) *UsageLogUpdateOne {
 	_u.mutation.ResetDurationMs()
@@ -2321,6 +2352,9 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.Stream(); ok {
 		_spec.SetField(usagelog.FieldStream, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PartialUsage(); ok {
+		_spec.SetField(usagelog.FieldPartialUsage, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.DurationMs(); ok {
 		_spec.SetField(usagelog.FieldDurationMs, field.TypeInt, value)

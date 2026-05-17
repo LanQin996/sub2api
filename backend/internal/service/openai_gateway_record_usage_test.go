@@ -807,6 +807,32 @@ func TestOpenAIGatewayServiceRecordUsage_UpdatesAPIKeyQuotaWhenConfigured(t *tes
 	require.InDelta(t, expected.ActualCost, quotaSvc.lastAmount, 1e-12)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_PersistsPartialUsageFlag(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:    "resp_partial_usage",
+			Usage:        OpenAIUsage{InputTokens: 1, OutputTokens: 12},
+			Model:        "gpt-5.1",
+			Stream:       true,
+			PartialUsage: true,
+			Duration:     time.Second,
+		},
+		APIKey:  &APIKey{ID: 10051},
+		User:    &User{ID: 20051},
+		Account: &Account{ID: 30051},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.True(t, usageRepo.lastLog.PartialUsage)
+	require.True(t, usageRepo.lastLog.Stream)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_ClampsActualInputTokensToZero(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

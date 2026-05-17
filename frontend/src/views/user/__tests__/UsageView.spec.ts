@@ -62,6 +62,8 @@ const messages: Record<string, string> = {
   'usage.duration': 'Duration',
   'usage.time': 'Time',
   'usage.userAgent': 'User Agent',
+  'usage.partialUsage': 'Interrupted billing',
+  'usage.partialUsageHint': 'Partial usage hint',
 }
 
 vi.mock('@/api', () => ({
@@ -90,7 +92,18 @@ vi.mock('vue-i18n', async () => {
 
 const AppLayoutStub = { template: '<div><slot /></div>' }
 const TablePageLayoutStub = {
-  template: '<div><slot name="actions" /><slot name="filters" /><slot /></div>',
+  template: '<div><slot name="actions" /><slot name="filters" /><slot name="table" /><slot name="pagination" /><slot /></div>',
+}
+const DataTableStub = {
+  props: ['data'],
+  template: `
+    <div>
+      <div v-for="row in data" :key="row.request_id">
+        <slot name="cell-stream" :row="row" />
+        <slot name="cell-cost" :row="row" />
+      </div>
+    </div>
+  `,
 }
 
 describe('user UsageView tooltip', () => {
@@ -140,6 +153,7 @@ describe('user UsageView tooltip', () => {
           cache_read_tokens: 278272,
           cache_creation_5m_tokens: 0,
           cache_creation_1h_tokens: 0,
+          partial_usage: true,
           image_count: 0,
           image_size: null,
           first_token_ms: null,
@@ -163,6 +177,7 @@ describe('user UsageView tooltip', () => {
         stubs: {
           AppLayout: AppLayoutStub,
           TablePageLayout: TablePageLayoutStub,
+          DataTable: DataTableStub,
           Pagination: true,
           EmptyState: true,
           Select: true,
@@ -199,6 +214,7 @@ describe('user UsageView tooltip', () => {
     expect(text).toContain('Rate')
     expect(text).toContain('1.00x')
     expect(text).toContain('Billed')
+    expect(text).toContain('Interrupted billing')
     expect(text).toContain('$0.092883')
     expect(text).toContain('$5.0000 / 1M tokens')
     expect(text).toContain('$30.0000 / 1M tokens')
@@ -222,6 +238,7 @@ describe('user UsageView tooltip', () => {
         cache_read_tokens: 278272,
         cache_creation_5m_tokens: 0,
         cache_creation_1h_tokens: 0,
+        partial_usage: true,
         image_count: 0,
         image_size: null,
         first_token_ms: 12,
@@ -261,6 +278,7 @@ describe('user UsageView tooltip', () => {
         stubs: {
           AppLayout: AppLayoutStub,
           TablePageLayout: TablePageLayoutStub,
+          DataTable: DataTableStub,
           Pagination: true,
           EmptyState: true,
           Select: true,
@@ -290,6 +308,13 @@ describe('user UsageView tooltip', () => {
     expect(hasSortedExportQuery).toBe(true)
     expect(clickSpy).toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalled()
+    const exportedCsv = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsText(exportedBlob!)
+    })
+    expect(exportedCsv).toContain('Interrupted billing')
 
     window.URL.createObjectURL = originalCreateObjectURL
     window.URL.revokeObjectURL = originalRevokeObjectURL

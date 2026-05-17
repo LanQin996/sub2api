@@ -368,12 +368,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
-	if handleErr == nil && result != nil {
-		if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
-			s.bindOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey, result.ResponseID)
-		}
-		if promptCacheKey != "" && anthropicDigestChain != "" {
-			s.bindOpenAICompatAnthropicDigestPromptCacheKey(account, apiKeyID, anthropicDigestChain, promptCacheKey, anthropicMatchedDigestChain)
+	if result != nil {
+		if handleErr == nil {
+			if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
+				s.bindOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey, result.ResponseID)
+			}
+			if promptCacheKey != "" && anthropicDigestChain != "" {
+				s.bindOpenAICompatAnthropicDigestPromptCacheKey(account, apiKeyID, anthropicDigestChain, promptCacheKey, anthropicMatchedDigestChain)
+			}
 		}
 		if responsesReq.ServiceTier != "" {
 			st := responsesReq.ServiceTier
@@ -383,6 +385,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			re := responsesReq.Reasoning.Effort
 			result.ReasoningEffort = &re
 		}
+	}
+
+	if handleErr != nil && result != nil && result.PartialUsage && IsOpenAIStreamPartialUsageError(handleErr) {
+		applyOpenAIApproxPartialUsage(&result.Usage, responsesBody, 0, result.FirstTokenMs != nil)
 	}
 
 	// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
@@ -645,6 +651,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	clientOutputStarted := false
+	approxOutputChars := 0
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -681,15 +689,15 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			FirstTokenMs:  firstTokenMs,
 		}
 	}
+	partialResult := func(err error) (*OpenAIForwardResult, error) {
+		applyOpenAIApproxPartialUsage(&usage, nil, approxOutputChars, clientOutputStarted)
+		result := resultWithUsage()
+		result.PartialUsage = true
+		return result, newOpenAIStreamPartialUsageError(err)
+	}
 
 	// processDataLine handles a single "data: ..." SSE line from upstream.
 	processDataLine := func(payload string) bool {
-		if firstChunk {
-			firstChunk = false
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
-		}
-
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			logger.L().Warn("openai messages stream: failed to parse event",
@@ -712,6 +720,14 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 		// Convert to Anthropic events
 		events := apicompat.ResponsesEventToAnthropicEvents(&event, state)
+		if len(events) > 0 {
+			if firstChunk {
+				firstChunk = false
+				ms := int(time.Since(startTime).Milliseconds())
+				firstTokenMs = &ms
+			}
+			approxOutputChars += openAIStreamDeltaOutputChars([]byte(payload), event.Type)
+		}
 		if !clientDisconnected {
 			for _, evt := range events {
 				sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
@@ -733,6 +749,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		}
 		if len(events) > 0 && !clientDisconnected {
 			c.Writer.Flush()
+			clientOutputStarted = true
 		}
 		return isTerminalEvent
 	}
@@ -770,6 +787,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		}
 	}
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
+		if clientOutputStarted || clientDisconnected {
+			return partialResult(fmt.Errorf("stream usage incomplete: missing terminal event"))
+		}
 		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 	}
 
@@ -796,6 +816,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		}
 		if err := scanner.Err(); err != nil {
 			handleScanErr(err)
+			if clientOutputStarted || clientDisconnected {
+				return partialResult(fmt.Errorf("stream usage incomplete: %w", err))
+			}
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
 		}
 		return missingTerminalErr()
@@ -852,6 +875,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			}
 			if ev.err != nil {
 				handleScanErr(ev.err)
+				if clientOutputStarted || clientDisconnected {
+					return partialResult(fmt.Errorf("stream usage incomplete: %w", ev.err))
+				}
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ev.err)
 			}
 			lastDataAt = time.Now()
@@ -873,7 +899,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				continue
 			}
 			if clientDisconnected {
-				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
+				return partialResult(fmt.Errorf("stream usage incomplete after timeout"))
 			}
 			logger.L().Warn("openai messages stream: data interval timeout",
 				zap.String("request_id", requestID),

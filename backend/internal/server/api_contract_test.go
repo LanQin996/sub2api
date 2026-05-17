@@ -534,6 +534,7 @@ func TestAPIContracts(t *testing.T) {
 								"model": "claude-3",
 								"request_type": "stream",
 								"openai_ws_mode": false,
+								"partial_usage": false,
 								"group_id": null,
 								"subscription_id": null,
 							"input_tokens": 10,

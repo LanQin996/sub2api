@@ -393,6 +393,20 @@ func (_c *UsageLogCreate) SetNillableStream(v *bool) *UsageLogCreate {
 	return _c
 }
 
+// SetPartialUsage sets the "partial_usage" field.
+func (_c *UsageLogCreate) SetPartialUsage(v bool) *UsageLogCreate {
+	_c.mutation.SetPartialUsage(v)
+	return _c
+}
+
+// SetNillablePartialUsage sets the "partial_usage" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillablePartialUsage(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetPartialUsage(*v)
+	}
+	return _c
+}
+
 // SetDurationMs sets the "duration_ms" field.
 func (_c *UsageLogCreate) SetDurationMs(v int) *UsageLogCreate {
 	_c.mutation.SetDurationMs(v)
@@ -625,6 +639,10 @@ func (_c *UsageLogCreate) defaults() {
 		v := usagelog.DefaultStream
 		_c.mutation.SetStream(v)
 	}
+	if _, ok := _c.mutation.PartialUsage(); !ok {
+		v := usagelog.DefaultPartialUsage
+		_c.mutation.SetPartialUsage(v)
+	}
 	if _, ok := _c.mutation.ImageCount(); !ok {
 		v := usagelog.DefaultImageCount
 		_c.mutation.SetImageCount(v)
@@ -735,6 +753,9 @@ func (_c *UsageLogCreate) check() error {
 	}
 	if _, ok := _c.mutation.Stream(); !ok {
 		return &ValidationError{Name: "stream", err: errors.New(`ent: missing required field "UsageLog.stream"`)}
+	}
+	if _, ok := _c.mutation.PartialUsage(); !ok {
+		return &ValidationError{Name: "partial_usage", err: errors.New(`ent: missing required field "UsageLog.partial_usage"`)}
 	}
 	if v, ok := _c.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
@@ -891,6 +912,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Stream(); ok {
 		_spec.SetField(usagelog.FieldStream, field.TypeBool, value)
 		_node.Stream = value
+	}
+	if value, ok := _c.mutation.PartialUsage(); ok {
+		_spec.SetField(usagelog.FieldPartialUsage, field.TypeBool, value)
+		_node.PartialUsage = value
 	}
 	if value, ok := _c.mutation.DurationMs(); ok {
 		_spec.SetField(usagelog.FieldDurationMs, field.TypeInt, value)
@@ -1556,6 +1581,18 @@ func (u *UsageLogUpsert) SetStream(v bool) *UsageLogUpsert {
 // UpdateStream sets the "stream" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateStream() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldStream)
+	return u
+}
+
+// SetPartialUsage sets the "partial_usage" field.
+func (u *UsageLogUpsert) SetPartialUsage(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldPartialUsage, v)
+	return u
+}
+
+// UpdatePartialUsage sets the "partial_usage" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdatePartialUsage() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldPartialUsage)
 	return u
 }
 
@@ -2314,6 +2351,20 @@ func (u *UsageLogUpsertOne) SetStream(v bool) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateStream() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateStream()
+	})
+}
+
+// SetPartialUsage sets the "partial_usage" field.
+func (u *UsageLogUpsertOne) SetPartialUsage(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPartialUsage(v)
+	})
+}
+
+// UpdatePartialUsage sets the "partial_usage" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdatePartialUsage() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePartialUsage()
 	})
 }
 
@@ -3260,6 +3311,20 @@ func (u *UsageLogUpsertBulk) SetStream(v bool) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateStream() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateStream()
+	})
+}
+
+// SetPartialUsage sets the "partial_usage" field.
+func (u *UsageLogUpsertBulk) SetPartialUsage(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPartialUsage(v)
+	})
+}
+
+// UpdatePartialUsage sets the "partial_usage" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdatePartialUsage() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePartialUsage()
 	})
 }
 

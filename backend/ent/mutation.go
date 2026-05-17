@@ -34383,6 +34383,7 @@ type UsageLogMutation struct {
 	billing_type                *int8
 	addbilling_type             *int8
 	stream                      *bool
+	partial_usage               *bool
 	duration_ms                 *int
 	addduration_ms              *int
 	first_token_ms              *int
@@ -35991,6 +35992,42 @@ func (m *UsageLogMutation) ResetStream() {
 	m.stream = nil
 }
 
+// SetPartialUsage sets the "partial_usage" field.
+func (m *UsageLogMutation) SetPartialUsage(b bool) {
+	m.partial_usage = &b
+}
+
+// PartialUsage returns the value of the "partial_usage" field in the mutation.
+func (m *UsageLogMutation) PartialUsage() (r bool, exists bool) {
+	v := m.partial_usage
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPartialUsage returns the old "partial_usage" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldPartialUsage(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPartialUsage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPartialUsage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPartialUsage: %w", err)
+	}
+	return oldValue.PartialUsage, nil
+}
+
+// ResetPartialUsage resets all changes to the "partial_usage" field.
+func (m *UsageLogMutation) ResetPartialUsage() {
+	m.partial_usage = nil
+}
+
 // SetDurationMs sets the "duration_ms" field.
 func (m *UsageLogMutation) SetDurationMs(i int) {
 	m.duration_ms = &i
@@ -36575,7 +36612,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 37)
+	fields := make([]string, 0, 38)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -36662,6 +36699,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.stream != nil {
 		fields = append(fields, usagelog.FieldStream)
+	}
+	if m.partial_usage != nil {
+		fields = append(fields, usagelog.FieldPartialUsage)
 	}
 	if m.duration_ms != nil {
 		fields = append(fields, usagelog.FieldDurationMs)
@@ -36753,6 +36793,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.BillingType()
 	case usagelog.FieldStream:
 		return m.Stream()
+	case usagelog.FieldPartialUsage:
+		return m.PartialUsage()
 	case usagelog.FieldDurationMs:
 		return m.DurationMs()
 	case usagelog.FieldFirstTokenMs:
@@ -36836,6 +36878,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldBillingType(ctx)
 	case usagelog.FieldStream:
 		return m.OldStream(ctx)
+	case usagelog.FieldPartialUsage:
+		return m.OldPartialUsage(ctx)
 	case usagelog.FieldDurationMs:
 		return m.OldDurationMs(ctx)
 	case usagelog.FieldFirstTokenMs:
@@ -37063,6 +37107,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStream(v)
+		return nil
+	case usagelog.FieldPartialUsage:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPartialUsage(v)
 		return nil
 	case usagelog.FieldDurationMs:
 		v, ok := value.(int)
@@ -37573,6 +37624,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldStream:
 		m.ResetStream()
+		return nil
+	case usagelog.FieldPartialUsage:
+		m.ResetPartialUsage()
 		return nil
 	case usagelog.FieldDurationMs:
 		m.ResetDurationMs()

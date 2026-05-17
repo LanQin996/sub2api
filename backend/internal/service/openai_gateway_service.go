@@ -236,6 +236,46 @@ type OpenAIForwardResult struct {
 	FirstTokenMs    *int
 	ImageCount      int
 	ImageSize       string
+	// PartialUsage marks a streamed response that produced billable output but
+	// ended before an authoritative terminal usage event was received.
+	PartialUsage bool
+}
+
+// OpenAIStreamPartialUsageError marks a streaming failure that still produced
+// a billable partial result. Handlers must record usage instead of treating it
+// like a normal upstream failure.
+type OpenAIStreamPartialUsageError struct {
+	Cause error
+}
+
+func (e *OpenAIStreamPartialUsageError) Error() string {
+	if e == nil || e.Cause == nil {
+		return "openai stream partial usage"
+	}
+	return e.Cause.Error()
+}
+
+func (e *OpenAIStreamPartialUsageError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
+func newOpenAIStreamPartialUsageError(err error) error {
+	if err == nil {
+		err = errors.New("openai stream partial usage")
+	}
+	var partialErr *OpenAIStreamPartialUsageError
+	if errors.As(err, &partialErr) {
+		return err
+	}
+	return &OpenAIStreamPartialUsageError{Cause: err}
+}
+
+func IsOpenAIStreamPartialUsageError(err error) bool {
+	var partialErr *OpenAIStreamPartialUsageError
+	return errors.As(err, &partialErr)
 }
 
 type OpenAIWSRetryMetricsSnapshot struct {
@@ -2777,14 +2817,26 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var usage *OpenAIUsage
 		var firstTokenMs *int
 		imageCount := 0
+		streamPartialUsage := false
+		var streamPartialErr error
 		if reqStream {
-			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
-			if err != nil {
-				return nil, err
+			streamResult, handleErr := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
+			if handleErr != nil {
+				if !IsOpenAIStreamPartialUsageError(handleErr) || streamResult == nil {
+					return nil, handleErr
+				}
+				streamPartialUsage = true
+				streamPartialErr = handleErr
 			}
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
 			imageCount = streamResult.imageCount
+			if streamResult.partialUsage {
+				streamPartialUsage = true
+			}
+			if streamPartialUsage {
+				applyOpenAIApproxPartialUsage(usage, body, 0, firstTokenMs != nil)
+			}
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
@@ -2819,11 +2871,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			OpenAIWSMode:    false,
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,
+			PartialUsage:    streamPartialUsage,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount
 			forwardResult.ImageSize = imageSizeTier
 			forwardResult.BillingModel = imageBillingModel
+		}
+		if streamPartialUsage {
+			return forwardResult, streamPartialErr
 		}
 		return forwardResult, nil
 	}
@@ -3026,14 +3082,26 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	imageCount := 0
+	streamPartialUsage := false
+	var streamPartialErr error
 	if reqStream {
-		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
-		if err != nil {
-			return nil, err
+		result, handleErr := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
+		if handleErr != nil {
+			if !IsOpenAIStreamPartialUsageError(handleErr) || result == nil {
+				return nil, handleErr
+			}
+			streamPartialUsage = true
+			streamPartialErr = handleErr
 		}
 		usage = result.usage
 		firstTokenMs = result.firstTokenMs
 		imageCount = result.imageCount
+		if result.partialUsage {
+			streamPartialUsage = true
+		}
+		if streamPartialUsage {
+			applyOpenAIApproxPartialUsage(usage, body, 0, firstTokenMs != nil)
+		}
 	} else {
 		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
 		if err != nil {
@@ -3062,11 +3130,15 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		OpenAIWSMode:    false,
 		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
+		PartialUsage:    streamPartialUsage,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
 		forwardResult.ImageSize = imageSizeTier
 		forwardResult.BillingModel = imageBillingModel
+	}
+	if streamPartialUsage {
+		return forwardResult, streamPartialErr
 	}
 	return forwardResult, nil
 }
@@ -3364,6 +3436,7 @@ type openaiStreamingResultPassthrough struct {
 	usage        *OpenAIUsage
 	firstTokenMs *int
 	imageCount   int
+	partialUsage bool
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -3514,6 +3587,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	sawFailedEvent := false
 	failedMessage := ""
 	clientOutputStarted := false
+	approxOutputChars := 0
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	pendingLines := make([]string, 0, 8)
 	writePendingLines := func() bool {
@@ -3540,6 +3614,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCounter.Count()}
+	}
+	partialResult := func(err error) (*openaiStreamingResultPassthrough, error) {
+		applyOpenAIApproxPartialUsage(usage, nil, approxOutputChars, openAIStreamClientOutputStarted(c, clientOutputStarted))
+		result := resultWithUsage()
+		result.partialUsage = true
+		return result, newOpenAIStreamPartialUsageError(err)
 	}
 
 	for scanner.Scan() {
@@ -3573,6 +3653,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				sawTerminalEvent = true
 			}
 			imageCounter.AddSSEData(dataBytes)
+			approxOutputChars += openAIStreamDeltaOutputChars(dataBytes, eventType)
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
 			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
@@ -3608,6 +3689,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if openAIStreamClientOutputStarted(c, clientOutputStarted) || clientDisconnected {
+				return partialResult(fmt.Errorf("stream usage incomplete: %w", err))
+			}
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
 		}
 		if errors.Is(err, bufio.ErrTooLong) {
@@ -3623,7 +3707,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, msg)
 		}
 		if clientDisconnected {
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", err)
+			return partialResult(fmt.Errorf("stream usage incomplete after disconnect: %w", err))
 		}
 		logger.LegacyPrintf("service.openai_gateway",
 			"[OpenAI passthrough] 流读取异常中断: account=%d request_id=%s err=%v",
@@ -3646,7 +3730,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return resultWithUsage(),
 				s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, "OpenAI stream ended before a terminal event")
 		}
-		return resultWithUsage(), errors.New("stream usage incomplete: missing terminal event")
+		return partialResult(errors.New("stream usage incomplete: missing terminal event"))
 	}
 
 	return resultWithUsage(), nil
@@ -4185,12 +4269,54 @@ type openaiStreamingResult struct {
 	usage        *OpenAIUsage
 	firstTokenMs *int
 	imageCount   int
+	partialUsage bool
 }
 
 type openaiNonStreamingResult struct {
 	*OpenAIUsage
 	usage      *OpenAIUsage
 	imageCount int
+}
+
+func applyOpenAIApproxPartialUsage(usage *OpenAIUsage, inputBody []byte, outputChars int, outputStarted bool) {
+	if usage == nil {
+		return
+	}
+	if usage.OutputTokens <= 0 && outputChars > 0 {
+		usage.OutputTokens = estimateOpenAITextTokenCount(outputChars)
+	} else if usage.OutputTokens <= 0 && outputStarted {
+		usage.OutputTokens = 1
+	}
+	if usage.InputTokens <= 0 && len(bytes.TrimSpace(inputBody)) > 0 {
+		// Avoid overcharging raw JSON/base64 payloads without a tokenizer; this
+		// only keeps partial records from looking like input-free completions.
+		usage.InputTokens = 1
+	}
+}
+
+func estimateOpenAITextTokenCount(charCount int) int {
+	if charCount <= 0 {
+		return 0
+	}
+	// Conservative fallback when the provider never sends final usage.
+	tokens := (charCount + 3) / 4
+	if tokens < 1 {
+		return 1
+	}
+	return tokens
+}
+
+func openAIStreamDeltaOutputChars(data []byte, eventType string) int {
+	switch strings.TrimSpace(eventType) {
+	case "response.output_text.delta", "response.reasoning_summary_text.delta", "response.function_call_arguments.delta":
+	default:
+		return 0
+	}
+	delta := gjson.GetBytes(data, "delta").String()
+	if delta == "" {
+		return 0
+	}
+	return len(delta)
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
@@ -4277,6 +4403,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	sawFailedEvent := false
 	failedMessage := ""
 	clientOutputStarted := false
+	approxOutputChars := 0
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamFailoverErr error
 	sendErrorEvent := func(reason string) {
@@ -4305,6 +4432,12 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCounter.Count()}
 	}
+	partialResult := func(err error) (*openaiStreamingResult, error) {
+		applyOpenAIApproxPartialUsage(usage, nil, approxOutputChars, openAIStreamClientOutputStarted(c, clientOutputStarted))
+		result := resultWithUsage()
+		result.partialUsage = true
+		return result, newOpenAIStreamPartialUsageError(err)
+	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
 		if !sawTerminalEvent {
 			if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
@@ -4317,7 +4450,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 					"OpenAI stream ended before a terminal event",
 				)
 			}
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
+			return partialResult(fmt.Errorf("stream usage incomplete: missing terminal event"))
 		}
 		if sawFailedEvent {
 			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
@@ -4348,6 +4481,10 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		// 客户端断开/取消请求时，上游读取往往会返回 context canceled。
 		// /v1/responses 的 SSE 事件必须符合 OpenAI 协议；这里不注入自定义 error event，避免下游 SDK 解析失败。
 		if errors.Is(scanErr, context.Canceled) || errors.Is(scanErr, context.DeadlineExceeded) {
+			if openAIStreamClientOutputStarted(c, clientOutputStarted) || clientDisconnected {
+				result, err := partialResult(fmt.Errorf("stream usage incomplete: %w", scanErr))
+				return result, err, true
+			}
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", scanErr), true
 		}
 		if errors.Is(scanErr, bufio.ErrTooLong) {
@@ -4364,7 +4501,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 		// 客户端已断开时，上游出错仅影响体验，不影响计费；返回已收集 usage
 		if clientDisconnected {
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", scanErr), true
+			result, err := partialResult(fmt.Errorf("stream usage incomplete after disconnect: %w", scanErr))
+			return result, err, true
 		}
 		sendErrorEvent("stream_read_error")
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
@@ -4407,6 +4545,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				line = "data: " + data
 				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
 			}
+			approxOutputChars += openAIStreamDeltaOutputChars(dataBytes, eventType)
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
 
 			// 写入客户端（客户端断开后继续 drain 上游）
@@ -4529,7 +4668,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				continue
 			}
 			if clientDisconnected {
-				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
+				return partialResult(fmt.Errorf("stream usage incomplete after timeout"))
 			}
 			logger.LegacyPrintf("service.openai_gateway", "Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
 			// 处理流超时，可能标记账户为临时不可调度或错误状态
@@ -5344,6 +5483,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	usageLog.BillingType = billingType
 	usageLog.Stream = result.Stream
 	usageLog.OpenAIWSMode = result.OpenAIWSMode
+	usageLog.PartialUsage = result.PartialUsage
 	usageLog.DurationMs = &durationMs
 	usageLog.FirstTokenMs = result.FirstTokenMs
 	usageLog.CreatedAt = time.Now()

@@ -1190,6 +1190,7 @@ export interface UsageLog {
   request_type?: UsageRequestType
   stream: boolean
   openai_ws_mode?: boolean
+  partial_usage: boolean
   duration_ms: number
   first_token_ms: number | null
 
