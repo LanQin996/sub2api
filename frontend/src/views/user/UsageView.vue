@@ -181,21 +181,12 @@
           </template>
 
           <template #cell-stream="{ row }">
-            <div class="flex flex-wrap items-center justify-end gap-1.5 md:justify-start">
-              <span
-                class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium"
-                :class="getRequestTypeBadgeClass(row)"
-              >
-                {{ getRequestTypeLabel(row) }}
-              </span>
-              <span
-                v-if="row.partial_usage"
-                class="inline-flex cursor-help items-center rounded px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-500/20 dark:text-red-300 dark:ring-red-500/30"
-                :title="t('usage.partialUsageHint')"
-              >
-                {{ t('usage.partialUsage') }}
-              </span>
-            </div>
+            <span
+              class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium"
+              :class="getRequestTypeBadgeClass(row)"
+            >
+              {{ getRequestTypeLabel(row) }}
+            </span>
           </template>
 
           <template #cell-billing_mode="{ row }">
@@ -865,7 +856,6 @@ const exportToCSV = async () => {
       'Reasoning Effort',
       'Inbound Endpoint',
       'Type',
-      t('usage.partialUsage'),
       'Billing Mode',
       'Input Tokens',
       'Output Tokens',
@@ -885,7 +875,6 @@ const exportToCSV = async () => {
         formatReasoningEffort(log.reasoning_effort),
         log.inbound_endpoint || '',
         getRequestTypeExportText(log),
-        log.partial_usage ? t('usage.partialUsage') : '',
         getBillingModeLabel(log.billing_mode, t),
         log.input_tokens,
         log.output_tokens,

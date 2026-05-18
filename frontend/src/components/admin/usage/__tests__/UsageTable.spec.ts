@@ -43,8 +43,6 @@ const messages: Record<string, string> = {
   'usage.original': 'Original',
   'usage.userBilled': 'User billed',
   'usage.accountBilled': 'Account billed',
-  'usage.partialUsage': 'Interrupted billing',
-  'usage.partialUsageHint': 'Partial usage hint',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -63,7 +61,6 @@ const DataTableStub = {
     <div>
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
-        <slot name="cell-stream" :row="row" />
         <slot name="cell-cost" :row="row" />
         <slot name="cell-tokens" :row="row" />
       </div>
@@ -214,49 +211,5 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('23,859')
     expect(text).toContain('Cache read')
     expect(text).toContain('23,424')
-  })
-
-  it('marks partial streaming usage rows visibly', () => {
-    const row = {
-      request_id: 'req-admin-partial-1',
-      model: 'gpt-5.5',
-      upstream_model: '',
-      request_type: 'stream',
-      stream: true,
-      partial_usage: true,
-      actual_cost: 0,
-      total_cost: 0,
-      account_rate_multiplier: 1,
-      rate_multiplier: 1,
-      input_cost: 0,
-      output_cost: 0,
-      cache_creation_cost: 0,
-      cache_read_cost: 0,
-      input_tokens: 1,
-      output_tokens: 24,
-      cache_read_tokens: 0,
-      cache_creation_tokens: 0,
-      image_count: 0,
-      billing_mode: 'token',
-    }
-
-    const wrapper = mount(UsageTable, {
-      props: {
-        data: [row],
-        loading: false,
-        columns: [],
-      },
-      global: {
-        stubs: {
-          DataTable: DataTableStub,
-          EmptyState: true,
-          Icon: true,
-          Teleport: true,
-        },
-      },
-    })
-
-    expect(wrapper.text()).toContain('Interrupted billing')
-    expect(wrapper.find('[title="Partial usage hint"]').exists()).toBe(true)
   })
 })

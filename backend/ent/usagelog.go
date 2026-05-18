@@ -80,8 +80,6 @@ type UsageLog struct {
 	BillingType int8 `json:"billing_type,omitempty"`
 	// Stream holds the value of the "stream" field.
 	Stream bool `json:"stream,omitempty"`
-	// PartialUsage holds the value of the "partial_usage" field.
-	PartialUsage bool `json:"partial_usage,omitempty"`
 	// DurationMs holds the value of the "duration_ms" field.
 	DurationMs *int `json:"duration_ms,omitempty"`
 	// FirstTokenMs holds the value of the "first_token_ms" field.
@@ -181,7 +179,7 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case usagelog.FieldStream, usagelog.FieldPartialUsage, usagelog.FieldCacheTTLOverridden:
+		case usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
 			values[i] = new(sql.NullFloat64)
@@ -394,12 +392,6 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field stream", values[i])
 			} else if value.Valid {
 				_m.Stream = value.Bool
-			}
-		case usagelog.FieldPartialUsage:
-			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field partial_usage", values[i])
-			} else if value.Valid {
-				_m.PartialUsage = value.Bool
 			}
 		case usagelog.FieldDurationMs:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -619,9 +611,6 @@ func (_m *UsageLog) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("stream=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Stream))
-	builder.WriteString(", ")
-	builder.WriteString("partial_usage=")
-	builder.WriteString(fmt.Sprintf("%v", _m.PartialUsage))
 	builder.WriteString(", ")
 	if v := _m.DurationMs; v != nil {
 		builder.WriteString("duration_ms=")

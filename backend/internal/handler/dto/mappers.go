@@ -598,7 +598,6 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		RequestType:           requestType.String(),
 		Stream:                stream,
 		OpenAIWSMode:          openAIWSMode,
-		PartialUsage:          l.PartialUsage,
 		DurationMs:            l.DurationMs,
 		FirstTokenMs:          l.FirstTokenMs,
 		ImageCount:            l.ImageCount,

@@ -351,14 +351,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					zap.Int("image_count", result.ImageCount),
 					zap.Error(err),
 				)
-			} else if result != nil && service.IsOpenAIStreamPartialUsageError(err) {
-				result.PartialUsage = true
-				reqLog.Warn("openai.forward_partial_usage_recorded",
-					zap.Int64("account_id", account.ID),
-					zap.Int("input_tokens", result.Usage.InputTokens),
-					zap.Int("output_tokens", result.Usage.OutputTokens),
-					zap.Error(err),
-				)
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
@@ -741,14 +733,6 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				reqLog.Warn("openai_messages.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
 					zap.Int("image_count", result.ImageCount),
-					zap.Error(err),
-				)
-			} else if result != nil && service.IsOpenAIStreamPartialUsageError(err) {
-				result.PartialUsage = true
-				reqLog.Warn("openai_messages.forward_partial_usage_recorded",
-					zap.Int64("account_id", account.ID),
-					zap.Int("input_tokens", result.Usage.InputTokens),
-					zap.Int("output_tokens", result.Usage.OutputTokens),
 					zap.Error(err),
 				)
 			} else {
@@ -1552,7 +1536,7 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(task service.UsageRecordTas
 }
 
 func (h *OpenAIGatewayHandler) submitOpenAIUsageRecordTask(result *service.OpenAIForwardResult, task service.UsageRecordTask) {
-	if result != nil && (result.ImageCount > 0 || result.PartialUsage) {
+	if result != nil && result.ImageCount > 0 {
 		h.submitMandatoryUsageRecordTask(task)
 		return
 	}

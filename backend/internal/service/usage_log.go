@@ -153,9 +153,6 @@ type UsageLog struct {
 	RequestType  RequestType
 	Stream       bool
 	OpenAIWSMode bool
-	// PartialUsage marks streaming records billed from a conservative partial
-	// usage estimate after terminal usage was unavailable.
-	PartialUsage bool
 	DurationMs   *int
 	FirstTokenMs *int
 	UserAgent    *string

@@ -50,21 +50,6 @@ func TestUsageLogFromService_PrefersRequestTypeForLegacyFields(t *testing.T) {
 	require.True(t, adminDTO.OpenAIWSMode)
 }
 
-func TestUsageLogFromService_IncludesPartialUsage(t *testing.T) {
-	t.Parallel()
-
-	log := &service.UsageLog{
-		RequestID:    "req_partial",
-		Model:        "gpt-5.5",
-		RequestType:  service.RequestTypeStream,
-		Stream:       true,
-		PartialUsage: true,
-	}
-
-	require.True(t, UsageLogFromService(log).PartialUsage)
-	require.True(t, UsageLogFromServiceAdmin(log).PartialUsage)
-}
-
 func TestUsageCleanupTaskFromService_RequestTypeMapping(t *testing.T) {
 	t.Parallel()
 
