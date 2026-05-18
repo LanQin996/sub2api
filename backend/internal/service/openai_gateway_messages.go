@@ -388,9 +388,6 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	if handleErr != nil && result != nil && result.PartialUsage && IsOpenAIStreamPartialUsageError(handleErr) {
-		if result.PartialUsageReason == "" {
-			result.PartialUsageReason = OpenAIStreamPartialUsageReason(handleErr)
-		}
 		applyOpenAIApproxPartialUsage(&result.Usage, responsesBody, 0, result.FirstTokenMs != nil)
 	}
 
@@ -712,7 +709,6 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		applyOpenAIApproxPartialUsage(&usage, nil, approxOutputChars, clientOutputStarted)
 		result := resultWithUsage()
 		result.PartialUsage = true
-		result.PartialUsageReason = OpenAIStreamPartialUsageReason(err)
 		return result, newOpenAIStreamPartialUsageError(err)
 	}
 

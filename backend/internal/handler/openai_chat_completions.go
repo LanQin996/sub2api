@@ -202,7 +202,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				result.PartialUsage = true
 				reqLog.Warn("openai_chat_completions.forward_partial_usage_recorded",
 					zap.Int64("account_id", account.ID),
-					zap.String("partial_usage_reason", result.PartialUsageReason),
 					zap.Int("input_tokens", result.Usage.InputTokens),
 					zap.Int("output_tokens", result.Usage.OutputTokens),
 					zap.Error(err),
@@ -264,7 +263,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
-		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveRawCCUpstreamEndpoint(c, account)
 
@@ -279,7 +277,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				UpstreamEndpoint:   upstreamEndpoint,
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
-				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
 				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {

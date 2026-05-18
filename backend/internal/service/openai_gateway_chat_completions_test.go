@@ -31,14 +31,6 @@ func (w *openAIChatFailingWriter) Write(p []byte) (int, error) {
 	return w.ResponseWriter.Write(p)
 }
 
-func (w *openAIChatFailingWriter) WriteString(s string) (int, error) {
-	if w.writes >= w.failAfter {
-		return 0, errors.New("write failed: client disconnected")
-	}
-	w.writes++
-	return w.ResponseWriter.WriteString(s)
-}
-
 func TestNormalizeResponsesRequestServiceTier(t *testing.T) {
 	t.Parallel()
 

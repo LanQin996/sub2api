@@ -238,16 +238,14 @@ type OpenAIForwardResult struct {
 	ImageSize       string
 	// PartialUsage marks a streamed response that produced billable output but
 	// ended before an authoritative terminal usage event was received.
-	PartialUsage       bool
-	PartialUsageReason string
+	PartialUsage bool
 }
 
 // OpenAIStreamPartialUsageError marks a streaming failure that still produced
 // a billable partial result. Handlers must record usage instead of treating it
 // like a normal upstream failure.
 type OpenAIStreamPartialUsageError struct {
-	Cause  error
-	Reason string
+	Cause error
 }
 
 func (e *OpenAIStreamPartialUsageError) Error() string {
@@ -264,24 +262,6 @@ func (e *OpenAIStreamPartialUsageError) Unwrap() error {
 	return e.Cause
 }
 
-func (e *OpenAIStreamPartialUsageError) UsageReason() string {
-	if e == nil {
-		return OpenAIStreamPartialUsageReasonUnknown
-	}
-	if reason := strings.TrimSpace(e.Reason); reason != "" {
-		return reason
-	}
-	return classifyOpenAIStreamPartialUsageReason(e.Cause)
-}
-
-const (
-	OpenAIStreamPartialUsageReasonUnknown          = "unknown"
-	OpenAIStreamPartialUsageReasonTimeout          = "timeout"
-	OpenAIStreamPartialUsageReasonClientDisconnect = "client_disconnect"
-	OpenAIStreamPartialUsageReasonMissingTerminal  = "missing_terminal"
-	OpenAIStreamPartialUsageReasonReadError        = "read_error"
-)
-
 func newOpenAIStreamPartialUsageError(err error) error {
 	if err == nil {
 		err = errors.New("openai stream partial usage")
@@ -290,48 +270,12 @@ func newOpenAIStreamPartialUsageError(err error) error {
 	if errors.As(err, &partialErr) {
 		return err
 	}
-	return &OpenAIStreamPartialUsageError{
-		Cause:  err,
-		Reason: classifyOpenAIStreamPartialUsageReason(err),
-	}
+	return &OpenAIStreamPartialUsageError{Cause: err}
 }
 
 func IsOpenAIStreamPartialUsageError(err error) bool {
 	var partialErr *OpenAIStreamPartialUsageError
 	return errors.As(err, &partialErr)
-}
-
-func OpenAIStreamPartialUsageReason(err error) string {
-	var partialErr *OpenAIStreamPartialUsageError
-	if errors.As(err, &partialErr) {
-		return partialErr.UsageReason()
-	}
-	return classifyOpenAIStreamPartialUsageReason(err)
-}
-
-func classifyOpenAIStreamPartialUsageReason(err error) string {
-	if err == nil {
-		return OpenAIStreamPartialUsageReasonUnknown
-	}
-	if errors.Is(err, context.Canceled) {
-		return OpenAIStreamPartialUsageReasonClientDisconnect
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return OpenAIStreamPartialUsageReasonTimeout
-	}
-	msg := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(msg, "after timeout") || strings.Contains(msg, "interval timeout"):
-		return OpenAIStreamPartialUsageReasonTimeout
-	case strings.Contains(msg, "after disconnect") || strings.Contains(msg, "client disconnected") || strings.Contains(msg, "context canceled"):
-		return OpenAIStreamPartialUsageReasonClientDisconnect
-	case strings.Contains(msg, "missing terminal") || strings.Contains(msg, "missing done"):
-		return OpenAIStreamPartialUsageReasonMissingTerminal
-	case strings.Contains(msg, "incomplete"):
-		return OpenAIStreamPartialUsageReasonReadError
-	default:
-		return OpenAIStreamPartialUsageReasonUnknown
-	}
 }
 
 func markOpenAIStreamClientDisconnected(disconnected *bool, disconnectedAt *time.Time) {
@@ -2898,7 +2842,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var duration time.Duration
 		streamPartialUsage := false
 		var streamPartialErr error
-		streamPartialReason := ""
 		if reqStream {
 			streamResult, handleErr := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
 			if handleErr != nil {
@@ -2907,7 +2850,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				}
 				streamPartialUsage = true
 				streamPartialErr = handleErr
-				streamPartialReason = OpenAIStreamPartialUsageReason(handleErr)
 			}
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
@@ -2919,15 +2861,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			if streamResult.partialUsage {
 				streamPartialUsage = true
-				if streamPartialReason == "" {
-					streamPartialReason = streamResult.partialUsageReason
-				}
 			}
 			if streamPartialUsage {
 				applyOpenAIApproxPartialUsage(usage, body, 0, firstTokenMs != nil)
-				if streamPartialReason == "" {
-					streamPartialReason = OpenAIStreamPartialUsageReason(streamPartialErr)
-				}
 			}
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
@@ -2954,18 +2890,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		serviceTier := extractOpenAIServiceTier(reqBody)
 
 		forwardResult := &OpenAIForwardResult{
-			RequestID:          resp.Header.Get("x-request-id"),
-			Usage:              *usage,
-			Model:              originalModel,
-			UpstreamModel:      upstreamModel,
-			ServiceTier:        serviceTier,
-			ReasoningEffort:    reasoningEffort,
-			Stream:             reqStream,
-			OpenAIWSMode:       false,
-			Duration:           duration,
-			FirstTokenMs:       firstTokenMs,
-			PartialUsage:       streamPartialUsage,
-			PartialUsageReason: streamPartialReason,
+			RequestID:       resp.Header.Get("x-request-id"),
+			Usage:           *usage,
+			Model:           originalModel,
+			UpstreamModel:   upstreamModel,
+			ServiceTier:     serviceTier,
+			ReasoningEffort: reasoningEffort,
+			Stream:          reqStream,
+			OpenAIWSMode:    false,
+			Duration:        duration,
+			FirstTokenMs:    firstTokenMs,
+			PartialUsage:    streamPartialUsage,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount
@@ -3179,7 +3114,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var duration time.Duration
 	streamPartialUsage := false
 	var streamPartialErr error
-	streamPartialReason := ""
 	if reqStream {
 		result, handleErr := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
 		if handleErr != nil {
@@ -3188,7 +3122,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			}
 			streamPartialUsage = true
 			streamPartialErr = handleErr
-			streamPartialReason = OpenAIStreamPartialUsageReason(handleErr)
 		}
 		usage = result.usage
 		firstTokenMs = result.firstTokenMs
@@ -3200,15 +3133,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 		if result.partialUsage {
 			streamPartialUsage = true
-			if streamPartialReason == "" {
-				streamPartialReason = result.partialUsageReason
-			}
 		}
 		if streamPartialUsage {
 			applyOpenAIApproxPartialUsage(usage, body, 0, firstTokenMs != nil)
-			if streamPartialReason == "" {
-				streamPartialReason = OpenAIStreamPartialUsageReason(streamPartialErr)
-			}
 		}
 	} else {
 		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
@@ -3229,18 +3156,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	forwardResult := &OpenAIForwardResult{
-		RequestID:          resp.Header.Get("x-request-id"),
-		Usage:              *usage,
-		Model:              reqModel,
-		UpstreamModel:      upstreamPassthroughModel,
-		ServiceTier:        extractOpenAIServiceTierFromBody(body),
-		ReasoningEffort:    reasoningEffort,
-		Stream:             reqStream,
-		OpenAIWSMode:       false,
-		Duration:           duration,
-		FirstTokenMs:       firstTokenMs,
-		PartialUsage:       streamPartialUsage,
-		PartialUsageReason: streamPartialReason,
+		RequestID:       resp.Header.Get("x-request-id"),
+		Usage:           *usage,
+		Model:           reqModel,
+		UpstreamModel:   upstreamPassthroughModel,
+		ServiceTier:     extractOpenAIServiceTierFromBody(body),
+		ReasoningEffort: reasoningEffort,
+		Stream:          reqStream,
+		OpenAIWSMode:    false,
+		Duration:        duration,
+		FirstTokenMs:    firstTokenMs,
+		PartialUsage:    streamPartialUsage,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -3543,13 +3469,12 @@ func collectOpenAIPassthroughTimeoutHeaders(h http.Header) []string {
 }
 
 type openaiStreamingResultPassthrough struct {
-	usage              *OpenAIUsage
-	firstTokenMs       *int
-	imageCount         int
-	partialUsage       bool
-	partialUsageReason string
-	duration           time.Duration
-	durationKnown      bool
+	usage         *OpenAIUsage
+	firstTokenMs  *int
+	imageCount    int
+	partialUsage  bool
+	duration      time.Duration
+	durationKnown bool
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -3739,7 +3664,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		applyOpenAIApproxPartialUsage(usage, nil, approxOutputChars, openAIStreamClientOutputStarted(c, clientOutputStarted))
 		result := resultWithUsage()
 		result.partialUsage = true
-		result.partialUsageReason = OpenAIStreamPartialUsageReason(err)
 		return result, newOpenAIStreamPartialUsageError(err)
 	}
 
@@ -4387,13 +4311,12 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage              *OpenAIUsage
-	firstTokenMs       *int
-	imageCount         int
-	partialUsage       bool
-	partialUsageReason string
-	duration           time.Duration
-	durationKnown      bool
+	usage         *OpenAIUsage
+	firstTokenMs  *int
+	imageCount    int
+	partialUsage  bool
+	duration      time.Duration
+	durationKnown bool
 }
 
 type openaiNonStreamingResult struct {
@@ -4567,7 +4490,6 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		applyOpenAIApproxPartialUsage(usage, nil, approxOutputChars, openAIStreamClientOutputStarted(c, clientOutputStarted))
 		result := resultWithUsage()
 		result.partialUsage = true
-		result.partialUsageReason = OpenAIStreamPartialUsageReason(err)
 		return result, newOpenAIStreamPartialUsageError(err)
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
@@ -5572,19 +5494,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
 		CacheReadTokens:     result.Usage.CacheReadInputTokens,
 		ImageOutputTokens:   result.Usage.ImageOutputTokens,
-	}
-	if result.Stream && !result.PartialUsage && result.ImageCount == 0 && tokens.InputTokens == 0 && tokens.OutputTokens == 0 && tokens.CacheCreationTokens == 0 && tokens.CacheReadTokens == 0 && tokens.ImageOutputTokens == 0 {
-		logger.FromContext(ctx).Warn("openai_usage.stream_completed_without_usage",
-			zap.String("component", "service.openai_gateway"),
-			zap.String("request_id", strings.TrimSpace(result.RequestID)),
-			zap.String("model", strings.TrimSpace(result.Model)),
-			zap.String("billing_model", strings.TrimSpace(result.BillingModel)),
-			zap.String("upstream_model", strings.TrimSpace(result.UpstreamModel)),
-			zap.String("inbound_endpoint", strings.TrimSpace(input.InboundEndpoint)),
-			zap.String("upstream_endpoint", strings.TrimSpace(input.UpstreamEndpoint)),
-			zap.Int64("api_key_id", apiKey.ID),
-			zap.Int64("account_id", account.ID),
-		)
 	}
 
 	// Get rate multiplier
