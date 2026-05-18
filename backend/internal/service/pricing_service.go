@@ -371,8 +371,9 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 			continue
 		}
 
-		// 只保留有有效价格的条目
-		if entry.InputCostPerToken == nil && entry.OutputCostPerToken == nil {
+		// 只保留有有效价格的条目。图片模型可能只有每图价格。
+		if entry.InputCostPerToken == nil && entry.OutputCostPerToken == nil &&
+			entry.OutputCostPerImage == nil && entry.OutputCostPerImageToken == nil {
 			continue
 		}
 

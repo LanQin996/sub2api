@@ -35,6 +35,36 @@ func TestParsePricingData_ParsesPriorityAndServiceTierFields(t *testing.T) {
 	require.True(t, pricing.SupportsServiceTier)
 }
 
+func TestParsePricingData_PreservesImageOnlyPricing(t *testing.T) {
+	svc := &PricingService{}
+	body := []byte(`{
+		"gpt-image-3": {
+			"output_cost_per_image": 0.08,
+			"litellm_provider": "openai",
+			"mode": "image_generation"
+		}
+	}`)
+
+	data, err := svc.parsePricingData(body)
+	require.NoError(t, err)
+	pricing := data["gpt-image-3"]
+	require.NotNil(t, pricing)
+	require.InDelta(t, 0.08, pricing.OutputCostPerImage, 1e-12)
+}
+
+func TestGetModelImageUnitPrice(t *testing.T) {
+	pricingService := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-image-3": {OutputCostPerImage: 0.08},
+		},
+	}
+	billingService := &BillingService{pricingService: pricingService}
+
+	price, ok := billingService.GetModelImageUnitPrice("GPT-IMAGE-3")
+	require.True(t, ok)
+	require.InDelta(t, 0.08, price, 1e-12)
+}
+
 func TestGetModelPricing_Gpt53CodexSparkUsesGpt51CodexPricing(t *testing.T) {
 	sparkPricing := &LiteLLMModelPricing{InputCostPerToken: 1}
 	gpt53Pricing := &LiteLLMModelPricing{InputCostPerToken: 9}

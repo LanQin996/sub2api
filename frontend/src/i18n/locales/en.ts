@@ -356,6 +356,7 @@ export default {
     users: 'Users',
     groups: 'Groups',
     channels: 'Channels',
+    modelMarketplace: 'Model Marketplace',
     availableChannels: 'Available Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
@@ -1013,6 +1014,38 @@ export default {
       intervals: 'Tiered Pricing',
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
+    }
+  },
+
+  // Model Marketplace (user-facing)
+  modelMarketplace: {
+    title: 'Model Marketplace',
+    description: 'Find available channels, group rates, and pricing by model',
+    searchPlaceholder: 'Search models, channels, or groups...',
+    copyModel: 'Copy model name',
+    modelCopied: 'Model name copied',
+    stats: {
+      models: 'Available Models',
+      channels: 'Available Channels',
+      platforms: 'Platforms'
+    },
+    sort: {
+      label: 'Sort',
+      channelsDesc: 'Most Channels',
+      nameAsc: 'Model A-Z',
+      platformAsc: 'Platform A-Z'
+    },
+    card: {
+      channelCount: '{count} channels',
+      pricing: 'Pricing Reference',
+      input: 'Input',
+      output: 'Output',
+      showMore: 'Show {count} more channels',
+      showLess: 'Show less'
+    },
+    empty: {
+      title: 'No models found',
+      description: 'Adjust the search or platform filter, or wait for an admin to configure available channels.'
     }
   },
 
@@ -2351,6 +2384,13 @@ export default {
         mappingCount: 'mappings',
         pricingEntry: 'Pricing Entry',
         noModels: 'No models added',
+        fetchOfficialPricing: 'Fetch official pricing',
+        fetchingOfficialPricing: 'Fetching...',
+        officialPricingFilled: 'Filled official pricing from "{model}"',
+        officialPricingNotFound: 'No official pricing found for these models',
+        officialPricingFailed: 'Failed to fetch official pricing',
+        officialPricingNoModel: 'Add a full model name first',
+        officialPricingOverwriteTitle: 'Fetch from default pricing data and overwrite current prices',
         applyPricingToAccountStats: 'Apply Pricing to Account Stats',
         applyPricingToAccountStatsDesc: 'When enabled, requests not matched by custom rules will use standard model pricing for account stats calculation',
         accountStatsPricingRules: 'Custom Account Stats Pricing Rules',

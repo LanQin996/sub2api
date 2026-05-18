@@ -94,6 +94,37 @@
           </div>
         </div>
 
+        <div v-if="entry.models.length > 0" class="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            @click="fetchOfficialPricing"
+            :disabled="!canFetchOfficialPricing || pricingLookupState === 'loading'"
+            class="inline-flex h-7 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-600 transition-colors hover:border-primary-300 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-300 dark:hover:border-primary-600 dark:hover:text-primary-300"
+            :title="canFetchOfficialPricing
+              ? t('admin.channels.form.officialPricingOverwriteTitle', '从默认定价库获取并覆盖当前价格')
+              : t('admin.channels.form.officialPricingNoModel', '请先添加完整模型名')"
+          >
+            <Icon
+              :name="pricingLookupState === 'loading' ? 'refresh' : 'dollar'"
+              size="xs"
+              :class="{ 'animate-spin': pricingLookupState === 'loading' }"
+            />
+            <span>
+              {{ pricingLookupState === 'loading'
+                ? t('admin.channels.form.fetchingOfficialPricing', '获取中...')
+                : t('admin.channels.form.fetchOfficialPricing', '获取官方定价') }}
+            </span>
+          </button>
+          <span
+            v-if="pricingLookupMessage"
+            class="inline-flex min-w-0 items-center gap-1 text-xs"
+            :class="pricingLookupMessageClass"
+          >
+            <Icon :name="pricingLookupIcon" size="xs" class="flex-shrink-0" />
+            <span class="truncate">{{ pricingLookupMessage }}</span>
+          </span>
+        </div>
+
         <!-- Token mode -->
         <div v-if="entry.billing_mode === 'token'">
           <!-- Default prices (fallback when no interval matches) -->
@@ -235,7 +266,7 @@ import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
 import { perTokenToMTok, getPlatformTagClass } from './types'
-import type { BillingMode } from '@/api/admin/channels'
+import type { BillingMode, ModelDefaultPricing } from '@/api/admin/channels'
 import channelsAPI from '@/api/admin/channels'
 
 const { t } = useI18n()
@@ -250,8 +281,30 @@ const emit = defineEmits<{
   remove: []
 }>()
 
+type PricingLookupState = 'idle' | 'loading' | 'success' | 'empty' | 'error'
+type PriceField =
+  | 'input_price'
+  | 'output_price'
+  | 'cache_write_price'
+  | 'cache_read_price'
+  | 'image_output_price'
+  | 'per_request_price'
+type PricePatch = Partial<Record<PriceField, number | null>>
+
+const tokenPriceFields: PriceField[] = [
+  'input_price',
+  'output_price',
+  'cache_write_price',
+  'cache_read_price',
+  'image_output_price',
+]
+const requestPriceFields: PriceField[] = ['per_request_price']
+
 // Collapse state: entries with existing models default to collapsed
 const collapsed = ref(props.entry.models.length > 0)
+const pricingLookupState = ref<PricingLookupState>('idle')
+const pricingLookupMessage = ref('')
+let pricingLookupRunId = 0
 
 const billingModeOptions = computed(() => [
   { value: 'token', label: 'Token' },
@@ -262,6 +315,35 @@ const billingModeOptions = computed(() => [
 const billingModeLabel = computed(() => {
   const opt = billingModeOptions.value.find(o => o.value === props.entry.billing_mode)
   return opt ? opt.label : props.entry.billing_mode
+})
+
+const lookupModels = computed(() => modelsForLookup(props.entry.models))
+const canFetchOfficialPricing = computed(() => lookupModels.value.length > 0)
+
+const pricingLookupMessageClass = computed(() => {
+  switch (pricingLookupState.value) {
+    case 'success':
+      return 'text-emerald-600 dark:text-emerald-400'
+    case 'empty':
+      return 'text-amber-600 dark:text-amber-400'
+    case 'error':
+      return 'text-red-600 dark:text-red-400'
+    default:
+      return 'text-gray-500 dark:text-gray-400'
+  }
+})
+
+const pricingLookupIcon = computed(() => {
+  switch (pricingLookupState.value) {
+    case 'success':
+      return 'checkCircle'
+    case 'empty':
+      return 'infoCircle'
+    case 'error':
+      return 'exclamationCircle'
+    default:
+      return 'infoCircle'
+  }
 })
 
 function emitField(field: keyof PricingFormEntry, value: string) {
@@ -304,36 +386,144 @@ function removeInterval(idx: number) {
 }
 
 async function onModelsUpdate(newModels: string[]) {
+  pricingLookupRunId += 1
+  pricingLookupState.value = 'idle'
+  pricingLookupMessage.value = ''
+
   const oldModels = props.entry.models
   emit('update', { ...props.entry, models: newModels })
 
-  // 只在新增模型且当前无价格时自动填充
+  // 新增完整模型名时自动补空白价格，避免覆盖用户已手动填写的字段。
   const addedModels = newModels.filter(m => !oldModels.includes(m))
-  if (addedModels.length === 0) return
+  const addedLookupModels = modelsForLookup(addedModels)
+  if (addedLookupModels.length === 0) return
 
-  // 检查是否所有价格字段都为空
-  const e = props.entry
-  const hasPrice = e.input_price != null || e.output_price != null ||
-                   e.cache_write_price != null || e.cache_read_price != null
-  if (hasPrice) return
+  const nextEntry = { ...props.entry, models: newModels }
+  if (!hasBlankRelevantPriceFields(nextEntry)) return
 
-  // 查询第一个新增模型的默认价格
-  try {
-    const result = await channelsAPI.getModelDefaultPricing(addedModels[0])
-    if (result.found) {
-      emit('update', {
-        ...props.entry,
-        models: newModels,
-        input_price: perTokenToMTok(result.input_price ?? null),
-        output_price: perTokenToMTok(result.output_price ?? null),
-        cache_write_price: perTokenToMTok(result.cache_write_price ?? null),
-        cache_read_price: perTokenToMTok(result.cache_read_price ?? null),
-        image_output_price: perTokenToMTok(result.image_output_price ?? null),
-      })
-    }
-  } catch {
-    // 查询失败不影响用户操作
+  void applyOfficialPricingForModels(addedLookupModels, {
+    overwrite: false,
+    modelsOverride: newModels,
+  })
+}
+
+function fetchOfficialPricing() {
+  void applyOfficialPricingForModels(lookupModels.value, { overwrite: true })
+}
+
+async function applyOfficialPricingForModels(
+  models: string[],
+  options: { overwrite: boolean; modelsOverride?: string[] }
+) {
+  if (models.length === 0) {
+    pricingLookupState.value = 'empty'
+    pricingLookupMessage.value = t('admin.channels.form.officialPricingNoModel', '请先添加完整模型名')
+    return
   }
+
+  const runId = ++pricingLookupRunId
+  pricingLookupState.value = 'loading'
+  pricingLookupMessage.value = ''
+
+  try {
+    for (const model of models) {
+      const result = await channelsAPI.getModelDefaultPricing(model)
+      if (runId !== pricingLookupRunId) return
+      if (!result.found) continue
+
+      const patch = pricingPatchForMode(result, props.entry.billing_mode)
+      if (!patchHasValue(patch)) continue
+
+      const baseEntry: PricingFormEntry = {
+        ...props.entry,
+        models: options.modelsOverride ?? props.entry.models,
+      }
+      emit('update', applyPricingPatch(baseEntry, patch, options.overwrite))
+      pricingLookupState.value = 'success'
+      pricingLookupMessage.value = t(
+        'admin.channels.form.officialPricingFilled',
+        { model },
+        `已按「${model}」填充官方定价`
+      )
+      return
+    }
+
+    pricingLookupState.value = 'empty'
+    pricingLookupMessage.value = t(
+      'admin.channels.form.officialPricingNotFound',
+      '未找到这些模型的官方定价'
+    )
+  } catch {
+    if (runId !== pricingLookupRunId) return
+    pricingLookupState.value = 'error'
+    pricingLookupMessage.value = t(
+      'admin.channels.form.officialPricingFailed',
+      '获取官方定价失败'
+    )
+  }
+}
+
+function pricingPatchForMode(result: ModelDefaultPricing, mode: BillingMode): PricePatch {
+  if (mode === 'token') {
+    return {
+      input_price: perTokenToMTok(result.input_price ?? null),
+      output_price: perTokenToMTok(result.output_price ?? null),
+      cache_write_price: perTokenToMTok(result.cache_write_price ?? null),
+      cache_read_price: perTokenToMTok(result.cache_read_price ?? null),
+      image_output_price: perTokenToMTok(result.image_output_price ?? null),
+    }
+  }
+
+  if (result.per_request_price == null) {
+    return {}
+  }
+  return { per_request_price: result.per_request_price }
+}
+
+function applyPricingPatch(
+  entry: PricingFormEntry,
+  patch: PricePatch,
+  overwrite: boolean
+): PricingFormEntry {
+  const next: PricingFormEntry = { ...entry }
+  for (const field of [...tokenPriceFields, ...requestPriceFields]) {
+    const value = patch[field]
+    if (value === null || value === undefined) continue
+    if (overwrite || isBlankPrice(next[field])) {
+      next[field] = value
+    }
+  }
+  return next
+}
+
+function patchHasValue(patch: PricePatch): boolean {
+  return Object.values(patch).some(value => !isBlankPrice(value))
+}
+
+function hasBlankRelevantPriceFields(entry: PricingFormEntry): boolean {
+  const fields = entry.billing_mode === 'token' ? tokenPriceFields : requestPriceFields
+  return fields.some(field => isBlankPrice(entry[field]))
+}
+
+function isBlankPrice(value: unknown): boolean {
+  return value === null || value === undefined || value === ''
+}
+
+function modelsForLookup(models: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+
+  for (const model of models) {
+    const normalized = model.trim()
+    if (!normalized || normalized.includes('*')) continue
+
+    const dedupeKey = normalized.toLowerCase()
+    if (seen.has(dedupeKey)) continue
+    seen.add(dedupeKey)
+    result.push(normalized)
+  }
+
+  return result
 }
 </script>
 

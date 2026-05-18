@@ -356,6 +356,7 @@ export default {
     users: '用户管理',
     groups: '分组管理',
     channels: '渠道管理',
+    modelMarketplace: '模型广场',
     availableChannels: '可用渠道',
     subscriptions: '订阅管理',
     accounts: '账号管理',
@@ -1017,6 +1018,38 @@ export default {
       intervals: '阶梯定价',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
+    }
+  },
+
+  // Model Marketplace (user-facing)
+  modelMarketplace: {
+    title: '模型广场',
+    description: '按模型查找可用渠道、分组倍率与计费信息',
+    searchPlaceholder: '搜索模型、渠道或分组...',
+    copyModel: '复制模型名',
+    modelCopied: '模型名已复制',
+    stats: {
+      models: '可用模型',
+      channels: '可用渠道',
+      platforms: '接入平台'
+    },
+    sort: {
+      label: '排序',
+      channelsDesc: '可用渠道最多',
+      nameAsc: '模型名 A-Z',
+      platformAsc: '平台 A-Z'
+    },
+    card: {
+      channelCount: '{count} 个渠道',
+      pricing: '计费参考',
+      input: '输入',
+      output: '输出',
+      showMore: '展开 {count} 个渠道',
+      showLess: '收起'
+    },
+    empty: {
+      title: '未找到模型',
+      description: '请调整搜索或平台筛选，或等待管理员配置可用渠道。'
     }
   },
 
@@ -2428,6 +2461,13 @@ export default {
         mappingCount: '条映射',
         pricingEntry: '定价配置',
         noModels: '未添加模型',
+        fetchOfficialPricing: '获取官方定价',
+        fetchingOfficialPricing: '获取中...',
+        officialPricingFilled: '已按「{model}」填充官方定价',
+        officialPricingNotFound: '未找到这些模型的官方定价',
+        officialPricingFailed: '获取官方定价失败',
+        officialPricingNoModel: '请先添加完整模型名',
+        officialPricingOverwriteTitle: '从默认定价库获取并覆盖当前价格',
         applyPricingToAccountStats: '应用模型定价到账号统计',
         applyPricingToAccountStatsDesc: '启用后，未被自定义规则匹配的请求将使用模型定价文件中的标准价格计算账号统计费用',
         accountStatsPricingRules: '自定义账号统计定价规则',

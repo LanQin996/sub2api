@@ -362,6 +362,21 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	return nil, fmt.Errorf("%w for model: %s", ErrModelPricingUnavailable, model)
 }
 
+// GetModelImageUnitPrice returns the per-image price from the dynamic pricing
+// data when the upstream price file provides one.
+func (s *BillingService) GetModelImageUnitPrice(model string) (float64, bool) {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" || s.pricingService == nil {
+		return 0, false
+	}
+
+	pricing := s.pricingService.GetModelPricing(model)
+	if pricing == nil || pricing.OutputCostPerImage <= 0 {
+		return 0, false
+	}
+	return pricing.OutputCostPerImage, true
+}
+
 // GetModelPricingWithChannel 获取模型定价，渠道配置的价格覆盖默认值
 // 仅覆盖渠道中非 nil 的价格字段，nil 字段使用默认定价
 func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing *ChannelModelPricing) (*ModelPricing, error) {

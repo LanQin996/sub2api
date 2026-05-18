@@ -485,18 +485,24 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 	}
 
 	pricing, err := h.billingService.GetModelPricing(model)
-	if err != nil {
+	imageUnitPrice, hasImageUnitPrice := h.billingService.GetModelImageUnitPrice(model)
+	if err != nil && !hasImageUnitPrice {
 		// 模型不在定价列表中
 		response.Success(c, gin.H{"found": false})
 		return
 	}
 
-	response.Success(c, gin.H{
-		"found":              true,
-		"input_price":        pricing.InputPricePerToken,
-		"output_price":       pricing.OutputPricePerToken,
-		"cache_write_price":  pricing.CacheCreationPricePerToken,
-		"cache_read_price":   pricing.CacheReadPricePerToken,
-		"image_output_price": pricing.ImageOutputPricePerToken,
-	})
+	result := gin.H{"found": true}
+	if err == nil {
+		result["input_price"] = pricing.InputPricePerToken
+		result["output_price"] = pricing.OutputPricePerToken
+		result["cache_write_price"] = pricing.CacheCreationPricePerToken
+		result["cache_read_price"] = pricing.CacheReadPricePerToken
+		result["image_output_price"] = pricing.ImageOutputPricePerToken
+	}
+	if hasImageUnitPrice {
+		result["per_request_price"] = imageUnitPrice
+	}
+
+	response.Success(c, result)
 }
