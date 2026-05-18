@@ -246,3 +246,57 @@ func TestParsePricingData_PreservesServiceTierPriorityFields(t *testing.T) {
 	require.InDelta(t, 0.0000005, pricing.CacheReadInputTokenCostPriority, 1e-12)
 	require.True(t, pricing.SupportsServiceTier)
 }
+
+func TestParsePricingData_PreservesAbove200kPricing(t *testing.T) {
+	svc := &PricingService{}
+	pricingData, err := svc.parsePricingData([]byte(`{
+		"claude-sonnet-4-6": {
+			"input_cost_per_token": 0.000003,
+			"input_cost_per_token_above_200k_tokens": 0.000006,
+			"output_cost_per_token": 0.000015,
+			"output_cost_per_token_above_200k_tokens": 0.0000225,
+			"cache_creation_input_token_cost": 0.00000375,
+			"cache_creation_input_token_cost_above_200k_tokens": 0.0000075,
+			"cache_read_input_token_cost": 0.0000003,
+			"cache_read_input_token_cost_above_200k_tokens": 0.0000006,
+			"litellm_provider": "anthropic",
+			"mode": "chat"
+		}
+	}`))
+	require.NoError(t, err)
+
+	pricing := pricingData["claude-sonnet-4-6"]
+	require.NotNil(t, pricing)
+	require.Equal(t, 200000, pricing.LongContextInputTokenThreshold)
+	require.InDelta(t, 0.000006, pricing.InputCostPerTokenAbove200k, 1e-12)
+	require.InDelta(t, 0.0000225, pricing.OutputCostPerTokenAbove200k, 1e-12)
+	require.InDelta(t, 0.0000075, pricing.CacheCreationInputTokenCostAbove200k, 1e-12)
+	require.InDelta(t, 0.0000006, pricing.CacheReadInputTokenCostAbove200k, 1e-12)
+}
+
+func TestBillingService_GetModelPricingPreservesAbove200kPricing(t *testing.T) {
+	pricingService := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"claude-sonnet-4-6": {
+				InputCostPerToken:                    3e-6,
+				InputCostPerTokenAbove200k:           6e-6,
+				OutputCostPerToken:                   15e-6,
+				OutputCostPerTokenAbove200k:          22.5e-6,
+				CacheCreationInputTokenCost:          3.75e-6,
+				CacheCreationInputTokenCostAbove200k: 7.5e-6,
+				CacheReadInputTokenCost:              0.3e-6,
+				CacheReadInputTokenCostAbove200k:     0.6e-6,
+				LongContextInputTokenThreshold:       200000,
+			},
+		},
+	}
+	billingService := &BillingService{pricingService: pricingService}
+
+	pricing, err := billingService.GetModelPricing("claude-sonnet-4-6")
+	require.NoError(t, err)
+	require.Equal(t, 200000, pricing.LongContextInputThreshold)
+	require.InDelta(t, 6e-6, pricing.InputPricePerTokenAbove200k, 1e-12)
+	require.InDelta(t, 22.5e-6, pricing.OutputPricePerTokenAbove200k, 1e-12)
+	require.InDelta(t, 7.5e-6, pricing.CacheCreationPricePerTokenAbove200k, 1e-12)
+	require.InDelta(t, 0.6e-6, pricing.CacheReadPricePerTokenAbove200k, 1e-12)
+}

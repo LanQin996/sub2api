@@ -547,21 +547,26 @@ function officialIntervalsForMode(result: ModelDefaultPricing, mode: BillingMode
   const threshold = result.long_context_input_threshold
   const inputMultiplier = result.long_context_input_multiplier
   const outputMultiplier = result.long_context_output_multiplier
-  if (!threshold || threshold <= 0 || !inputMultiplier || !outputMultiplier) return []
-  if (inputMultiplier <= 1 && outputMultiplier <= 1) return []
+  if (!threshold || threshold <= 0) return []
 
   const inputPrice = perTokenToMTok(result.input_price ?? null)
   const outputPrice = perTokenToMTok(result.output_price ?? null)
   const cacheWritePrice = perTokenToMTok(result.cache_write_price ?? null)
   const cacheReadPrice = perTokenToMTok(result.cache_read_price ?? null)
-  const longInputPrice = inputPrice == null ? null : normalizeDisplayPrice(inputPrice * inputMultiplier)
-  const longOutputPrice = outputPrice == null ? null : normalizeDisplayPrice(outputPrice * outputMultiplier)
+  const directLongInputPrice = perTokenToMTok(result.long_context_input_price ?? null)
+  const directLongOutputPrice = perTokenToMTok(result.long_context_output_price ?? null)
+  const directLongCacheWritePrice = perTokenToMTok(result.long_context_cache_write_price ?? null)
+  const directLongCacheReadPrice = perTokenToMTok(result.long_context_cache_read_price ?? null)
+  const longInputPrice = directLongInputPrice ?? multipliedPrice(inputPrice, inputMultiplier)
+  const longOutputPrice = directLongOutputPrice ?? multipliedPrice(outputPrice, outputMultiplier)
+  const longCacheWritePrice = directLongCacheWritePrice ?? cacheWritePrice
+  const longCacheReadPrice = directLongCacheReadPrice ?? cacheReadPrice
 
   if (
     longInputPrice == null &&
     longOutputPrice == null &&
-    cacheWritePrice == null &&
-    cacheReadPrice == null
+    longCacheWritePrice == null &&
+    longCacheReadPrice == null
   ) {
     return []
   }
@@ -572,11 +577,16 @@ function officialIntervalsForMode(result: ModelDefaultPricing, mode: BillingMode
     tier_label: t('admin.channels.form.officialLongContextTier', '官方长上下文'),
     input_price: longInputPrice,
     output_price: longOutputPrice,
-    cache_write_price: cacheWritePrice,
-    cache_read_price: cacheReadPrice,
+    cache_write_price: longCacheWritePrice,
+    cache_read_price: longCacheReadPrice,
     per_request_price: null,
     sort_order: 0,
   }]
+}
+
+function multipliedPrice(price: number | null, multiplier?: number): number | null {
+  if (price == null || !multiplier || multiplier <= 1) return null
+  return normalizeDisplayPrice(price * multiplier)
 }
 
 function applyPricingPatch(

@@ -507,13 +507,26 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 		result["cache_write_price"] = pricing.CacheCreationPricePerToken
 		result["cache_read_price"] = pricing.CacheReadPricePerToken
 		result["image_output_price"] = pricing.ImageOutputPricePerToken
-		if pricing.LongContextInputThreshold > 0 &&
-			pricing.LongContextInputMultiplier > 0 &&
-			pricing.LongContextOutputMultiplier > 0 &&
-			(pricing.LongContextInputMultiplier > 1 || pricing.LongContextOutputMultiplier > 1) {
+		if pricing.LongContextInputThreshold > 0 && hasLongContextPricing(pricing) {
 			result["long_context_input_threshold"] = pricing.LongContextInputThreshold
-			result["long_context_input_multiplier"] = pricing.LongContextInputMultiplier
-			result["long_context_output_multiplier"] = pricing.LongContextOutputMultiplier
+			if pricing.LongContextInputMultiplier > 0 {
+				result["long_context_input_multiplier"] = pricing.LongContextInputMultiplier
+			}
+			if pricing.LongContextOutputMultiplier > 0 {
+				result["long_context_output_multiplier"] = pricing.LongContextOutputMultiplier
+			}
+			if pricing.InputPricePerTokenAbove200k > 0 {
+				result["long_context_input_price"] = pricing.InputPricePerTokenAbove200k
+			}
+			if pricing.OutputPricePerTokenAbove200k > 0 {
+				result["long_context_output_price"] = pricing.OutputPricePerTokenAbove200k
+			}
+			if pricing.CacheCreationPricePerTokenAbove200k > 0 {
+				result["long_context_cache_write_price"] = pricing.CacheCreationPricePerTokenAbove200k
+			}
+			if pricing.CacheReadPricePerTokenAbove200k > 0 {
+				result["long_context_cache_read_price"] = pricing.CacheReadPricePerTokenAbove200k
+			}
 		}
 	}
 	if hasImageUnitPrice {
@@ -521,4 +534,18 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 	}
 
 	response.Success(c, result)
+}
+
+func hasLongContextPricing(pricing *service.ModelPricing) bool {
+	if pricing == nil {
+		return false
+	}
+	hasMultiplier := pricing.LongContextInputMultiplier > 0 &&
+		pricing.LongContextOutputMultiplier > 0 &&
+		(pricing.LongContextInputMultiplier > 1 || pricing.LongContextOutputMultiplier > 1)
+	return hasMultiplier ||
+		pricing.InputPricePerTokenAbove200k > 0 ||
+		pricing.OutputPricePerTokenAbove200k > 0 ||
+		pricing.CacheCreationPricePerTokenAbove200k > 0 ||
+		pricing.CacheReadPricePerTokenAbove200k > 0
 }

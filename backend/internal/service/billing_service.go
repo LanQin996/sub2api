@@ -43,20 +43,24 @@ type BillingCache interface {
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
 type ModelPricing struct {
-	InputPricePerToken             float64 // 每token输入价格 (USD)
-	InputPricePerTokenPriority     float64 // priority service tier 下每token输入价格 (USD)
-	OutputPricePerToken            float64 // 每token输出价格 (USD)
-	OutputPricePerTokenPriority    float64 // priority service tier 下每token输出价格 (USD)
-	CacheCreationPricePerToken     float64 // 缓存创建每token价格 (USD)
-	CacheReadPricePerToken         float64 // 缓存读取每token价格 (USD)
-	CacheReadPricePerTokenPriority float64 // priority service tier 下缓存读取每token价格 (USD)
-	CacheCreation5mPrice           float64 // 5分钟缓存创建每token价格 (USD)
-	CacheCreation1hPrice           float64 // 1小时缓存创建每token价格 (USD)
-	SupportsCacheBreakdown         bool    // 是否支持详细的缓存分类
-	LongContextInputThreshold      int     // 超过阈值后按整次会话提升输入价格
-	LongContextInputMultiplier     float64 // 长上下文整次会话输入倍率
-	LongContextOutputMultiplier    float64 // 长上下文整次会话输出倍率
-	ImageOutputPricePerToken       float64 // 图片输出 token 价格 (USD)
+	InputPricePerToken                  float64 // 每token输入价格 (USD)
+	InputPricePerTokenPriority          float64 // priority service tier 下每token输入价格 (USD)
+	InputPricePerTokenAbove200k         float64 // 长上下文（>200k）每token输入价格 (USD)
+	OutputPricePerToken                 float64 // 每token输出价格 (USD)
+	OutputPricePerTokenPriority         float64 // priority service tier 下每token输出价格 (USD)
+	OutputPricePerTokenAbove200k        float64 // 长上下文（>200k）每token输出价格 (USD)
+	CacheCreationPricePerToken          float64 // 缓存创建每token价格 (USD)
+	CacheCreationPricePerTokenAbove200k float64 // 长上下文（>200k）缓存创建每token价格 (USD)
+	CacheReadPricePerToken              float64 // 缓存读取每token价格 (USD)
+	CacheReadPricePerTokenPriority      float64 // priority service tier 下缓存读取每token价格 (USD)
+	CacheReadPricePerTokenAbove200k     float64 // 长上下文（>200k）缓存读取每token价格 (USD)
+	CacheCreation5mPrice                float64 // 5分钟缓存创建每token价格 (USD)
+	CacheCreation1hPrice                float64 // 1小时缓存创建每token价格 (USD)
+	SupportsCacheBreakdown              bool    // 是否支持详细的缓存分类
+	LongContextInputThreshold           int     // 超过阈值后按整次会话提升输入价格
+	LongContextInputMultiplier          float64 // 长上下文整次会话输入倍率
+	LongContextOutputMultiplier         float64 // 长上下文整次会话输出倍率
+	ImageOutputPricePerToken            float64 // 图片输出 token 价格 (USD)
 }
 
 const (
@@ -334,20 +338,24 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 			price1h := litellmPricing.CacheCreationInputTokenCostAbove1hr
 			enableBreakdown := price1h > 0 && price1h > price5m
 			return s.applyModelSpecificPricingPolicy(model, &ModelPricing{
-				InputPricePerToken:             litellmPricing.InputCostPerToken,
-				InputPricePerTokenPriority:     litellmPricing.InputCostPerTokenPriority,
-				OutputPricePerToken:            litellmPricing.OutputCostPerToken,
-				OutputPricePerTokenPriority:    litellmPricing.OutputCostPerTokenPriority,
-				CacheCreationPricePerToken:     litellmPricing.CacheCreationInputTokenCost,
-				CacheReadPricePerToken:         litellmPricing.CacheReadInputTokenCost,
-				CacheReadPricePerTokenPriority: litellmPricing.CacheReadInputTokenCostPriority,
-				CacheCreation5mPrice:           price5m,
-				CacheCreation1hPrice:           price1h,
-				SupportsCacheBreakdown:         enableBreakdown,
-				LongContextInputThreshold:      litellmPricing.LongContextInputTokenThreshold,
-				LongContextInputMultiplier:     litellmPricing.LongContextInputCostMultiplier,
-				LongContextOutputMultiplier:    litellmPricing.LongContextOutputCostMultiplier,
-				ImageOutputPricePerToken:       litellmPricing.OutputCostPerImageToken,
+				InputPricePerToken:                  litellmPricing.InputCostPerToken,
+				InputPricePerTokenPriority:          litellmPricing.InputCostPerTokenPriority,
+				InputPricePerTokenAbove200k:         litellmPricing.InputCostPerTokenAbove200k,
+				OutputPricePerToken:                 litellmPricing.OutputCostPerToken,
+				OutputPricePerTokenPriority:         litellmPricing.OutputCostPerTokenPriority,
+				OutputPricePerTokenAbove200k:        litellmPricing.OutputCostPerTokenAbove200k,
+				CacheCreationPricePerToken:          litellmPricing.CacheCreationInputTokenCost,
+				CacheCreationPricePerTokenAbove200k: litellmPricing.CacheCreationInputTokenCostAbove200k,
+				CacheReadPricePerToken:              litellmPricing.CacheReadInputTokenCost,
+				CacheReadPricePerTokenPriority:      litellmPricing.CacheReadInputTokenCostPriority,
+				CacheReadPricePerTokenAbove200k:     litellmPricing.CacheReadInputTokenCostAbove200k,
+				CacheCreation5mPrice:                price5m,
+				CacheCreation1hPrice:                price1h,
+				SupportsCacheBreakdown:              enableBreakdown,
+				LongContextInputThreshold:           litellmPricing.LongContextInputTokenThreshold,
+				LongContextInputMultiplier:          litellmPricing.LongContextInputCostMultiplier,
+				LongContextOutputMultiplier:         litellmPricing.LongContextOutputCostMultiplier,
+				ImageOutputPricePerToken:            litellmPricing.OutputCostPerImageToken,
 			}), nil
 		}
 	}
