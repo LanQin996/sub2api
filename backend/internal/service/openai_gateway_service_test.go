@@ -1364,62 +1364,6 @@ func TestOpenAIForwardStreamingPartialUsageReturnsResultForBilling(t *testing.T)
 	require.Greater(t, result.Usage.InputTokens, 0)
 }
 
-func TestOpenAIForwardStreamingPartialUsageDurationExcludesDrainTimeout(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	cfg := &config.Config{
-		Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 1,
-			StreamKeepaliveInterval:   0,
-			MaxLineSize:               defaultMaxLineSize,
-		},
-	}
-
-	upstreamStream := newOpenAICompatBlockingReadCloser([]byte(strings.Join([]string{
-		`data: {"type":"response.output_text.delta","delta":"hello"}`,
-		"",
-	}, "\n")))
-	defer func() {
-		require.NoError(t, upstreamStream.Close())
-	}()
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Body:       upstreamStream,
-		Header:     http.Header{"X-Request-Id": []string{"rid-partial-timeout"}},
-	}}
-	svc := &OpenAIGatewayService{
-		cfg:          cfg,
-		httpUpstream: upstream,
-	}
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Writer = &failingGinWriter{ResponseWriter: c.Writer, failAfter: 0}
-	body := []byte(`{"model":"gpt-5.5","stream":true,"input":"hello"}`)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-
-	account := &Account{
-		ID:       1,
-		Platform: PlatformOpenAI,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"api_key": "sk-test",
-		},
-	}
-
-	start := time.Now()
-	result, err := svc.Forward(c.Request.Context(), c, account, body)
-	wall := time.Since(start)
-
-	require.Error(t, err)
-	require.True(t, IsOpenAIStreamPartialUsageError(err))
-	require.NotNil(t, result)
-	require.True(t, result.PartialUsage)
-	require.GreaterOrEqual(t, wall, time.Second)
-	require.Less(t, result.Duration, 500*time.Millisecond)
-	require.Greater(t, result.Usage.OutputTokens, 0)
-}
-
 func TestOpenAIStreamingPassthroughMissingTerminalEventReturnsIncompleteError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{

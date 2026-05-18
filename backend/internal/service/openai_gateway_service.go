@@ -278,28 +278,6 @@ func IsOpenAIStreamPartialUsageError(err error) bool {
 	return errors.As(err, &partialErr)
 }
 
-func markOpenAIStreamClientDisconnected(disconnected *bool, disconnectedAt *time.Time) {
-	if disconnected != nil {
-		*disconnected = true
-	}
-	if disconnectedAt != nil && disconnectedAt.IsZero() {
-		*disconnectedAt = time.Now()
-	}
-}
-
-func openAIStreamObservedDuration(startTime time.Time, disconnectedAt time.Time) time.Duration {
-	if startTime.IsZero() {
-		return 0
-	}
-	if !disconnectedAt.IsZero() {
-		if disconnectedAt.Before(startTime) {
-			return 0
-		}
-		return disconnectedAt.Sub(startTime)
-	}
-	return time.Since(startTime)
-}
-
 type OpenAIWSRetryMetricsSnapshot struct {
 	RetryAttemptsTotal            int64 `json:"retry_attempts_total"`
 	RetryBackoffMsTotal           int64 `json:"retry_backoff_ms_total"`
@@ -2839,7 +2817,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var usage *OpenAIUsage
 		var firstTokenMs *int
 		imageCount := 0
-		var duration time.Duration
 		streamPartialUsage := false
 		var streamPartialErr error
 		if reqStream {
@@ -2854,11 +2831,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
 			imageCount = streamResult.imageCount
-			if streamResult.durationKnown {
-				duration = streamResult.duration
-			} else {
-				duration = time.Since(startTime)
-			}
 			if streamResult.partialUsage {
 				streamPartialUsage = true
 			}
@@ -2872,7 +2844,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			usage = nonStreamResult.usage
 			imageCount = nonStreamResult.imageCount
-			duration = time.Since(startTime)
 		}
 
 		// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
@@ -2898,7 +2869,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			ReasoningEffort: reasoningEffort,
 			Stream:          reqStream,
 			OpenAIWSMode:    false,
-			Duration:        duration,
+			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,
 			PartialUsage:    streamPartialUsage,
 		}
@@ -3111,7 +3082,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	imageCount := 0
-	var duration time.Duration
 	streamPartialUsage := false
 	var streamPartialErr error
 	if reqStream {
@@ -3126,11 +3096,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		usage = result.usage
 		firstTokenMs = result.firstTokenMs
 		imageCount = result.imageCount
-		if result.durationKnown {
-			duration = result.duration
-		} else {
-			duration = time.Since(startTime)
-		}
 		if result.partialUsage {
 			streamPartialUsage = true
 		}
@@ -3144,7 +3109,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 		usage = result.usage
 		imageCount = result.imageCount
-		duration = time.Since(startTime)
 	}
 
 	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
@@ -3164,7 +3128,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		ReasoningEffort: reasoningEffort,
 		Stream:          reqStream,
 		OpenAIWSMode:    false,
-		Duration:        duration,
+		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
 		PartialUsage:    streamPartialUsage,
 	}
@@ -3469,12 +3433,10 @@ func collectOpenAIPassthroughTimeoutHeaders(h http.Header) []string {
 }
 
 type openaiStreamingResultPassthrough struct {
-	usage         *OpenAIUsage
-	firstTokenMs  *int
-	imageCount    int
-	partialUsage  bool
-	duration      time.Duration
-	durationKnown bool
+	usage        *OpenAIUsage
+	firstTokenMs *int
+	imageCount   int
+	partialUsage bool
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -3620,7 +3582,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
 	clientDisconnected := false
-	var clientDisconnectedAt time.Time
 	sawDone := false
 	sawTerminalEvent := false
 	sawFailedEvent := false
@@ -3632,7 +3593,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	writePendingLines := func() bool {
 		for _, pending := range pendingLines {
 			if _, err := fmt.Fprintln(w, pending); err != nil {
-				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				return false
 			}
@@ -3652,13 +3613,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
-		return &openaiStreamingResultPassthrough{
-			usage:         usage,
-			firstTokenMs:  firstTokenMs,
-			imageCount:    imageCounter.Count(),
-			duration:      openAIStreamObservedDuration(startTime, clientDisconnectedAt),
-			durationKnown: true,
-		}
+		return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCounter.Count()}
 	}
 	partialResult := func(err error) (*openaiStreamingResultPassthrough, error) {
 		applyOpenAIApproxPartialUsage(usage, nil, approxOutputChars, openAIStreamClientOutputStarted(c, clientOutputStarted))
@@ -3718,7 +3673,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				}
 			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
-				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 			} else {
 				clientOutputStarted = true
@@ -4311,12 +4266,10 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage         *OpenAIUsage
-	firstTokenMs  *int
-	imageCount    int
-	partialUsage  bool
-	duration      time.Duration
-	durationKnown bool
+	usage        *OpenAIUsage
+	firstTokenMs *int
+	imageCount   int
+	partialUsage bool
 }
 
 type openaiNonStreamingResult struct {
@@ -4446,7 +4399,6 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	// 否则下游 SDK（例如 OpenCode）会因为类型校验失败而报错。
 	errorEventSent := false
 	clientDisconnected := false // 客户端断开后继续 drain 上游以收集 usage
-	var clientDisconnectedAt time.Time
 	sawTerminalEvent := false
 	sawFailedEvent := false
 	failedMessage := ""
@@ -4461,15 +4413,15 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		errorEventSent = true
 		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(reason) + `,"code":` + strconv.Quote(reason) + `}}`
 		if err := flushBuffered(); err != nil {
-			markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+			clientDisconnected = true
 			return
 		}
 		if _, err := bufferedWriter.WriteString("data: " + payload + "\n\n"); err != nil {
-			markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+			clientDisconnected = true
 			return
 		}
 		if err := flushBuffered(); err != nil {
-			markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+			clientDisconnected = true
 			return
 		}
 		clientOutputStarted = true
@@ -4478,13 +4430,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 
 	needModelReplace := originalModel != mappedModel
 	resultWithUsage := func() *openaiStreamingResult {
-		return &openaiStreamingResult{
-			usage:         usage,
-			firstTokenMs:  firstTokenMs,
-			imageCount:    imageCounter.Count(),
-			duration:      openAIStreamObservedDuration(startTime, clientDisconnectedAt),
-			durationKnown: true,
-		}
+		return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCounter.Count()}
 	}
 	partialResult := func(err error) (*openaiStreamingResult, error) {
 		applyOpenAIApproxPartialUsage(usage, nil, approxOutputChars, openAIStreamClientOutputStarted(c, clientOutputStarted))
@@ -4512,7 +4458,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		if !clientDisconnected {
 			hadBufferedData := bufferedWriter.Buffered() > 0
 			if err := flushBuffered(); err != nil {
-				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during final flush, returning collected usage")
 			} else if hadBufferedData {
 				clientOutputStarted = true
@@ -4610,14 +4556,14 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 					shouldFlush = true
 				}
 				if _, err := bufferedWriter.WriteString(line); err != nil {
-					markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+					clientDisconnected = true
 					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 				} else if _, err := bufferedWriter.WriteString("\n"); err != nil {
-					markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+					clientDisconnected = true
 					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 				} else if shouldFlush {
 					if err := flushBuffered(); err != nil {
-						markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+						clientDisconnected = true
 						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
 					} else {
 						clientOutputStarted = true
@@ -4638,14 +4584,14 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		// Forward non-data lines as-is
 		if !clientDisconnected {
 			if _, err := bufferedWriter.WriteString(line); err != nil {
-				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 			} else if _, err := bufferedWriter.WriteString("\n"); err != nil {
-				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 			} else if queueDrained && clientOutputStarted {
 				if err := flushBuffered(); err != nil {
-					markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+					clientDisconnected = true
 					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
 				} else {
 					clientOutputStarted = true
@@ -4740,12 +4686,12 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				continue
 			}
 			if _, err := bufferedWriter.WriteString(":\n\n"); err != nil {
-				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 				continue
 			}
 			if err := flushBuffered(); err != nil {
-				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during keepalive flush, continuing to drain upstream for billing")
 			} else {
 				lastDownstreamWriteAt = time.Now()

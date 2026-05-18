@@ -433,7 +433,6 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
-	var clientDisconnectedAt time.Time
 	clientOutputStarted := false
 	approxOutputChars := 0
 
@@ -466,7 +465,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			BillingModel:  billingModel,
 			UpstreamModel: upstreamModel,
 			Stream:        true,
-			Duration:      openAIStreamObservedDuration(startTime, clientDisconnectedAt),
+			Duration:      time.Since(startTime),
 			FirstTokenMs:  firstTokenMs,
 		}
 	}
@@ -513,7 +512,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					continue
 				}
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-					markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+					clientDisconnected = true
 					logger.L().Info("openai chat_completions stream: client disconnected, continuing to drain upstream for billing",
 						zap.String("request_id", requestID),
 					)
@@ -536,7 +535,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					continue
 				}
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-					markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+					clientDisconnected = true
 					logger.L().Info("openai chat_completions stream: client disconnected during final flush",
 						zap.String("request_id", requestID),
 					)
@@ -547,7 +546,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		// Send [DONE] sentinel
 		if !clientDisconnected {
 			if _, err := fmt.Fprint(c.Writer, "data: [DONE]\n\n"); err != nil {
-				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+				clientDisconnected = true
 				logger.L().Info("openai chat_completions stream: client disconnected during done flush",
 					zap.String("request_id", requestID),
 				)
@@ -725,7 +724,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				logger.L().Info("openai chat_completions stream: client disconnected during keepalive",
 					zap.String("request_id", requestID),
 				)
-				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
+				clientDisconnected = true
 				continue
 			}
 			c.Writer.Flush()
