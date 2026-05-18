@@ -651,6 +651,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	var clientDisconnectedAt time.Time
 	clientOutputStarted := false
 	approxOutputChars := 0
 
@@ -685,7 +686,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			BillingModel:  billingModel,
 			UpstreamModel: upstreamModel,
 			Stream:        true,
-			Duration:      time.Since(startTime),
+			Duration:      openAIStreamObservedDuration(startTime, clientDisconnectedAt),
 			FirstTokenMs:  firstTokenMs,
 		}
 	}
@@ -739,7 +740,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					continue
 				}
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-					clientDisconnected = true
+					markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
 					logger.L().Info("openai messages stream: client disconnected, continuing to drain upstream for billing",
 						zap.String("request_id", requestID),
 					)
@@ -763,7 +764,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					continue
 				}
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-					clientDisconnected = true
+					markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
 					logger.L().Info("openai messages stream: client disconnected during final flush",
 						zap.String("request_id", requestID),
 					)
@@ -921,7 +922,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				logger.L().Info("openai messages stream: client disconnected during keepalive",
 					zap.String("request_id", requestID),
 				)
-				clientDisconnected = true
+				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
 				continue
 			}
 			c.Writer.Flush()
