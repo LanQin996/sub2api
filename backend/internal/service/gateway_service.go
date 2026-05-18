@@ -8785,10 +8785,26 @@ func (s *GatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Contex
 		slog.Warn("failed to check channel upstream restriction", "group_id", *groupID, "error", err)
 		return false
 	}
-	if ch == nil || !ch.RestrictModels {
+	return channelNeedsUpstreamRestrictionCheck(ch, *groupID)
+}
+
+func channelNeedsUpstreamRestrictionCheck(ch *Channel, groupID int64) bool {
+	if ch == nil || ch.BillingModelSource != BillingModelSourceUpstream {
 		return false
 	}
-	return ch.BillingModelSource == BillingModelSourceUpstream
+	if ch.RestrictModels {
+		return true
+	}
+	return channelHasExplicitGroupExclusion(ch, groupID)
+}
+
+func channelHasExplicitGroupExclusion(ch *Channel, groupID int64) bool {
+	for _, pricing := range ch.ModelPricing {
+		if containsExcludedGroupID(pricing.ExcludedGroupIDs, groupID) {
+			return true
+		}
+	}
+	return false
 }
 
 // isStickyAccountUpstreamRestricted 检查粘性会话命中的账号是否受 upstream 渠道限制。

@@ -66,6 +66,7 @@ type channelModelPricingRequest struct {
 	ImageOutputPrice *float64                 `json:"image_output_price" binding:"omitempty,min=0"`
 	PerRequestPrice  *float64                 `json:"per_request_price" binding:"omitempty,min=0"`
 	Intervals        []pricingIntervalRequest `json:"intervals"`
+	ExcludedGroupIDs []int64                  `json:"excluded_group_ids"`
 }
 
 type pricingIntervalRequest struct {
@@ -117,6 +118,7 @@ type channelModelPricingResponse struct {
 	ImageOutputPrice *float64                  `json:"image_output_price"`
 	PerRequestPrice  *float64                  `json:"per_request_price"`
 	Intervals        []pricingIntervalResponse `json:"intervals"`
+	ExcludedGroupIDs []int64                   `json:"excluded_group_ids"`
 }
 
 type pricingIntervalResponse struct {
@@ -212,6 +214,10 @@ func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingRespon
 	for _, iv := range p.Intervals {
 		intervals = append(intervals, intervalToResponse(iv))
 	}
+	excludedGroupIDs := p.ExcludedGroupIDs
+	if excludedGroupIDs == nil {
+		excludedGroupIDs = []int64{}
+	}
 	return channelModelPricingResponse{
 		ID:               p.ID,
 		Platform:         platform,
@@ -224,6 +230,7 @@ func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingRespon
 		ImageOutputPrice: p.ImageOutputPrice,
 		PerRequestPrice:  p.PerRequestPrice,
 		Intervals:        intervals,
+		ExcludedGroupIDs: excludedGroupIDs,
 	}
 }
 
@@ -275,6 +282,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 			ImageOutputPrice: r.ImageOutputPrice,
 			PerRequestPrice:  r.PerRequestPrice,
 			Intervals:        intervals,
+			ExcludedGroupIDs: r.ExcludedGroupIDs,
 		})
 	}
 	return result

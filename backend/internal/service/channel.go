@@ -85,6 +85,7 @@ type ChannelModelPricing struct {
 	ImageOutputPrice *float64          // 图片输出价格（向后兼容）
 	PerRequestPrice  *float64          // 默认按次计费价格（USD）
 	Intervals        []PricingInterval // 区间定价列表
+	ExcludedGroupIDs []int64           // 该模型定价不适用的渠道分组 ID
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -179,6 +180,10 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 	if p.Intervals != nil {
 		cp.Intervals = make([]PricingInterval, len(p.Intervals))
 		copy(cp.Intervals, p.Intervals)
+	}
+	if p.ExcludedGroupIDs != nil {
+		cp.ExcludedGroupIDs = make([]int64, len(p.ExcludedGroupIDs))
+		copy(cp.ExcludedGroupIDs, p.ExcludedGroupIDs)
 	}
 	return cp
 }

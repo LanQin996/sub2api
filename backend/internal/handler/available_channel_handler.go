@@ -90,6 +90,7 @@ type userSupportedModel struct {
 	Name     string                     `json:"name"`
 	Platform string                     `json:"platform"`
 	Pricing  *userSupportedModelPricing `json:"pricing"`
+	GroupIDs []int64                    `json:"group_ids"`
 }
 
 // userChannelPlatformSection 单渠道内某个平台的子视图：用户可见的分组 + 该平台
@@ -193,10 +194,11 @@ func buildPlatformSections(
 	sections := make([]userChannelPlatformSection, 0, len(platforms))
 	for _, platform := range platforms {
 		platformSet := map[string]struct{}{platform: {}}
+		platformGroups := groupsByPlatform[platform]
 		sections = append(sections, userChannelPlatformSection{
 			Platform:        platform,
-			Groups:          groupsByPlatform[platform],
-			SupportedModels: toUserSupportedModels(ch.SupportedModels, platformSet),
+			Groups:          platformGroups,
+			SupportedModels: toUserSupportedModels(ch.SupportedModels, platformSet, platformGroups),
 		})
 	}
 	return sections
@@ -230,6 +232,7 @@ func filterUserVisibleGroups(
 func toUserSupportedModels(
 	src []service.SupportedModel,
 	allowedPlatforms map[string]struct{},
+	visibleGroups []userAvailableGroup,
 ) []userSupportedModel {
 	out := make([]userSupportedModel, 0, len(src))
 	for i := range src {
@@ -239,13 +242,46 @@ func toUserSupportedModels(
 				continue
 			}
 		}
+		groupIDs, ok := allowedGroupIDsForModel(visibleGroups, m.Pricing)
+		if !ok {
+			continue
+		}
 		out = append(out, userSupportedModel{
 			Name:     m.Name,
 			Platform: m.Platform,
 			Pricing:  toUserPricing(m.Pricing),
+			GroupIDs: groupIDs,
 		})
 	}
 	return out
+}
+
+func allowedGroupIDsForModel(
+	visibleGroups []userAvailableGroup,
+	pricing *service.ChannelModelPricing,
+) ([]int64, bool) {
+	if len(visibleGroups) == 0 {
+		return nil, true
+	}
+	excluded := make(map[int64]struct{}, len(pricingExcludedGroupIDs(pricing)))
+	for _, id := range pricingExcludedGroupIDs(pricing) {
+		excluded[id] = struct{}{}
+	}
+	ids := make([]int64, 0, len(visibleGroups))
+	for _, g := range visibleGroups {
+		if _, blocked := excluded[g.ID]; blocked {
+			continue
+		}
+		ids = append(ids, g.ID)
+	}
+	return ids, len(ids) > 0
+}
+
+func pricingExcludedGroupIDs(pricing *service.ChannelModelPricing) []int64 {
+	if pricing == nil {
+		return nil
+	}
+	return pricing.ExcludedGroupIDs
 }
 
 // toUserPricing 将 service 层定价转换为用户 DTO；入参为 nil 时返回 nil。

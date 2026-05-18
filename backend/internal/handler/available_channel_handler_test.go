@@ -49,7 +49,7 @@ func TestToUserSupportedModels_FiltersByAllowedPlatforms(t *testing.T) {
 		{Name: "gpt-4o", Platform: "openai", Pricing: nil},
 	}
 	allowed := map[string]struct{}{"anthropic": {}}
-	out := toUserSupportedModels(src, allowed)
+	out := toUserSupportedModels(src, allowed, nil)
 	require.Len(t, out, 1)
 	require.Equal(t, "claude-sonnet-4-6", out[0].Name)
 }
@@ -60,7 +60,7 @@ func TestToUserSupportedModels_NilAllowedPlatformsKeepsAll(t *testing.T) {
 		{Name: "a", Platform: "anthropic"},
 		{Name: "b", Platform: "openai"},
 	}
-	require.Len(t, toUserSupportedModels(src, nil), 2)
+	require.Len(t, toUserSupportedModels(src, nil, nil), 2)
 }
 
 func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
@@ -154,4 +154,51 @@ func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
 	require.Equal(t, int64(2), sections[0].Groups[0].ID)
 	require.Len(t, sections[0].SupportedModels, 1)
 	require.Equal(t, "claude-sonnet-4-6", sections[0].SupportedModels[0].Name)
+	require.Equal(t, []int64{2}, sections[0].SupportedModels[0].GroupIDs)
+}
+
+func TestBuildPlatformSections_ModelExcludedGroups(t *testing.T) {
+	ch := service.AvailableChannel{
+		Name: "ch",
+		SupportedModels: []service.SupportedModel{
+			{
+				Name:     "claude-opus-4-6",
+				Platform: "anthropic",
+				Pricing: &service.ChannelModelPricing{
+					ExcludedGroupIDs: []int64{2},
+				},
+			},
+		},
+	}
+	visible := []userAvailableGroup{
+		{ID: 1, Name: "g-allowed", Platform: "anthropic"},
+		{ID: 2, Name: "g-blocked", Platform: "anthropic"},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+	require.Len(t, sections, 1)
+	require.Len(t, sections[0].SupportedModels, 1)
+	require.Equal(t, []int64{1}, sections[0].SupportedModels[0].GroupIDs)
+}
+
+func TestBuildPlatformSections_ModelExcludedForAllVisibleGroups(t *testing.T) {
+	ch := service.AvailableChannel{
+		Name: "ch",
+		SupportedModels: []service.SupportedModel{
+			{
+				Name:     "claude-opus-4-6",
+				Platform: "anthropic",
+				Pricing: &service.ChannelModelPricing{
+					ExcludedGroupIDs: []int64{1},
+				},
+			},
+		},
+	}
+	visible := []userAvailableGroup{
+		{ID: 1, Name: "g-blocked", Platform: "anthropic"},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+	require.Len(t, sections, 1)
+	require.Empty(t, sections[0].SupportedModels)
 }

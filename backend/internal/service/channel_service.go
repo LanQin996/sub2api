@@ -77,6 +77,11 @@ type wildcardMappingEntry struct {
 	target string
 }
 
+// wildcardExclusionEntry 记录被显式排除的通配符模型。
+type wildcardExclusionEntry struct {
+	prefix string
+}
+
 // channelCache 渠道缓存快照（扁平化哈希结构，热路径 O(1) 查找）
 type channelCache struct {
 	// 热路径查找
@@ -84,8 +89,10 @@ type channelCache struct {
 	wildcardByGroupPlatform map[channelGroupPlatformKey][]*wildcardPricingEntry // (groupID, platform) → 通配符定价（按配置顺序，先匹配先使用）
 	mappingByGroupModel     map[channelModelKey]string                          // (groupID, platform, model) → 映射目标
 	wildcardMappingByGP     map[channelGroupPlatformKey][]*wildcardMappingEntry // (groupID, platform) → 通配符映射（按配置顺序，先匹配先使用）
-	channelByGroupID        map[int64]*Channel                                  // groupID → 渠道
-	groupPlatform           map[int64]string                                    // groupID → platform
+	excludedByGroupModel    map[channelModelKey]struct{}                        // (groupID, platform, model) → 显式排除
+	wildcardExcludedByGP    map[channelGroupPlatformKey][]*wildcardExclusionEntry
+	channelByGroupID        map[int64]*Channel // groupID → 渠道
+	groupPlatform           map[int64]string   // groupID → platform
 
 	// 冷路径（CRUD 操作）
 	byID     map[int64]*Channel
@@ -196,6 +203,8 @@ func newEmptyChannelCache() *channelCache {
 		wildcardByGroupPlatform: make(map[channelGroupPlatformKey][]*wildcardPricingEntry),
 		mappingByGroupModel:     make(map[channelModelKey]string),
 		wildcardMappingByGP:     make(map[channelGroupPlatformKey][]*wildcardMappingEntry),
+		excludedByGroupModel:    make(map[channelModelKey]struct{}),
+		wildcardExcludedByGP:    make(map[channelGroupPlatformKey][]*wildcardExclusionEntry),
 		channelByGroupID:        make(map[int64]*Channel),
 		groupPlatform:           make(map[int64]string),
 		byID:                    make(map[int64]*Channel),
@@ -214,15 +223,26 @@ func expandPricingToCache(cache *channelCache, ch *Channel, gid int64, platform 
 		// 使用定价条目的原始平台作为缓存 key，防止跨平台同名模型冲突
 		pricingPlatform := pricing.Platform
 		gpKey := channelGroupPlatformKey{groupID: gid, platform: pricingPlatform}
+		excluded := containsExcludedGroupID(pricing.ExcludedGroupIDs, gid)
 		for _, model := range pricing.Models {
 			if strings.HasSuffix(model, "*") {
 				prefix := strings.ToLower(strings.TrimSuffix(model, "*"))
+				if excluded {
+					cache.wildcardExcludedByGP[gpKey] = append(cache.wildcardExcludedByGP[gpKey], &wildcardExclusionEntry{
+						prefix: prefix,
+					})
+					continue
+				}
 				cache.wildcardByGroupPlatform[gpKey] = append(cache.wildcardByGroupPlatform[gpKey], &wildcardPricingEntry{
 					prefix:  prefix,
 					pricing: pricing,
 				})
 			} else {
 				key := channelModelKey{groupID: gid, platform: pricingPlatform, model: strings.ToLower(model)}
+				if excluded {
+					cache.excludedByGroupModel[key] = struct{}{}
+					continue
+				}
 				cache.pricingByGroupModel[key] = pricing
 			}
 		}
@@ -394,6 +414,25 @@ func lookupPricingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatf
 	return nil
 }
 
+// lookupExplicitExclusionAcrossPlatforms 检查该分组是否被某条模型定价显式排除。
+func lookupExplicitExclusionAcrossPlatforms(cache *channelCache, groupID int64, groupPlatform, modelLower string) bool {
+	for _, p := range matchingPlatforms(groupPlatform) {
+		key := channelModelKey{groupID: groupID, platform: p, model: modelLower}
+		if _, ok := cache.excludedByGroupModel[key]; ok {
+			return true
+		}
+	}
+	for _, p := range matchingPlatforms(groupPlatform) {
+		gpKey := channelGroupPlatformKey{groupID: groupID, platform: p}
+		for _, entry := range cache.wildcardExcludedByGP[gpKey] {
+			if strings.HasPrefix(modelLower, entry.prefix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // lookupMappingAcrossPlatforms 在分组平台内查找模型映射。
 // 逻辑与 lookupPricingAcrossPlatforms 相同：先精确查找，再通配符。
 func lookupMappingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatform, modelLower string) string {
@@ -546,15 +585,27 @@ func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappi
 // checkRestricted 基于已查找的渠道信息检查模型是否被限制。
 // 只在本平台的定价列表中查找。
 func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
+	modelLower := strings.ToLower(model)
+	if lookupExplicitExclusionAcrossPlatforms(lk.cache, groupID, lk.platform, modelLower) {
+		return true
+	}
 	if !lk.channel.RestrictModels {
 		return false
 	}
-	modelLower := strings.ToLower(model)
 	// 使用与查找定价相同的跨平台逻辑
 	if lookupPricingAcrossPlatforms(lk.cache, groupID, lk.platform, modelLower) != nil {
 		return false
 	}
 	return true
+}
+
+func containsExcludedGroupID(values []int64, target int64) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 // ReplaceModelInBody 替换请求体 JSON 中的 model 字段。

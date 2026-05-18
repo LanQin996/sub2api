@@ -44,6 +44,8 @@ export interface UserSupportedModel {
   name: string
   platform: string
   pricing: UserSupportedModelPricing | null
+  /** Group IDs in this channel section that can use this model. */
+  group_ids?: number[]
 }
 
 /**

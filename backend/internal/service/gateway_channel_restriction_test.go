@@ -216,6 +216,68 @@ func TestCheckChannelPricingRestriction_RestrictModelsDisabled(t *testing.T) {
 		"RestrictModels=false → always allowed")
 }
 
+func TestCheckChannelPricingRestriction_ExcludedGroupRestricted(t *testing.T) {
+	t.Parallel()
+	ch := Channel{
+		ID:             1,
+		Status:         StatusActive,
+		GroupIDs:       []int64{10, 20},
+		RestrictModels: false,
+		ModelPricing: []ChannelModelPricing{
+			{
+				Platform:         "anthropic",
+				Models:           []string{"claude-opus-4-6"},
+				ExcludedGroupIDs: []int64{20},
+			},
+		},
+	}
+	channelSvc := newTestChannelService(makeStandardRepo(ch, map[int64]string{
+		10: "anthropic",
+		20: "anthropic",
+	}))
+	svc := &GatewayService{channelService: channelSvc}
+
+	allowedGID := int64(10)
+	excludedGID := int64(20)
+	require.False(t, svc.checkChannelPricingRestriction(context.Background(), &allowedGID, "claude-opus-4-6"))
+	require.True(t, svc.checkChannelPricingRestriction(context.Background(), &excludedGID, "claude-opus-4-6"),
+		"explicit model exclusion should reject the excluded group even when restrict_models is off")
+}
+
+func TestNeedsUpstreamChannelRestrictionCheck_ExcludedGroupWhenRestrictDisabled(t *testing.T) {
+	t.Parallel()
+	ch := Channel{
+		ID:                 1,
+		Status:             StatusActive,
+		GroupIDs:           []int64{10, 20},
+		RestrictModels:     false,
+		BillingModelSource: BillingModelSourceUpstream,
+		ModelPricing: []ChannelModelPricing{
+			{
+				Platform:         "anthropic",
+				Models:           []string{"claude-opus-4-6"},
+				ExcludedGroupIDs: []int64{20},
+			},
+		},
+	}
+	channelSvc := newTestChannelService(makeStandardRepo(ch, map[int64]string{
+		10: "anthropic",
+		20: "anthropic",
+	}))
+	svc := &GatewayService{channelService: channelSvc}
+
+	allowedGID := int64(10)
+	excludedGID := int64(20)
+	require.False(t, svc.needsUpstreamChannelRestrictionCheck(context.Background(), &allowedGID))
+	require.True(t, svc.needsUpstreamChannelRestrictionCheck(context.Background(), &excludedGID))
+	require.True(t, svc.isStickyAccountUpstreamRestricted(
+		context.Background(),
+		&excludedGID,
+		&Account{Platform: PlatformAnthropic},
+		"claude-opus-4-6",
+	))
+}
+
 func TestCheckChannelPricingRestriction_NoChannel(t *testing.T) {
 	t.Parallel()
 	// 分组没有关联渠道

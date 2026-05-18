@@ -44,6 +44,12 @@
         >
           {{ billingModeLabel }}
         </span>
+        <span
+          v-if="excludedGroupCount > 0"
+          class="flex-shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+        >
+          {{ t('admin.channels.form.excludedGroupsCount', { count: excludedGroupCount }, `排除 ${excludedGroupCount} 组`) }}
+        </span>
       </div>
 
       <!-- Expanded: show the label "Pricing Entry" or similar -->
@@ -91,6 +97,38 @@
               :options="billingModeOptions"
               class="mt-1"
             />
+          </div>
+        </div>
+
+        <div v-if="groupOptions.length > 0" class="mt-3">
+          <div class="flex items-center justify-between gap-3">
+            <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {{ t('admin.channels.form.excludedGroups', '排除分组') }}
+            </label>
+            <span class="text-[11px] text-gray-400">
+              {{ t('admin.channels.form.excludedGroupsHint', '勾选后，这些分组不能使用本条模型') }}
+            </span>
+          </div>
+          <div class="mt-1 flex flex-wrap gap-1.5">
+            <label
+              v-for="group in groupOptions"
+              :key="group.id"
+              class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors"
+              :class="isGroupExcluded(group.id)
+                ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600'"
+            >
+              <input
+                type="checkbox"
+                class="h-3 w-3 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                :checked="isGroupExcluded(group.id)"
+                @change="toggleExcludedGroup(group.id)"
+              />
+              <span class="font-medium">{{ group.name }}</span>
+              <span v-if="group.rate_multiplier != null" class="rounded-full bg-black/5 px-1 py-0 text-[10px] dark:bg-white/10">
+                {{ group.rate_multiplier }}x
+              </span>
+            </label>
           </div>
         </div>
 
@@ -274,6 +312,7 @@ const { t } = useI18n()
 const props = defineProps<{
   entry: PricingFormEntry
   platform?: string
+  groupOptions?: PricingGroupOption[]
 }>()
 
 const emit = defineEmits<{
@@ -282,6 +321,11 @@ const emit = defineEmits<{
 }>()
 
 type PricingLookupState = 'idle' | 'loading' | 'success' | 'empty' | 'error'
+interface PricingGroupOption {
+  id: number
+  name: string
+  rate_multiplier?: number
+}
 type PriceField =
   | 'input_price'
   | 'output_price'
@@ -319,6 +363,8 @@ const billingModeLabel = computed(() => {
 
 const lookupModels = computed(() => modelsForLookup(props.entry.models))
 const canFetchOfficialPricing = computed(() => lookupModels.value.length > 0)
+const groupOptions = computed(() => props.groupOptions || [])
+const excludedGroupCount = computed(() => (props.entry.excluded_group_ids || []).length)
 
 const pricingLookupMessageClass = computed(() => {
   switch (pricingLookupState.value) {
@@ -348,6 +394,20 @@ const pricingLookupIcon = computed(() => {
 
 function emitField(field: keyof PricingFormEntry, value: string) {
   emit('update', { ...props.entry, [field]: value === '' ? null : value })
+}
+
+function isGroupExcluded(groupId: number): boolean {
+  return (props.entry.excluded_group_ids || []).includes(groupId)
+}
+
+function toggleExcludedGroup(groupId: number) {
+  const excluded = new Set(props.entry.excluded_group_ids || [])
+  if (excluded.has(groupId)) {
+    excluded.delete(groupId)
+  } else {
+    excluded.add(groupId)
+  }
+  emit('update', { ...props.entry, excluded_group_ids: [...excluded] })
 }
 
 function addInterval() {

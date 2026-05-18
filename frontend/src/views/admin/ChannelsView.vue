@@ -422,6 +422,7 @@
                   :key="idx"
                   :entry="entry"
                   :platform="section.platform"
+                  :group-options="getSelectedGroupsForSection(section)"
                   @update="updatePricingEntry(sIdx, idx, $event)"
                   @remove="removePricingEntry(sIdx, idx)"
                 />
@@ -819,6 +820,11 @@ function toggleGroupInSection(sectionIdx: number, groupId: number) {
   }
 }
 
+function getSelectedGroupsForSection(section: PlatformSection): AdminGroup[] {
+  const selected = new Set(section.group_ids)
+  return allGroups.value.filter(group => group.platform === section.platform && selected.has(group.id))
+}
+
 // ── Pricing helpers ──
 function addPricingEntry(sectionIdx: number) {
   form.platforms[sectionIdx].model_pricing.push({
@@ -830,7 +836,8 @@ function addPricingEntry(sectionIdx: number) {
     cache_read_price: null,
     image_output_price: null,
     per_request_price: null,
-    intervals: []
+    intervals: [],
+    excluded_group_ids: []
   })
 }
 
@@ -888,7 +895,8 @@ function addRulePricingEntry(sectionIdx: number, ruleIndex: number) {
     cache_read_price: null,
     image_output_price: null,
     per_request_price: null,
-    intervals: []
+    intervals: [],
+    excluded_group_ids: []
   })
 }
 
@@ -1043,7 +1051,8 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         cache_read_price: mTokToPerToken(entry.cache_read_price),
         image_output_price: mTokToPerToken(entry.image_output_price),
         per_request_price: entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
-        intervals: formIntervalsToAPI(entry.intervals || [])
+        intervals: formIntervalsToAPI(entry.intervals || []),
+        excluded_group_ids: (entry.excluded_group_ids || []).filter(id => section.group_ids.includes(id))
       })
     }
   }
@@ -1118,7 +1127,8 @@ function apiToForm(channel: Channel): PlatformSection[] {
         cache_read_price: perTokenToMTok(p.cache_read_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         per_request_price: p.per_request_price,
-        intervals: apiIntervalsToForm(p.intervals || [])
+        intervals: apiIntervalsToForm(p.intervals || []),
+        excluded_group_ids: [...(p.excluded_group_ids || [])]
       } as PricingFormEntry))
 
     // Read web_search_emulation from features_config
@@ -1304,7 +1314,8 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
         cache_read_price: perTokenToMTok(p.cache_read_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         per_request_price: p.per_request_price,
-        intervals: apiIntervalsToForm(p.intervals || [])
+        intervals: apiIntervalsToForm(p.intervals || []),
+        excluded_group_ids: []
       } as PricingFormEntry))
     }
     section.account_stats_pricing_rules.push(formRule)

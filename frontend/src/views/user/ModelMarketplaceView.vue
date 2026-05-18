@@ -305,6 +305,8 @@ const marketplaceModels = computed<MarketplaceModel[]>(() => {
       for (const supportedModel of section.supported_models) {
         const modelName = supportedModel.name.trim()
         if (!modelName) continue
+        const modelGroups = groupsForSupportedModel(section.groups, supportedModel)
+        if (modelGroups.length === 0) continue
         const platform = supportedModel.platform || section.platform
         const key = `${platform}::${modelName}`.toLowerCase()
         let entry = modelMap.get(key)
@@ -323,7 +325,7 @@ const marketplaceModels = computed<MarketplaceModel[]>(() => {
 
         const existingChannel = entry.channels.find((item) => item.channelName === channel.name)
         if (existingChannel) {
-          existingChannel.groups = mergeGroups(existingChannel.groups, section.groups)
+          existingChannel.groups = mergeGroups(existingChannel.groups, modelGroups)
           existingChannel.exclusiveCount = existingChannel.groups.filter((g) => g.is_exclusive).length
           continue
         }
@@ -331,8 +333,8 @@ const marketplaceModels = computed<MarketplaceModel[]>(() => {
         entry.channels.push({
           channelName: channel.name,
           description: channel.description || '',
-          groups: [...section.groups],
-          exclusiveCount: section.groups.filter((g) => g.is_exclusive).length,
+          groups: modelGroups,
+          exclusiveCount: modelGroups.filter((g) => g.is_exclusive).length,
         })
       }
     }
@@ -414,6 +416,18 @@ function mergeGroups(left: UserAvailableGroup[], right: UserAvailableGroup[]): U
     merged.push(group)
   }
   return merged.sort((a, b) => Number(b.is_exclusive) - Number(a.is_exclusive) || a.name.localeCompare(b.name))
+}
+
+function groupsForSupportedModel(
+  groups: UserAvailableGroup[],
+  model: UserSupportedModel,
+): UserAvailableGroup[] {
+  const allowedGroupIds = model.group_ids
+  if (!allowedGroupIds || allowedGroupIds.length === 0) {
+    return [...groups]
+  }
+  const allowed = new Set(allowedGroupIds)
+  return groups.filter((group) => allowed.has(group.id))
 }
 
 function visibleChannels(model: MarketplaceModel): ModelChannel[] {
