@@ -11,7 +11,7 @@
       <div class="w-20">
         <label class="text-xs text-gray-400">Max <span class="text-gray-300">(含)</span></label>
         <input :value="interval.max_tokens ?? ''" @input="emitField('max_tokens', toIntOrNull(($event.target as HTMLInputElement).value))"
-          type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
+          type="number" min="0" class="input mt-0.5 text-xs" />
       </div>
       <div class="flex-1">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice', '输入') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$/M</span></label>
@@ -52,7 +52,7 @@
       <div class="w-20">
         <label class="text-xs text-gray-400">Max <span class="text-gray-300">(含)</span></label>
         <input :value="interval.max_tokens ?? ''" @input="emitField('max_tokens', toIntOrNull(($event.target as HTMLInputElement).value))"
-          type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
+          type="number" min="0" class="input mt-0.5 text-xs" />
       </div>
       <div class="flex-1">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.perRequestPrice', '单次价格') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$</span></label>

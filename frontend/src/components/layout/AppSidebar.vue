@@ -677,8 +677,8 @@ const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
-// 条目顺序：密钥 → 用量/排行 → 模型/渠道 → 渠道状态 → 订阅/支付 → 兑换/资料。
-// 模型广场与可用渠道共用开关：前者按模型找入口，后者按渠道核对配置。
+// 条目顺序：密钥 → 用量/排行 → 模型广场 → 渠道状态 → 订阅/支付 → 兑换/资料。
+// `available_channels_enabled` 现在控制用户端模型广场入口。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
@@ -689,7 +689,6 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/ranking', label: t('nav.ranking'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/models', label: t('nav.modelMarketplace'), icon: ModelMarketplaceIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
-    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
@@ -717,7 +716,7 @@ function finalizeNav(items: NavItem[]): NavItem[] {
 const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(true)))
 
 // Personal navigation items (for admin's "My Account" section, without Dashboard).
-// Admins access 可用渠道 from this section just like regular users — there is no
+// Admins access 模型广场 from this section just like regular users — there is no
 // separate admin entry, since the page is purely a user-facing view.
 const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))
 

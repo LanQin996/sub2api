@@ -6611,7 +6611,7 @@ const form = reactive<SettingsForm>({
   // Channel Monitor feature switch
   channel_monitor_enabled: true,
   channel_monitor_default_interval_seconds: 60,
-  // Available Channels feature switch
+  // Model Marketplace feature switch
   available_channels_enabled: false,
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
@@ -7717,7 +7717,7 @@ async function saveSettings() {
       channel_monitor_enabled: form.channel_monitor_enabled,
       channel_monitor_default_interval_seconds:
         Number(form.channel_monitor_default_interval_seconds) || 60,
-      // Available Channels feature switch
+      // Model Marketplace feature switch
       available_channels_enabled: form.available_channels_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,

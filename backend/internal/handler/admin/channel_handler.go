@@ -499,6 +499,14 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 		result["cache_write_price"] = pricing.CacheCreationPricePerToken
 		result["cache_read_price"] = pricing.CacheReadPricePerToken
 		result["image_output_price"] = pricing.ImageOutputPricePerToken
+		if pricing.LongContextInputThreshold > 0 &&
+			pricing.LongContextInputMultiplier > 0 &&
+			pricing.LongContextOutputMultiplier > 0 &&
+			(pricing.LongContextInputMultiplier > 1 || pricing.LongContextOutputMultiplier > 1) {
+			result["long_context_input_threshold"] = pricing.LongContextInputThreshold
+			result["long_context_input_multiplier"] = pricing.LongContextInputMultiplier
+			result["long_context_output_multiplier"] = pricing.LongContextOutputMultiplier
+		}
 	}
 	if hasImageUnitPrice {
 		result["per_request_price"] = imageUnitPrice

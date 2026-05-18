@@ -234,13 +234,13 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/available-channels',
     name: 'UserAvailableChannels',
-    component: () => import('@/views/user/AvailableChannelsView.vue'),
+    redirect: '/models',
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: 'Available Channels',
-      titleKey: 'availableChannels.title',
-      descriptionKey: 'availableChannels.description'
+      title: 'Model Marketplace',
+      titleKey: 'modelMarketplace.title',
+      descriptionKey: 'modelMarketplace.description'
     }
   },
   {

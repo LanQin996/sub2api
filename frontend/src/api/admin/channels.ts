@@ -156,6 +156,9 @@ export interface ModelDefaultPricing {
   cache_read_price?: number
   image_output_price?: number
   per_request_price?: number
+  long_context_input_threshold?: number
+  long_context_input_multiplier?: number
+  long_context_output_multiplier?: number
 }
 
 export async function getModelDefaultPricing(model: string): Promise<ModelDefaultPricing> {

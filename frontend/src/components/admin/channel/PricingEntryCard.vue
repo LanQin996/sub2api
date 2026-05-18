@@ -432,13 +432,14 @@ async function applyOfficialPricingForModels(
       if (!result.found) continue
 
       const patch = pricingPatchForMode(result, props.entry.billing_mode)
-      if (!patchHasValue(patch)) continue
+      const intervals = officialIntervalsForMode(result, props.entry.billing_mode)
+      if (!patchHasValue(patch) && intervals.length === 0) continue
 
       const baseEntry: PricingFormEntry = {
         ...props.entry,
         models: options.modelsOverride ?? props.entry.models,
       }
-      emit('update', applyPricingPatch(baseEntry, patch, options.overwrite))
+      emit('update', applyPricingPatch(baseEntry, patch, intervals, options.overwrite))
       pricingLookupState.value = 'success'
       pricingLookupMessage.value = t(
         'admin.channels.form.officialPricingFilled',
@@ -480,9 +481,48 @@ function pricingPatchForMode(result: ModelDefaultPricing, mode: BillingMode): Pr
   return { per_request_price: result.per_request_price }
 }
 
+function officialIntervalsForMode(result: ModelDefaultPricing, mode: BillingMode): IntervalFormEntry[] {
+  if (mode !== 'token') return []
+
+  const threshold = result.long_context_input_threshold
+  const inputMultiplier = result.long_context_input_multiplier
+  const outputMultiplier = result.long_context_output_multiplier
+  if (!threshold || threshold <= 0 || !inputMultiplier || !outputMultiplier) return []
+  if (inputMultiplier <= 1 && outputMultiplier <= 1) return []
+
+  const inputPrice = perTokenToMTok(result.input_price ?? null)
+  const outputPrice = perTokenToMTok(result.output_price ?? null)
+  const cacheWritePrice = perTokenToMTok(result.cache_write_price ?? null)
+  const cacheReadPrice = perTokenToMTok(result.cache_read_price ?? null)
+  const longInputPrice = inputPrice == null ? null : normalizeDisplayPrice(inputPrice * inputMultiplier)
+  const longOutputPrice = outputPrice == null ? null : normalizeDisplayPrice(outputPrice * outputMultiplier)
+
+  if (
+    longInputPrice == null &&
+    longOutputPrice == null &&
+    cacheWritePrice == null &&
+    cacheReadPrice == null
+  ) {
+    return []
+  }
+
+  return [{
+    min_tokens: threshold,
+    max_tokens: null,
+    tier_label: t('admin.channels.form.officialLongContextTier', '官方长上下文'),
+    input_price: longInputPrice,
+    output_price: longOutputPrice,
+    cache_write_price: cacheWritePrice,
+    cache_read_price: cacheReadPrice,
+    per_request_price: null,
+    sort_order: 0,
+  }]
+}
+
 function applyPricingPatch(
   entry: PricingFormEntry,
   patch: PricePatch,
+  officialIntervals: IntervalFormEntry[],
   overwrite: boolean
 ): PricingFormEntry {
   const next: PricingFormEntry = { ...entry }
@@ -491,6 +531,14 @@ function applyPricingPatch(
     if (value === null || value === undefined) continue
     if (overwrite || isBlankPrice(next[field])) {
       next[field] = value
+    }
+  }
+  if (entry.billing_mode === 'token' && officialIntervals.length > 0) {
+    if (overwrite || !next.intervals || next.intervals.length === 0) {
+      next.intervals = officialIntervals.map((interval, index) => ({
+        ...interval,
+        sort_order: index,
+      }))
     }
   }
   return next
@@ -507,6 +555,10 @@ function hasBlankRelevantPriceFields(entry: PricingFormEntry): boolean {
 
 function isBlankPrice(value: unknown): boolean {
   return value === null || value === undefined || value === ''
+}
+
+function normalizeDisplayPrice(value: number): number {
+  return parseFloat(value.toPrecision(10))
 }
 
 function modelsForLookup(models: string[]): string[] {

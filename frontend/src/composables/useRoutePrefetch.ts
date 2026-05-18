@@ -30,8 +30,7 @@ const PREFETCH_ADJACENCY: Record<string, string[]> = {
   '/dashboard': ['/keys', '/usage', '/models'],
   '/keys': ['/dashboard', '/usage'],
   '/usage': ['/keys', '/models', '/redeem'],
-  '/models': ['/available-channels', '/keys'],
-  '/available-channels': ['/models', '/monitor'],
+  '/models': ['/keys', '/monitor'],
   '/redeem': ['/usage', '/profile'],
   '/profile': ['/dashboard', '/keys']
 }
