@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
@@ -262,15 +263,90 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	var usage OpenAIUsage
 	var firstTokenMs *int
 	clientDisconnected := false
+	var clientDisconnectedAt time.Time
+	outputStarted := false
+	approxOutputChars := 0
+	sawDone := false
+	streamInterval := time.Duration(0)
+	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
+		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+	}
+	var intervalTicker *time.Ticker
+	if streamInterval > 0 {
+		intervalTicker = time.NewTicker(streamInterval)
+		defer intervalTicker.Stop()
+	}
+	var intervalCh <-chan time.Time
+	if intervalTicker != nil {
+		intervalCh = intervalTicker.C
+	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	partialResult := func(err error) (*OpenAIForwardResult, error) {
+		applyOpenAIApproxPartialUsage(&usage, nil, approxOutputChars, outputStarted)
+		return &OpenAIForwardResult{
+			RequestID:          requestID,
+			Usage:              usage,
+			Model:              originalModel,
+			BillingModel:       billingModel,
+			UpstreamModel:      upstreamModel,
+			ReasoningEffort:    reasoningEffort,
+			ServiceTier:        serviceTier,
+			Stream:             true,
+			Duration:           openAIStreamObservedDuration(startTime, clientDisconnectedAt),
+			FirstTokenMs:       firstTokenMs,
+			PartialUsage:       true,
+			PartialUsageReason: OpenAIStreamPartialUsageReason(err),
+		}, newOpenAIStreamPartialUsageError(err)
+	}
+	resultWithUsage := func() *OpenAIForwardResult {
+		return &OpenAIForwardResult{
+			RequestID:       requestID,
+			Usage:           usage,
+			Model:           originalModel,
+			BillingModel:    billingModel,
+			UpstreamModel:   upstreamModel,
+			ReasoningEffort: reasoningEffort,
+			ServiceTier:     serviceTier,
+			Stream:          true,
+			Duration:        openAIStreamObservedDuration(startTime, clientDisconnectedAt),
+			FirstTokenMs:    firstTokenMs,
+		}
+	}
+	handleScanErr := func(err error) (*OpenAIForwardResult, error, bool) {
+		if err == nil {
+			return nil, nil, false
+		}
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			logger.L().Warn("openai chat_completions raw: stream read error",
+				zap.Error(err),
+				zap.String("request_id", requestID),
+			)
+		}
+		if outputStarted || clientDisconnected {
+			result, partialErr := partialResult(fmt.Errorf("stream usage incomplete: %w", err))
+			return result, partialErr, true
+		}
+		return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err), true
+	}
+	finishStream := func() (*OpenAIForwardResult, error) {
+		if !sawDone && (outputStarted || clientDisconnected) {
+			return partialResult(errors.New("stream usage incomplete: missing done event"))
+		}
+		return resultWithUsage(), nil
+	}
+	processLine := func(line string) {
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
-			if trimmedPayload != "[DONE]" {
+			if trimmedPayload == "[DONE]" {
+				sawDone = true
+			} else {
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
+				}
+				if !usageOnlyChunk {
+					outputStarted = true
+					approxOutputChars += openAIChatStreamDeltaOutputChars(payload)
 				}
 				if firstTokenMs == nil && !usageOnlyChunk {
 					elapsed := int(time.Since(startTime).Milliseconds())
@@ -281,7 +357,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 		if !clientDisconnected {
 			if _, werr := c.Writer.WriteString(line + "\n"); werr != nil {
-				clientDisconnected = true
+				markOpenAIStreamClientDisconnected(&clientDisconnected, &clientDisconnectedAt)
 				logger.L().Debug("openai chat_completions raw: client disconnected, continuing to drain upstream for billing",
 					zap.Error(werr),
 					zap.String("request_id", requestID),
@@ -292,34 +368,81 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			if !clientDisconnected {
 				c.Writer.Flush()
 			}
-			continue
+			return
 		}
 		if !clientDisconnected {
 			c.Writer.Flush()
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("openai chat_completions raw: stream read error",
-				zap.Error(err),
-				zap.String("request_id", requestID),
-			)
+	if streamInterval <= 0 {
+		for scanner.Scan() {
+			processLine(scanner.Text())
+			if sawDone {
+				return resultWithUsage(), nil
+			}
 		}
+		if result, err, done := handleScanErr(scanner.Err()); done {
+			return result, err
+		}
+		return finishStream()
 	}
 
-	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          true,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
-	}, nil
+	type scanEvent struct {
+		line string
+		err  error
+	}
+	events := make(chan scanEvent, 16)
+	done := make(chan struct{})
+	var lastReadAt int64
+	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+	sendEvent := func(ev scanEvent) bool {
+		select {
+		case events <- ev:
+			return true
+		case <-done:
+			return false
+		}
+	}
+	go func() {
+		defer close(events)
+		for scanner.Scan() {
+			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+			if !sendEvent(scanEvent{line: scanner.Text()}) {
+				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			_ = sendEvent(scanEvent{err: err})
+		}
+	}()
+	defer close(done)
+
+	for {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				return finishStream()
+			}
+			if result, err, done := handleScanErr(ev.err); done {
+				return result, err
+			}
+			processLine(ev.line)
+			if sawDone {
+				return resultWithUsage(), nil
+			}
+		case <-intervalCh:
+			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
+			if time.Since(lastRead) < streamInterval {
+				continue
+			}
+			_ = resp.Body.Close()
+			if outputStarted || clientDisconnected {
+				return partialResult(errors.New("stream usage incomplete after timeout"))
+			}
+			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
+		}
+	}
 }
 
 // ensureOpenAIChatStreamUsage 确保 raw Chat Completions 流式请求会让上游返回 usage。
@@ -359,6 +482,22 @@ func extractCCStreamUsage(payload string) *OpenAIUsage {
 		u.CacheReadInputTokens = int(cached.Int())
 	}
 	return &u
+}
+
+func openAIChatStreamDeltaOutputChars(payload string) int {
+	if strings.TrimSpace(payload) == "" || !gjson.Valid(payload) {
+		return 0
+	}
+	total := 0
+	for _, choice := range gjson.Get(payload, "choices").Array() {
+		total += len(choice.Get("delta.content").String())
+		total += len(choice.Get("delta.reasoning_content").String())
+		total += len(choice.Get("delta.function_call.arguments").String())
+		for _, toolCall := range choice.Get("delta.tool_calls").Array() {
+			total += len(toolCall.Get("function.arguments").String())
+		}
+	}
+	return total
 }
 
 // bufferRawChatCompletions 透传上游 CC 非流式 JSON 响应。

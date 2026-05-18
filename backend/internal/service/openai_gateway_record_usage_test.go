@@ -242,6 +242,35 @@ func TestOpenAIGatewayServiceRecordUsage_ZeroUsageStillWritesUsageLog(t *testing
 	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_StreamCompletedWithoutUsageWarns(t *testing.T) {
+	logSink, restoreLogs := captureStructuredLog(t)
+	defer restoreLogs()
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_stream_zero_usage",
+			Usage:     OpenAIUsage{},
+			Model:     "gpt-5.4",
+			Stream:    true,
+			Duration:  time.Second,
+		},
+		APIKey:           &APIKey{ID: 1001, Quota: 100, Group: &Group{RateMultiplier: 1}},
+		User:             &User{ID: 2001},
+		Account:          &Account{ID: 3001, Type: AccountTypeAPIKey},
+		InboundEndpoint:  "/v1/chat/completions",
+		UpstreamEndpoint: "/v1/chat/completions",
+	})
+
+	require.NoError(t, err)
+	require.True(t, logSink.ContainsMessageAtLevel("openai_usage.stream_completed_without_usage", "warn"))
+	require.True(t, logSink.ContainsFieldValue("request_id", "resp_stream_zero_usage"))
+	require.True(t, logSink.ContainsFieldValue("inbound_endpoint", "/v1/chat/completions"))
+}
+
 func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}

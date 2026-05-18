@@ -1364,6 +1364,48 @@ func TestOpenAIForwardStreamingPartialUsageReturnsResultForBilling(t *testing.T)
 	require.Greater(t, result.Usage.InputTokens, 0)
 }
 
+func TestOpenAIStreamPartialUsageReasonClassifiesErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "timeout",
+			err:  errors.New("stream usage incomplete after timeout"),
+			want: OpenAIStreamPartialUsageReasonTimeout,
+		},
+		{
+			name: "client disconnect",
+			err:  errors.New("stream usage incomplete after disconnect: read failed"),
+			want: OpenAIStreamPartialUsageReasonClientDisconnect,
+		},
+		{
+			name: "missing terminal",
+			err:  errors.New("stream usage incomplete: missing terminal event"),
+			want: OpenAIStreamPartialUsageReasonMissingTerminal,
+		},
+		{
+			name: "read error",
+			err:  errors.New("stream usage incomplete: unexpected EOF"),
+			want: OpenAIStreamPartialUsageReasonReadError,
+		},
+		{
+			name: "wrapped context canceled",
+			err:  fmt.Errorf("stream usage incomplete: %w", context.Canceled),
+			want: OpenAIStreamPartialUsageReasonClientDisconnect,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := newOpenAIStreamPartialUsageError(tt.err)
+			require.True(t, IsOpenAIStreamPartialUsageError(err))
+			require.Equal(t, tt.want, OpenAIStreamPartialUsageReason(err))
+		})
+	}
+}
+
 func TestOpenAIForwardStreamingPartialUsageDurationExcludesDrainTimeout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{

@@ -355,6 +355,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				result.PartialUsage = true
 				reqLog.Warn("openai.forward_partial_usage_recorded",
 					zap.Int64("account_id", account.ID),
+					zap.String("partial_usage_reason", result.PartialUsageReason),
 					zap.Int("input_tokens", result.Usage.InputTokens),
 					zap.Int("output_tokens", result.Usage.OutputTokens),
 					zap.Error(err),
@@ -747,6 +748,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				result.PartialUsage = true
 				reqLog.Warn("openai_messages.forward_partial_usage_recorded",
 					zap.Int64("account_id", account.ID),
+					zap.String("partial_usage_reason", result.PartialUsageReason),
 					zap.Int("input_tokens", result.Usage.InputTokens),
 					zap.Int("output_tokens", result.Usage.OutputTokens),
 					zap.Error(err),
