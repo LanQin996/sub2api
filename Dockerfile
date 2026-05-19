@@ -24,7 +24,7 @@ ARG PNPM_VERSION
 
 WORKDIR /app/frontend
 
-# Install pnpm
+# Install pnpm (pinned via PNPM_VERSION to match CI and keep builds reproducible)
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 # Install dependencies first (better caching)
