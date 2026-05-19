@@ -850,6 +850,24 @@ func TestOpenAIResponsesWebSocket_PassthroughUsageLogInfersReasoningFromInitialR
 		"usage log reasoning effort 必须使用渠道映射前首帧模型后缀推导")
 }
 
+func TestOpenAIResponsesWebSocket_ChannelMappingRoutesByMappedModel(t *testing.T) {
+	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+		firstPayload: `{"type":"response.create","model":"codex-auto-review","stream":false}`,
+		userAgent:    testStringPtr("codex_cli_rs/0.125.0 channel-mapped"),
+		channelMapping: map[string]string{
+			"codex-auto-review": "gpt-5.4-mini",
+		},
+		accountModelMapping: map[string]any{
+			"gpt-5.4-mini": "gpt-5.4-mini",
+		},
+	})
+
+	require.Equal(t, "gpt-5.4-mini", gjson.GetBytes(got.upstreamFirstPayload, "model").String())
+	require.NotNil(t, got.log.ModelMappingChain)
+	require.Contains(t, *got.log.ModelMappingChain, "codex-auto-review")
+	require.Contains(t, *got.log.ModelMappingChain, "gpt-5.4-mini")
+}
+
 func TestOpenAIResponsesWebSocket_PassthroughUsageLogLeavesUserAgentNilWhenMissing(t *testing.T) {
 	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
 		firstPayload: `{"type":"response.create","model":"gpt-5.4","stream":false,"reasoning":{"effort":"medium"}}`,
@@ -1008,9 +1026,10 @@ func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject
 }
 
 type openAIResponsesWSUsageLogCase struct {
-	firstPayload   string
-	userAgent      *string
-	channelMapping map[string]string
+	firstPayload        string
+	userAgent           *string
+	channelMapping      map[string]string
+	accountModelMapping map[string]any
 }
 
 type openAIResponsesWSUsageLogResult struct {
@@ -1136,6 +1155,9 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 			"openai_apikey_responses_websockets_v2_enabled": true,
 			"openai_apikey_responses_websockets_v2_mode":    service.OpenAIWSIngressModePassthrough,
 		},
+	}
+	if len(tc.accountModelMapping) > 0 {
+		account.Credentials["model_mapping"] = tc.accountModelMapping
 	}
 
 	cfg := &config.Config{}
