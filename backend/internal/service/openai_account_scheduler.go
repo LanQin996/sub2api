@@ -1125,13 +1125,14 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 			stickyAccountID = accountID
 		}
 	}
+	routingModel := s.resolveChannelAccountRoutingModel(ctx, groupID, requestedModel)
 
 	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
 		GroupID:                 groupID,
 		SessionHash:             sessionHash,
 		StickyAccountID:         stickyAccountID,
 		PreviousResponseID:      previousResponseID,
-		RequestedModel:          requestedModel,
+		RequestedModel:          routingModel,
 		RequiredTransport:       requiredTransport,
 		RequiredImageCapability: requiredImageCapability,
 		RequireCompact:          requireCompact,
