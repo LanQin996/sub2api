@@ -130,7 +130,7 @@
             <div class="mb-4 flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                  <PlatformIcon :platform="model.platform as GroupPlatform" size="sm" />
+                  <ModelIcon :model="model.name" size="20px" />
                   <h2 class="truncate font-mono text-base font-semibold text-gray-900 dark:text-white" :title="model.name">
                     {{ model.name }}
                   </h2>
@@ -247,6 +247,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import ModelIcon from '@/components/common/ModelIcon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import SupportedModelChip from '@/components/channels/SupportedModelChip.vue'
 import userChannelsAPI, {
