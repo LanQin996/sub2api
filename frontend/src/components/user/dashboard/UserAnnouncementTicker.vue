@@ -10,31 +10,29 @@
         <span>{{ t('announcements.ticker') }}</span>
       </div>
 
-      <div class="ticker-viewport min-w-0 flex-1" tabindex="0">
+      <div
+        class="ticker-viewport"
+        tabindex="0"
+        aria-live="polite"
+        @mouseenter="pauseRotation"
+        @mouseleave="resumeRotation"
+        @focusin="pauseRotation"
+        @focusout="resumeRotation"
+      >
         <div
-          class="ticker-strip"
-          :style="{ '--ticker-duration': `${tickerDuration}s` }"
+          v-if="currentItem"
+          :key="tickerItemKey"
+          class="ticker-line"
+          :style="{ '--ticker-duration': `${tickerDuration}s`, animationPlayState: isPaused ? 'paused' : 'running' }"
+          :title="currentItem.preview ? `${currentItem.title} ${currentItem.preview}` : currentItem.title"
+          @animationend="showNextItem"
         >
-          <div class="ticker-group">
-            <span
-              v-for="item in tickerItems"
-              :key="item.id"
-              class="ticker-item"
-            >
-              <span class="font-semibold text-gray-900 dark:text-white">{{ item.title }}</span>
-              <span v-if="item.preview" class="text-gray-600 dark:text-gray-300">{{ item.preview }}</span>
-            </span>
-          </div>
-          <div class="ticker-group" aria-hidden="true">
-            <span
-              v-for="item in tickerItems"
-              :key="`copy-${item.id}`"
-              class="ticker-item"
-            >
-              <span class="font-semibold text-gray-900 dark:text-white">{{ item.title }}</span>
-              <span v-if="item.preview" class="text-gray-600 dark:text-gray-300">{{ item.preview }}</span>
-            </span>
-          </div>
+          <span class="font-semibold text-gray-900 dark:text-white">
+            {{ currentItem.title }}
+          </span>
+          <span v-if="currentItem.preview" class="text-gray-600 dark:text-gray-300">
+            {{ currentItem.preview }}
+          </span>
         </div>
       </div>
     </div>
@@ -42,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { UserAnnouncement } from '@/types'
@@ -52,6 +50,9 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const activeIndex = ref(0)
+const animationCycle = ref(0)
+const isPaused = ref(false)
 
 const tickerItems = computed(() =>
   props.announcements.map((item) => ({
@@ -61,7 +62,37 @@ const tickerItems = computed(() =>
   }))
 )
 
-const tickerDuration = computed(() => Math.min(80, Math.max(24, tickerItems.value.length * 12)))
+const currentItem = computed(() => tickerItems.value[activeIndex.value] ?? null)
+const tickerItemKey = computed(() => currentItem.value ? `${currentItem.value.id}-${animationCycle.value}` : 'empty')
+const itemSignature = computed(() =>
+  tickerItems.value.map((item) => `${item.id}:${item.title}:${item.preview}`).join('|')
+)
+const tickerDuration = computed(() => {
+  if (!currentItem.value) return 16
+  const charCount = currentItem.value.title.length + currentItem.value.preview.length
+  return Math.min(36, Math.max(12, Math.ceil(charCount / 4)))
+})
+
+function showNextItem() {
+  if (tickerItems.value.length <= 1) {
+    animationCycle.value += 1
+    return
+  }
+  activeIndex.value = (activeIndex.value + 1) % tickerItems.value.length
+}
+
+function pauseRotation() {
+  isPaused.value = true
+}
+
+function resumeRotation() {
+  isPaused.value = false
+}
+
+watch(itemSignature, () => {
+  activeIndex.value = 0
+  animationCycle.value += 1
+})
 
 function buildPreview(content: string): string {
   const text = content
@@ -80,40 +111,28 @@ function buildPreview(content: string): string {
 
 <style scoped>
 .ticker-viewport {
-  mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+  position: relative;
+  min-width: 0;
+  flex: 1 1 0%;
   overflow: hidden;
 }
 
-.ticker-strip {
-  --ticker-duration: 32s;
-  display: flex;
-  width: max-content;
-  animation: ticker-scroll var(--ticker-duration) linear infinite;
-}
-
-.ticker-viewport:hover .ticker-strip,
-.ticker-viewport:focus-within .ticker-strip {
-  animation-play-state: paused;
-}
-
-.ticker-group {
+.ticker-line {
+  --ticker-duration: 16s;
   display: inline-flex;
-  align-items: center;
-  gap: 2rem;
-  padding-right: 2rem;
-}
-
-.ticker-item {
-  display: inline-flex;
-  max-width: min(56rem, 72vw);
   align-items: center;
   gap: 0.5rem;
+  width: max-content;
+  max-width: none;
+  padding-left: 100%;
   white-space: nowrap;
   font-size: 0.875rem;
   line-height: 1.25rem;
+  animation: ticker-marquee var(--ticker-duration) linear forwards;
+  will-change: transform;
 }
 
-.ticker-item::before {
+.ticker-line::before {
   content: "";
   width: 0.375rem;
   height: 0.375rem;
@@ -123,22 +142,19 @@ function buildPreview(content: string): string {
   color: rgb(37 99 235);
 }
 
-@keyframes ticker-scroll {
+@keyframes ticker-marquee {
   from {
     transform: translateX(0);
   }
   to {
-    transform: translateX(-50%);
+    transform: translateX(-100%);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ticker-strip {
+  .ticker-line {
     animation: none;
-  }
-
-  .ticker-group[aria-hidden="true"] {
-    display: none;
+    padding-left: 0;
   }
 }
 </style>

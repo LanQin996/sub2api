@@ -334,7 +334,7 @@ marked.setOptions({
 })
 
 // Use store state (storeToRefs for reactivity)
-const { announcements, loading } = storeToRefs(announcementStore)
+const { bellAnnouncements: announcements, loading } = storeToRefs(announcementStore)
 const unreadCount = computed(() => announcementStore.unreadCount)
 
 // Local modal state
