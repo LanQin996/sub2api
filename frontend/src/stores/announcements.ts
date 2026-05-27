@@ -21,6 +21,10 @@ export const useAnnouncementStore = defineStore('announcements', () => {
     announcements.value.filter((a) => !a.read_at).length
   )
 
+  const tickerAnnouncements = computed(() =>
+    announcements.value.filter((a) => a.notify_mode === 'ticker')
+  )
+
   // Actions
   async function fetchAnnouncements(force = false) {
     const now = Date.now()
@@ -133,6 +137,7 @@ export const useAnnouncementStore = defineStore('announcements', () => {
     currentPopup,
     // Getters
     unreadCount,
+    tickerAnnouncements,
     // Actions
     fetchAnnouncements,
     dismissPopup,

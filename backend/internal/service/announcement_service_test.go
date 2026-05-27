@@ -58,6 +58,22 @@ func TestAnnouncementServiceCreateRejectsEqualStartEndTimes(t *testing.T) {
 	require.ErrorIs(t, err, ErrAnnouncementInvalidSchedule)
 }
 
+func TestAnnouncementServiceCreateAcceptsTickerNotifyMode(t *testing.T) {
+	repo := &announcementRepoStub{}
+	svc := NewAnnouncementService(repo, nil, nil, nil)
+
+	created, err := svc.Create(context.Background(), &CreateAnnouncementInput{
+		Title:      "公告",
+		Content:    "内容",
+		Status:     AnnouncementStatusActive,
+		NotifyMode: AnnouncementNotifyModeTicker,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, AnnouncementNotifyModeTicker, created.NotifyMode)
+	require.Equal(t, AnnouncementNotifyModeTicker, repo.item.NotifyMode)
+}
+
 func TestAnnouncementServiceUpdateRejectsEqualStartEndTimes(t *testing.T) {
 	repo := &announcementRepoStub{
 		item: &Announcement{

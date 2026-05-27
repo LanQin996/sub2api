@@ -80,12 +80,10 @@
             <span
               :class="[
                 'badge',
-                row.notify_mode === 'popup'
-                  ? 'badge-warning'
-                  : 'badge-gray'
+                notifyModeBadgeClass(row.notify_mode)
               ]"
             >
-              {{ row.notify_mode === 'popup' ? t('admin.announcements.notifyModeLabels.popup') : t('admin.announcements.notifyModeLabels.silent') }}
+              {{ notifyModeLabel(row.notify_mode) }}
             </span>
           </template>
 
@@ -250,7 +248,7 @@ import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
-import type { AdminGroup, Announcement, AnnouncementTargeting } from '@/types'
+import type { AdminGroup, Announcement, AnnouncementNotifyMode, AnnouncementTargeting } from '@/types'
 import type { Column } from '@/components/common/types'
 
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -304,7 +302,8 @@ const statusOptions = computed(() => [
 
 const notifyModeOptions = computed(() => [
   { value: 'silent', label: t('admin.announcements.notifyModeLabels.silent') },
-  { value: 'popup', label: t('admin.announcements.notifyModeLabels.popup') }
+  { value: 'popup', label: t('admin.announcements.notifyModeLabels.popup') },
+  { value: 'ticker', label: t('admin.announcements.notifyModeLabels.ticker') }
 ])
 
 const columns = computed<Column[]>(() => [
@@ -322,6 +321,18 @@ const statusLabel = (status: string) => {
   if (status === 'active') return t('admin.announcements.statusLabels.active')
   if (status === 'archived') return t('admin.announcements.statusLabels.archived')
   return status
+}
+
+const notifyModeLabel = (mode: AnnouncementNotifyMode | string) => {
+  if (mode === 'popup') return t('admin.announcements.notifyModeLabels.popup')
+  if (mode === 'ticker') return t('admin.announcements.notifyModeLabels.ticker')
+  return t('admin.announcements.notifyModeLabels.silent')
+}
+
+const notifyModeBadgeClass = (mode: AnnouncementNotifyMode | string) => {
+  if (mode === 'popup') return 'badge-warning'
+  if (mode === 'ticker') return 'badge-primary'
+  return 'badge-gray'
 }
 
 const targetingSummary = (targeting: AnnouncementTargeting) => {

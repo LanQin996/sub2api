@@ -4437,14 +4437,15 @@ export default {
       },
       notifyModeLabels: {
         silent: 'Silent',
-        popup: 'Popup'
+        popup: 'Popup',
+        ticker: 'Dashboard ticker'
       },
       form: {
         title: 'Title',
         content: 'Content (Markdown supported)',
         status: 'Status',
         notifyMode: 'Notify Mode',
-        notifyModeHint: 'Popup mode will show a popup notification to users',
+        notifyModeHint: 'Silent only appears in the announcement list, popup opens automatically, and dashboard ticker scrolls at the top of the user dashboard',
         startsAt: 'Starts At',
         endsAt: 'Ends At',
         startsAtHint: 'Leave empty to start immediately',
@@ -6596,6 +6597,7 @@ export default {
     markRead: 'Mark as read',
     markAllRead: 'Mark all as read',
     viewAll: 'View all announcements',
+    ticker: 'Announcements',
     markedAsRead: 'Marked as read',
     allMarkedAsRead: 'All announcements marked as read',
     newCount: '{count} new announcement | {count} new announcements',

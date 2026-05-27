@@ -4592,14 +4592,15 @@ export default {
       },
       notifyModeLabels: {
         silent: '静默',
-        popup: '弹窗'
+        popup: '弹窗',
+        ticker: '仪表盘播报'
       },
       form: {
         title: '标题',
         content: '内容（支持 Markdown）',
         status: '状态',
         notifyMode: '通知方式',
-        notifyModeHint: '弹窗模式会自动弹出通知给用户',
+        notifyModeHint: '静默仅在公告列表展示，弹窗会自动弹出，仪表盘播报会在用户仪表盘顶部滚动显示',
         startsAt: '开始时间',
         endsAt: '结束时间',
         startsAtHint: '留空表示立即生效',
@@ -6752,6 +6753,7 @@ export default {
     markRead: '标记已读',
     markAllRead: '全部已读',
     viewAll: '查看全部公告',
+    ticker: '公告播报',
     markedAsRead: '已标记为已读',
     allMarkedAsRead: '所有公告已标记为已读',
     newCount: '有 {count} 条新公告',
