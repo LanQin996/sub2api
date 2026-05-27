@@ -1290,13 +1290,14 @@ export interface RedeemCode {
   code: string
   type: RedeemCodeType
   value: number
-  status: 'active' | 'used' | 'expired' | 'unused'
+  status: 'active' | 'used' | 'expired' | 'unused' | 'disabled'
   used_by: number | null
   created_by?: number | null
   used_at: string | null
   created_at: string
   expires_at?: string | null
   updated_at?: string
+  notes?: string
   group_id?: number | null // 订阅类型专用
   validity_days?: number // 订阅类型专用
   user?: User
@@ -1311,6 +1312,18 @@ export interface GenerateRedeemCodesRequest {
   validity_days?: number // 订阅类型专用
   expires_at?: string | null
   expires_in_days?: number
+}
+
+export interface BatchUpdateRedeemCodeFields {
+  status?: 'unused' | 'disabled'
+  expires_at?: string | null
+  notes?: string
+  group_id?: number | null
+}
+
+export interface BatchUpdateRedeemCodesRequest {
+  ids: number[]
+  fields: BatchUpdateRedeemCodeFields
 }
 
 export interface RedeemCodeRequest {
@@ -1871,3 +1884,11 @@ export interface UpdateScheduledTestPlanRequest {
 
 // Payment types
 export type { SubscriptionPlan, PaymentOrder, CheckoutInfoResponse } from './payment'
+
+export type {
+  PlatformQuotaItem,
+  PlatformQuotaUpdateItem,
+  PlatformQuotaPlatform,
+  PlatformQuotaWindow,
+  PlatformQuotasResponse,
+} from '@/api/admin/users'
