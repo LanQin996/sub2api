@@ -2241,6 +2241,16 @@ func (r *stubUsageLogRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 }
 
+func (r *stubUsageLogRepo) SumActualCostByUser(ctx context.Context, userID int64) (float64, error) {
+	var total float64
+	for _, log := range r.userLogs[userID] {
+		if log.ActualCost > 0 {
+			total += log.ActualCost
+		}
+	}
+	return total, nil
+}
+
 func (r *stubUsageLogRepo) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	logs := r.userLogs[userID]
 	total := int64(len(logs))

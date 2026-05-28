@@ -258,6 +258,22 @@ func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usage
 	return repo
 }
 
+func (r *usageLogRepository) SumActualCostByUser(ctx context.Context, userID int64) (float64, error) {
+	if r == nil || r.sql == nil {
+		return 0, errors.New("usage log repository is not configured")
+	}
+	var total float64
+	err := scanSingleRow(ctx, r.sql, `
+		SELECT COALESCE(SUM(actual_cost), 0)
+		FROM usage_logs
+		WHERE user_id = $1 AND actual_cost > 0
+	`, []any{userID}, &total)
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 // getPerformanceStats 获取 RPM 和 TPM（近5分钟平均值，可选按用户过滤）
 func (r *usageLogRepository) getPerformanceStats(ctx context.Context, userID int64) (rpm, tpm int64, err error) {
 	fiveMinutesAgo := time.Now().Add(-5 * time.Minute)

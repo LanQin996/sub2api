@@ -5556,6 +5556,8 @@ export default {
         promoCodeHint: '允许用户在注册时使用优惠码',
         invitationCode: '邀请码注册',
         invitationCodeHint: '开启后，用户注册时需要填写有效的邀请码',
+        invitationHighSpender: '高消费用户发放邀请码',
+        invitationHighSpenderHint: '开启后，累计实际消费大于 $2000 的用户也可以生成邀请码',
         passwordReset: '忘记密码',
         passwordResetHint: '允许用户通过邮箱重置密码',
         frontendUrl: '前端地址',

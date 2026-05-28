@@ -5393,6 +5393,9 @@ export default {
         promoCodeHint: 'Allow users to use promo codes during registration',
         invitationCode: 'Invitation Code Registration',
         invitationCodeHint: 'When enabled, users must enter a valid invitation code to register',
+        invitationHighSpender: 'High-Spend Invitation Distribution',
+        invitationHighSpenderHint:
+          'When enabled, users whose cumulative actual spend is over $2000 can also generate invitation codes',
         passwordReset: 'Password Reset',
         passwordResetHint: 'Allow users to reset their password via email',
         frontendUrl: 'Frontend URL',
