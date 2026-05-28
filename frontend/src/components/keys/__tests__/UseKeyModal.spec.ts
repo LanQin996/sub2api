@@ -36,33 +36,53 @@ describe('UseKeyModal', () => {
     }
   })
 
-  it('uses ai as the Codex CLI model provider name', async () => {
+  it('renders GPT-5.5, goals, and ai provider in OpenAI Codex config', () => {
     const wrapper = mountOpenAIUseKeyModal()
 
-    let codeBlock = wrapper.find('pre code')
-    expect(codeBlock.text()).toContain('model_provider = "ai"')
-    expect(codeBlock.text()).toContain('[model_providers.ai]')
-    expect(codeBlock.text()).toContain('name = "ai"')
-    expect(codeBlock.text()).not.toContain('model_provider = "OpenAI"')
-    expect(codeBlock.text()).not.toContain('[model_providers.OpenAI]')
-    expect(codeBlock.text()).not.toContain('name = "OpenAI"')
+    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
+    const configToml = codeBlocks.find((content) => content.includes('model_provider = "ai"'))
 
-    const codexWsTab = wrapper.findAll('button').find((button) =>
+    expect(configToml).toBeDefined()
+    expect(configToml).toContain('model = "gpt-5.5"')
+    expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain('[model_providers.ai]')
+    expect(configToml).toContain('name = "ai"')
+    expect(configToml).not.toContain('model_provider = "OpenAI"')
+    expect(configToml).not.toContain('[model_providers.OpenAI]')
+    expect(configToml).not.toContain('name = "OpenAI"')
+    expect(configToml).not.toContain('model = "gpt-5.4"')
+    expect(configToml).not.toContain('model_context_window')
+    expect(configToml).not.toContain('model_auto_compact_token_limit')
+    expect(configToml).toContain('[features]\ngoals = true')
+  })
+
+  it('renders GPT-5.5, goals, and ai provider in OpenAI Codex WebSocket config', async () => {
+    const wrapper = mountOpenAIUseKeyModal()
+
+    const wsTab = wrapper.findAll('button').find((button) =>
       button.text().includes('keys.useKeyModal.cliTabs.codexCliWs')
     )
 
-    expect(codexWsTab).toBeDefined()
-    await codexWsTab!.trigger('click')
+    expect(wsTab).toBeDefined()
+    await wsTab!.trigger('click')
     await nextTick()
 
-    codeBlock = wrapper.find('pre code')
-    expect(codeBlock.text()).toContain('model_provider = "ai"')
-    expect(codeBlock.text()).toContain('[model_providers.ai]')
-    expect(codeBlock.text()).toContain('name = "ai"')
-    expect(codeBlock.text()).toContain('supports_websockets = true')
-    expect(codeBlock.text()).not.toContain('model_provider = "OpenAI"')
-    expect(codeBlock.text()).not.toContain('[model_providers.OpenAI]')
-    expect(codeBlock.text()).not.toContain('name = "OpenAI"')
+    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
+    const configToml = codeBlocks.find((content) => content.includes('supports_websockets = true'))
+
+    expect(configToml).toBeDefined()
+    expect(configToml).toContain('model_provider = "ai"')
+    expect(configToml).toContain('model = "gpt-5.5"')
+    expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain('[model_providers.ai]')
+    expect(configToml).toContain('name = "ai"')
+    expect(configToml).not.toContain('model_provider = "OpenAI"')
+    expect(configToml).not.toContain('[model_providers.OpenAI]')
+    expect(configToml).not.toContain('name = "OpenAI"')
+    expect(configToml).not.toContain('model = "gpt-5.4"')
+    expect(configToml).not.toContain('model_context_window')
+    expect(configToml).not.toContain('model_auto_compact_token_limit')
+    expect(configToml).toContain('[features]\nresponses_websockets_v2 = true\ngoals = true')
   })
 
   it('renders GPT-5.4 mini entry in OpenCode config', async () => {

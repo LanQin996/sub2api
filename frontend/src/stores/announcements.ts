@@ -17,8 +17,16 @@ export const useAnnouncementStore = defineStore('announcements', () => {
   let shownPopupIds = new Set<number>()
 
   // Getters
+  const bellAnnouncements = computed(() =>
+    announcements.value.filter((a) => a.notify_mode !== 'ticker')
+  )
+
   const unreadCount = computed(() =>
-    announcements.value.filter((a) => !a.read_at).length
+    bellAnnouncements.value.filter((a) => !a.read_at).length
+  )
+
+  const tickerAnnouncements = computed(() =>
+    announcements.value.filter((a) => a.notify_mode === 'ticker')
   )
 
   // Actions
@@ -98,7 +106,7 @@ export const useAnnouncementStore = defineStore('announcements', () => {
   }
 
   async function markAllAsRead() {
-    const unread = announcements.value.filter((a) => !a.read_at)
+    const unread = bellAnnouncements.value.filter((a) => !a.read_at)
     if (unread.length === 0) return
 
     try {
@@ -132,7 +140,9 @@ export const useAnnouncementStore = defineStore('announcements', () => {
     loading,
     currentPopup,
     // Getters
+    bellAnnouncements,
     unreadCount,
+    tickerAnnouncements,
     // Actions
     fetchAnnouncements,
     dismissPopup,
