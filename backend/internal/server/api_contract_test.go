@@ -58,6 +58,7 @@ func TestAPIContracts(t *testing.T) {
 					"rpm_limit": 0,
 					"status": "active",
 					"invitation_enabled": false,
+					"can_distribute_invitations": false,
 					"allowed_groups": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z",
@@ -821,6 +822,7 @@ func TestAPIContracts(t *testing.T) {
 						"enable_identity_patch": true,
 						"identity_patch_prompt": "",
 						"invitation_code_enabled": false,
+						"invitation_high_spender_enabled": false,
 						"home_content": "",
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
@@ -844,6 +846,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": true,
 					"openai_codex_user_agent":           "",
+					"openai_allow_claude_code_codex_plugin": false,
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -948,6 +951,7 @@ func TestAPIContracts(t *testing.T) {
 					"password_reset_enabled": false,
 					"frontend_url": "",
 						"invitation_code_enabled": false,
+						"invitation_high_spender_enabled": false,
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
 						"login_agreement_enabled": false,
@@ -1080,6 +1084,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": false,
 					"openai_codex_user_agent":           "",
+					"openai_allow_claude_code_codex_plugin": false,
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -2263,6 +2268,16 @@ func (r *stubUsageLogRepo) GetByID(ctx context.Context, id int64) (*service.Usag
 
 func (r *stubUsageLogRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
+}
+
+func (r *stubUsageLogRepo) SumActualCostByUser(ctx context.Context, userID int64) (float64, error) {
+	var total float64
+	for _, log := range r.userLogs[userID] {
+		if log.ActualCost > 0 {
+			total += log.ActualCost
+		}
+	}
+	return total, nil
 }
 
 func (r *stubUsageLogRepo) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {

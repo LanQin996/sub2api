@@ -522,7 +522,11 @@ const { copyToClipboard } = useClipboard()
 
 const user = computed(() => authStore.user)
 const canDistributeInvitations = computed(() => {
-  return Boolean(user.value?.invitation_enabled || user.value?.role === 'admin')
+  return Boolean(
+    user.value?.can_distribute_invitations ||
+      user.value?.invitation_enabled ||
+      user.value?.role === 'admin',
+  )
 })
 
 const redeemCode = ref('')

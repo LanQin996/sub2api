@@ -102,6 +102,7 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	userDTO := h.userDTOWithInvitationEligibility(c.Request.Context(), user)
 
 	tokenPair, err := h.authService.GenerateTokenPair(c.Request.Context(), user, "")
 	if err != nil {
@@ -115,7 +116,7 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 		response.Success(c, AuthResponse{
 			AccessToken: token,
 			TokenType:   "Bearer",
-			User:        dto.UserFromService(user),
+			User:        userDTO,
 		})
 		return
 	}
@@ -124,8 +125,16 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 		RefreshToken: tokenPair.RefreshToken,
 		ExpiresIn:    tokenPair.ExpiresIn,
 		TokenType:    "Bearer",
-		User:         dto.UserFromService(user),
+		User:         userDTO,
 	})
+}
+
+func (h *AuthHandler) userDTOWithInvitationEligibility(ctx context.Context, user *service.User) *dto.User {
+	out := dto.UserFromService(user)
+	if out != nil && h.redeemService != nil {
+		out.CanDistributeInvitations = h.redeemService.CanDistributeInvitations(ctx, user)
+	}
+	return out
 }
 
 func (h *AuthHandler) ensureBackendModeAllowsUser(ctx context.Context, user *service.User) error {
@@ -431,8 +440,13 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		runMode = h.cfg.RunMode
 	}
 
+	profile := userProfileResponseFromService(user, identities)
+	if h.redeemService != nil {
+		profile.CanDistributeInvitations = h.redeemService.CanDistributeInvitations(c.Request.Context(), user)
+	}
+
 	response.Success(c, UserResponse{
-		userProfileResponse: userProfileResponseFromService(user, identities),
+		userProfileResponse: profile,
 		RunMode:             runMode,
 	})
 }

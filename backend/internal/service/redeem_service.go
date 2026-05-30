@@ -144,6 +144,8 @@ type RedeemService struct {
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	affiliateService     *AffiliateService
+	settingService       *SettingService
+	usageRepo            UsageLogRepository
 }
 
 // NewRedeemService 创建兑换码服务实例
@@ -167,6 +169,32 @@ func NewRedeemService(
 		authCacheInvalidator: authCacheInvalidator,
 		affiliateService:     affiliateService,
 	}
+}
+
+func (s *RedeemService) SetInvitationEligibilityDeps(settingService *SettingService, usageRepo UsageLogRepository) {
+	s.settingService = settingService
+	s.usageRepo = usageRepo
+}
+
+func (s *RedeemService) CanDistributeInvitations(ctx context.Context, user *User) bool {
+	if user == nil {
+		return false
+	}
+	if user.InvitationEnabled || user.IsAdmin() {
+		return true
+	}
+	if s == nil || s.settingService == nil || s.usageRepo == nil {
+		return false
+	}
+	if !s.settingService.IsInvitationHighSpenderEnabled(ctx) {
+		return false
+	}
+	total, err := s.usageRepo.SumActualCostByUser(ctx, user.ID)
+	if err != nil {
+		logger.LegacyPrintf("service.redeem", "[Invitation] failed to sum actual cost for user %d: %v", user.ID, err)
+		return false
+	}
+	return total > InvitationHighSpenderActualCostThreshold
 }
 
 // GenerateRandomCode 生成随机兑换码
@@ -242,7 +270,7 @@ func (s *RedeemService) GenerateInvitationCodesForUser(ctx context.Context, user
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
-	if user == nil || (!user.InvitationEnabled && !user.IsAdmin()) {
+	if !s.CanDistributeInvitations(ctx, user) {
 		return nil, ErrInvitationPermissionDenied
 	}
 
@@ -661,7 +689,7 @@ func (s *RedeemService) ListInvitationCodesByCreator(ctx context.Context, userID
 	if err != nil {
 		return nil, nil, fmt.Errorf("get user: %w", err)
 	}
-	if user == nil || (!user.InvitationEnabled && !user.IsAdmin()) {
+	if !s.CanDistributeInvitations(ctx, user) {
 		return nil, nil, ErrInvitationPermissionDenied
 	}
 
