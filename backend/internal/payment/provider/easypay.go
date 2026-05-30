@@ -214,23 +214,41 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 		return nil, fmt.Errorf("easypay query: %w", err)
 	}
 	var resp struct {
-		Code   int    `json:"code"`
-		Msg    string `json:"msg"`
-		Status int    `json:"status"`
-		Money  string `json:"money"`
+		Code       int    `json:"code"`
+		Msg        string `json:"msg"`
+		Status     int    `json:"status"`
+		Money      string `json:"money"`
+		TradeNo    string `json:"trade_no"`
+		APITradeNo string `json:"api_trade_no"`
+		EndTime    string `json:"endtime"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("easypay parse query: %w", err)
+	}
+	if resp.Code != easypayCodeSuccess {
+		msg := strings.TrimSpace(resp.Msg)
+		if msg == "" {
+			msg = summarizeEasyPayResponse(body)
+		}
+		return nil, fmt.Errorf("easypay query failed: %s", msg)
 	}
 	status := payment.ProviderStatusPending
 	if resp.Status == easypayStatusPaid {
 		status = payment.ProviderStatusPaid
 	}
 	amount, _ := strconv.ParseFloat(resp.Money, 64)
+	upstreamTradeNo := strings.TrimSpace(resp.TradeNo)
+	if upstreamTradeNo == "" {
+		upstreamTradeNo = strings.TrimSpace(resp.APITradeNo)
+	}
+	if upstreamTradeNo == "" {
+		upstreamTradeNo = tradeNo
+	}
 	return &payment.QueryOrderResponse{
-		TradeNo:  tradeNo,
+		TradeNo:  upstreamTradeNo,
 		Status:   status,
 		Amount:   amount,
+		PaidAt:   strings.TrimSpace(resp.EndTime),
 		Metadata: e.MerchantIdentityMetadata(),
 	}, nil
 }
