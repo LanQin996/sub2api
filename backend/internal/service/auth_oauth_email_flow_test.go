@@ -86,6 +86,13 @@ func (s *redeemCodeRepoStub) Use(_ context.Context, id, userID int64) error {
 	return ErrRedeemCodeNotFound
 }
 
+func (s *redeemCodeRepoStub) RedeemOnce(ctx context.Context, code *RedeemCode, userID int64, value float64) error {
+	if code == nil {
+		return ErrRedeemCodeNotFound
+	}
+	return s.Use(ctx, code.ID, userID)
+}
+
 func (s *redeemCodeRepoStub) List(context.Context, pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }

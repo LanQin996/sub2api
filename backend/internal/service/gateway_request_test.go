@@ -5,6 +5,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -985,6 +986,10 @@ func TestParseGatewayRequest_OptionalFieldsMissing(t *testing.T) {
 
 // Task 7.4 — max_tokens 边界测试
 func TestParseGatewayRequest_MaxTokensBoundary(t *testing.T) {
+	hugeMaxTokens := 0
+	if strconv.IntSize == 64 {
+		hugeMaxTokens, _ = strconv.Atoi("10000000000000000") // float64 precision turns 9999999999999999 into 1e16.
+	}
 	tests := []struct {
 		name          string
 		body          string
@@ -1009,7 +1014,7 @@ func TestParseGatewayRequest_MaxTokensBoundary(t *testing.T) {
 		{
 			name:          "超大值不 panic",
 			body:          `{"max_tokens":9999999999999999}`,
-			wantMaxTokens: 10000000000000000, // float64 精度导致 9999999999999999 → 1e16
+			wantMaxTokens: hugeMaxTokens,
 		},
 		{
 			name:          "null 值被忽略",

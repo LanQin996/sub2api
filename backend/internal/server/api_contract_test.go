@@ -457,7 +457,13 @@ func TestAPIContracts(t *testing.T) {
 						"used_at": "2025-01-02T03:04:05Z",
 						"created_at": "2025-01-02T03:04:05Z",
 						"group_id": null,
-						"validity_days": 0
+						"validity_days": 0,
+						"max_redemptions": 0,
+						"redeemed_count": 0,
+						"per_user_limit": false,
+						"random_amount_enabled": false,
+						"random_min_value": 0,
+						"random_max_value": 0
 					}
 				]
 			}`,
@@ -1888,6 +1894,10 @@ func (stubRedeemCodeRepo) Delete(ctx context.Context, id int64) error {
 }
 
 func (stubRedeemCodeRepo) Use(ctx context.Context, id, userID int64) error {
+	return errors.New("not implemented")
+}
+
+func (stubRedeemCodeRepo) RedeemOnce(ctx context.Context, code *service.RedeemCode, userID int64, value float64) error {
 	return errors.New("not implemented")
 }
 

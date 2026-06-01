@@ -2517,6 +2517,13 @@ func (r *oauthPendingFlowRedeemCodeRepo) Use(ctx context.Context, id, userID int
 	return nil
 }
 
+func (r *oauthPendingFlowRedeemCodeRepo) RedeemOnce(ctx context.Context, code *service.RedeemCode, userID int64, value float64) error {
+	if code == nil {
+		return service.ErrRedeemCodeNotFound
+	}
+	return r.Use(ctx, code.ID, userID)
+}
+
 func (r *oauthPendingFlowRedeemCodeRepo) List(context.Context, pagination.PaginationParams) ([]service.RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }

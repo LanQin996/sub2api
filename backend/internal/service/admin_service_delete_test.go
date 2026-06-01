@@ -384,6 +384,10 @@ func (s *redeemRepoStub) Use(ctx context.Context, id, userID int64) error {
 	panic("unexpected Use call")
 }
 
+func (s *redeemRepoStub) RedeemOnce(ctx context.Context, code *RedeemCode, userID int64, value float64) error {
+	panic("unexpected RedeemOnce call")
+}
+
 func (s *redeemRepoStub) List(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }

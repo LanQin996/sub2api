@@ -145,6 +145,13 @@ func (r *paymentOrderLifecycleRedeemRepo) Use(_ context.Context, id, userID int6
 	return ErrRedeemCodeNotFound
 }
 
+func (r *paymentOrderLifecycleRedeemRepo) RedeemOnce(ctx context.Context, code *RedeemCode, userID int64, value float64) error {
+	if code == nil {
+		return ErrRedeemCodeNotFound
+	}
+	return r.Use(ctx, code.ID, userID)
+}
+
 func (r *paymentOrderLifecycleRedeemRepo) List(context.Context, pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected call")
 }
