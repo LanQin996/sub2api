@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
@@ -76,6 +77,118 @@ func (_u *RedeemCodeUpdate) SetNillableValue(v *float64) *RedeemCodeUpdate {
 // AddValue adds value to the "value" field.
 func (_u *RedeemCodeUpdate) AddValue(v float64) *RedeemCodeUpdate {
 	_u.mutation.AddValue(v)
+	return _u
+}
+
+// SetMaxRedemptions sets the "max_redemptions" field.
+func (_u *RedeemCodeUpdate) SetMaxRedemptions(v int) *RedeemCodeUpdate {
+	_u.mutation.ResetMaxRedemptions()
+	_u.mutation.SetMaxRedemptions(v)
+	return _u
+}
+
+// SetNillableMaxRedemptions sets the "max_redemptions" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableMaxRedemptions(v *int) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetMaxRedemptions(*v)
+	}
+	return _u
+}
+
+// AddMaxRedemptions adds value to the "max_redemptions" field.
+func (_u *RedeemCodeUpdate) AddMaxRedemptions(v int) *RedeemCodeUpdate {
+	_u.mutation.AddMaxRedemptions(v)
+	return _u
+}
+
+// SetRedeemedCount sets the "redeemed_count" field.
+func (_u *RedeemCodeUpdate) SetRedeemedCount(v int) *RedeemCodeUpdate {
+	_u.mutation.ResetRedeemedCount()
+	_u.mutation.SetRedeemedCount(v)
+	return _u
+}
+
+// SetNillableRedeemedCount sets the "redeemed_count" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableRedeemedCount(v *int) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetRedeemedCount(*v)
+	}
+	return _u
+}
+
+// AddRedeemedCount adds value to the "redeemed_count" field.
+func (_u *RedeemCodeUpdate) AddRedeemedCount(v int) *RedeemCodeUpdate {
+	_u.mutation.AddRedeemedCount(v)
+	return _u
+}
+
+// SetPerUserLimit sets the "per_user_limit" field.
+func (_u *RedeemCodeUpdate) SetPerUserLimit(v bool) *RedeemCodeUpdate {
+	_u.mutation.SetPerUserLimit(v)
+	return _u
+}
+
+// SetNillablePerUserLimit sets the "per_user_limit" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillablePerUserLimit(v *bool) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetPerUserLimit(*v)
+	}
+	return _u
+}
+
+// SetRandomAmountEnabled sets the "random_amount_enabled" field.
+func (_u *RedeemCodeUpdate) SetRandomAmountEnabled(v bool) *RedeemCodeUpdate {
+	_u.mutation.SetRandomAmountEnabled(v)
+	return _u
+}
+
+// SetNillableRandomAmountEnabled sets the "random_amount_enabled" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableRandomAmountEnabled(v *bool) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetRandomAmountEnabled(*v)
+	}
+	return _u
+}
+
+// SetRandomMinValue sets the "random_min_value" field.
+func (_u *RedeemCodeUpdate) SetRandomMinValue(v float64) *RedeemCodeUpdate {
+	_u.mutation.ResetRandomMinValue()
+	_u.mutation.SetRandomMinValue(v)
+	return _u
+}
+
+// SetNillableRandomMinValue sets the "random_min_value" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableRandomMinValue(v *float64) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetRandomMinValue(*v)
+	}
+	return _u
+}
+
+// AddRandomMinValue adds value to the "random_min_value" field.
+func (_u *RedeemCodeUpdate) AddRandomMinValue(v float64) *RedeemCodeUpdate {
+	_u.mutation.AddRandomMinValue(v)
+	return _u
+}
+
+// SetRandomMaxValue sets the "random_max_value" field.
+func (_u *RedeemCodeUpdate) SetRandomMaxValue(v float64) *RedeemCodeUpdate {
+	_u.mutation.ResetRandomMaxValue()
+	_u.mutation.SetRandomMaxValue(v)
+	return _u
+}
+
+// SetNillableRandomMaxValue sets the "random_max_value" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableRandomMaxValue(v *float64) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetRandomMaxValue(*v)
+	}
+	return _u
+}
+
+// AddRandomMaxValue adds value to the "random_max_value" field.
+func (_u *RedeemCodeUpdate) AddRandomMaxValue(v float64) *RedeemCodeUpdate {
+	_u.mutation.AddRandomMaxValue(v)
 	return _u
 }
 
@@ -277,6 +390,21 @@ func (_u *RedeemCodeUpdate) SetGroup(v *Group) *RedeemCodeUpdate {
 	return _u.SetGroupID(v.ID)
 }
 
+// AddUsageIDs adds the "usages" edge to the RedeemCodeUsage entity by IDs.
+func (_u *RedeemCodeUpdate) AddUsageIDs(ids ...int64) *RedeemCodeUpdate {
+	_u.mutation.AddUsageIDs(ids...)
+	return _u
+}
+
+// AddUsages adds the "usages" edges to the RedeemCodeUsage entity.
+func (_u *RedeemCodeUpdate) AddUsages(v ...*RedeemCodeUsage) *RedeemCodeUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddUsageIDs(ids...)
+}
+
 // Mutation returns the RedeemCodeMutation object of the builder.
 func (_u *RedeemCodeUpdate) Mutation() *RedeemCodeMutation {
 	return _u.mutation
@@ -298,6 +426,27 @@ func (_u *RedeemCodeUpdate) ClearCreator() *RedeemCodeUpdate {
 func (_u *RedeemCodeUpdate) ClearGroup() *RedeemCodeUpdate {
 	_u.mutation.ClearGroup()
 	return _u
+}
+
+// ClearUsages clears all "usages" edges to the RedeemCodeUsage entity.
+func (_u *RedeemCodeUpdate) ClearUsages() *RedeemCodeUpdate {
+	_u.mutation.ClearUsages()
+	return _u
+}
+
+// RemoveUsageIDs removes the "usages" edge to RedeemCodeUsage entities by IDs.
+func (_u *RedeemCodeUpdate) RemoveUsageIDs(ids ...int64) *RedeemCodeUpdate {
+	_u.mutation.RemoveUsageIDs(ids...)
+	return _u
+}
+
+// RemoveUsages removes "usages" edges to RedeemCodeUsage entities.
+func (_u *RedeemCodeUpdate) RemoveUsages(v ...*RedeemCodeUsage) *RedeemCodeUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveUsageIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -370,6 +519,36 @@ func (_u *RedeemCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if value, ok := _u.mutation.AddedValue(); ok {
 		_spec.AddField(redeemcode.FieldValue, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.MaxRedemptions(); ok {
+		_spec.SetField(redeemcode.FieldMaxRedemptions, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxRedemptions(); ok {
+		_spec.AddField(redeemcode.FieldMaxRedemptions, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.RedeemedCount(); ok {
+		_spec.SetField(redeemcode.FieldRedeemedCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRedeemedCount(); ok {
+		_spec.AddField(redeemcode.FieldRedeemedCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.PerUserLimit(); ok {
+		_spec.SetField(redeemcode.FieldPerUserLimit, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RandomAmountEnabled(); ok {
+		_spec.SetField(redeemcode.FieldRandomAmountEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RandomMinValue(); ok {
+		_spec.SetField(redeemcode.FieldRandomMinValue, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRandomMinValue(); ok {
+		_spec.AddField(redeemcode.FieldRandomMinValue, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.RandomMaxValue(); ok {
+		_spec.SetField(redeemcode.FieldRandomMaxValue, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRandomMaxValue(); ok {
+		_spec.AddField(redeemcode.FieldRandomMaxValue, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(redeemcode.FieldStatus, field.TypeString, value)
@@ -485,6 +664,51 @@ func (_u *RedeemCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.UsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedUsagesIDs(); len(nodes) > 0 && !_u.mutation.UsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.UsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{redeemcode.Label}
@@ -551,6 +775,118 @@ func (_u *RedeemCodeUpdateOne) SetNillableValue(v *float64) *RedeemCodeUpdateOne
 // AddValue adds value to the "value" field.
 func (_u *RedeemCodeUpdateOne) AddValue(v float64) *RedeemCodeUpdateOne {
 	_u.mutation.AddValue(v)
+	return _u
+}
+
+// SetMaxRedemptions sets the "max_redemptions" field.
+func (_u *RedeemCodeUpdateOne) SetMaxRedemptions(v int) *RedeemCodeUpdateOne {
+	_u.mutation.ResetMaxRedemptions()
+	_u.mutation.SetMaxRedemptions(v)
+	return _u
+}
+
+// SetNillableMaxRedemptions sets the "max_redemptions" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableMaxRedemptions(v *int) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetMaxRedemptions(*v)
+	}
+	return _u
+}
+
+// AddMaxRedemptions adds value to the "max_redemptions" field.
+func (_u *RedeemCodeUpdateOne) AddMaxRedemptions(v int) *RedeemCodeUpdateOne {
+	_u.mutation.AddMaxRedemptions(v)
+	return _u
+}
+
+// SetRedeemedCount sets the "redeemed_count" field.
+func (_u *RedeemCodeUpdateOne) SetRedeemedCount(v int) *RedeemCodeUpdateOne {
+	_u.mutation.ResetRedeemedCount()
+	_u.mutation.SetRedeemedCount(v)
+	return _u
+}
+
+// SetNillableRedeemedCount sets the "redeemed_count" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableRedeemedCount(v *int) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetRedeemedCount(*v)
+	}
+	return _u
+}
+
+// AddRedeemedCount adds value to the "redeemed_count" field.
+func (_u *RedeemCodeUpdateOne) AddRedeemedCount(v int) *RedeemCodeUpdateOne {
+	_u.mutation.AddRedeemedCount(v)
+	return _u
+}
+
+// SetPerUserLimit sets the "per_user_limit" field.
+func (_u *RedeemCodeUpdateOne) SetPerUserLimit(v bool) *RedeemCodeUpdateOne {
+	_u.mutation.SetPerUserLimit(v)
+	return _u
+}
+
+// SetNillablePerUserLimit sets the "per_user_limit" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillablePerUserLimit(v *bool) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetPerUserLimit(*v)
+	}
+	return _u
+}
+
+// SetRandomAmountEnabled sets the "random_amount_enabled" field.
+func (_u *RedeemCodeUpdateOne) SetRandomAmountEnabled(v bool) *RedeemCodeUpdateOne {
+	_u.mutation.SetRandomAmountEnabled(v)
+	return _u
+}
+
+// SetNillableRandomAmountEnabled sets the "random_amount_enabled" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableRandomAmountEnabled(v *bool) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetRandomAmountEnabled(*v)
+	}
+	return _u
+}
+
+// SetRandomMinValue sets the "random_min_value" field.
+func (_u *RedeemCodeUpdateOne) SetRandomMinValue(v float64) *RedeemCodeUpdateOne {
+	_u.mutation.ResetRandomMinValue()
+	_u.mutation.SetRandomMinValue(v)
+	return _u
+}
+
+// SetNillableRandomMinValue sets the "random_min_value" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableRandomMinValue(v *float64) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetRandomMinValue(*v)
+	}
+	return _u
+}
+
+// AddRandomMinValue adds value to the "random_min_value" field.
+func (_u *RedeemCodeUpdateOne) AddRandomMinValue(v float64) *RedeemCodeUpdateOne {
+	_u.mutation.AddRandomMinValue(v)
+	return _u
+}
+
+// SetRandomMaxValue sets the "random_max_value" field.
+func (_u *RedeemCodeUpdateOne) SetRandomMaxValue(v float64) *RedeemCodeUpdateOne {
+	_u.mutation.ResetRandomMaxValue()
+	_u.mutation.SetRandomMaxValue(v)
+	return _u
+}
+
+// SetNillableRandomMaxValue sets the "random_max_value" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableRandomMaxValue(v *float64) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetRandomMaxValue(*v)
+	}
+	return _u
+}
+
+// AddRandomMaxValue adds value to the "random_max_value" field.
+func (_u *RedeemCodeUpdateOne) AddRandomMaxValue(v float64) *RedeemCodeUpdateOne {
+	_u.mutation.AddRandomMaxValue(v)
 	return _u
 }
 
@@ -752,6 +1088,21 @@ func (_u *RedeemCodeUpdateOne) SetGroup(v *Group) *RedeemCodeUpdateOne {
 	return _u.SetGroupID(v.ID)
 }
 
+// AddUsageIDs adds the "usages" edge to the RedeemCodeUsage entity by IDs.
+func (_u *RedeemCodeUpdateOne) AddUsageIDs(ids ...int64) *RedeemCodeUpdateOne {
+	_u.mutation.AddUsageIDs(ids...)
+	return _u
+}
+
+// AddUsages adds the "usages" edges to the RedeemCodeUsage entity.
+func (_u *RedeemCodeUpdateOne) AddUsages(v ...*RedeemCodeUsage) *RedeemCodeUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddUsageIDs(ids...)
+}
+
 // Mutation returns the RedeemCodeMutation object of the builder.
 func (_u *RedeemCodeUpdateOne) Mutation() *RedeemCodeMutation {
 	return _u.mutation
@@ -773,6 +1124,27 @@ func (_u *RedeemCodeUpdateOne) ClearCreator() *RedeemCodeUpdateOne {
 func (_u *RedeemCodeUpdateOne) ClearGroup() *RedeemCodeUpdateOne {
 	_u.mutation.ClearGroup()
 	return _u
+}
+
+// ClearUsages clears all "usages" edges to the RedeemCodeUsage entity.
+func (_u *RedeemCodeUpdateOne) ClearUsages() *RedeemCodeUpdateOne {
+	_u.mutation.ClearUsages()
+	return _u
+}
+
+// RemoveUsageIDs removes the "usages" edge to RedeemCodeUsage entities by IDs.
+func (_u *RedeemCodeUpdateOne) RemoveUsageIDs(ids ...int64) *RedeemCodeUpdateOne {
+	_u.mutation.RemoveUsageIDs(ids...)
+	return _u
+}
+
+// RemoveUsages removes "usages" edges to RedeemCodeUsage entities.
+func (_u *RedeemCodeUpdateOne) RemoveUsages(v ...*RedeemCodeUsage) *RedeemCodeUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveUsageIDs(ids...)
 }
 
 // Where appends a list predicates to the RedeemCodeUpdate builder.
@@ -875,6 +1247,36 @@ func (_u *RedeemCodeUpdateOne) sqlSave(ctx context.Context) (_node *RedeemCode, 
 	}
 	if value, ok := _u.mutation.AddedValue(); ok {
 		_spec.AddField(redeemcode.FieldValue, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.MaxRedemptions(); ok {
+		_spec.SetField(redeemcode.FieldMaxRedemptions, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxRedemptions(); ok {
+		_spec.AddField(redeemcode.FieldMaxRedemptions, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.RedeemedCount(); ok {
+		_spec.SetField(redeemcode.FieldRedeemedCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRedeemedCount(); ok {
+		_spec.AddField(redeemcode.FieldRedeemedCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.PerUserLimit(); ok {
+		_spec.SetField(redeemcode.FieldPerUserLimit, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RandomAmountEnabled(); ok {
+		_spec.SetField(redeemcode.FieldRandomAmountEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RandomMinValue(); ok {
+		_spec.SetField(redeemcode.FieldRandomMinValue, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRandomMinValue(); ok {
+		_spec.AddField(redeemcode.FieldRandomMinValue, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.RandomMaxValue(); ok {
+		_spec.SetField(redeemcode.FieldRandomMaxValue, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRandomMaxValue(); ok {
+		_spec.AddField(redeemcode.FieldRandomMaxValue, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(redeemcode.FieldStatus, field.TypeString, value)
@@ -983,6 +1385,51 @@ func (_u *RedeemCodeUpdateOne) sqlSave(ctx context.Context) (_node *RedeemCode, 
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.UsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedUsagesIDs(); len(nodes) > 0 && !_u.mutation.UsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.UsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

@@ -1314,6 +1314,12 @@ export interface RedeemCode {
   type: RedeemCodeType
   value: number
   status: 'active' | 'used' | 'expired' | 'unused' | 'disabled'
+  max_redemptions: number
+  redeemed_count: number
+  per_user_limit: boolean
+  random_amount_enabled: boolean
+  random_min_value: number
+  random_max_value: number
   used_by: number | null
   created_by?: number | null
   used_at: string | null
@@ -1335,6 +1341,11 @@ export interface GenerateRedeemCodesRequest {
   validity_days?: number // 订阅类型专用
   expires_at?: string | null
   expires_in_days?: number
+  max_redemptions?: number
+  per_user_limit?: boolean
+  random_amount_enabled?: boolean
+  random_min_value?: number
+  random_max_value?: number
 }
 
 export interface BatchUpdateRedeemCodeFields {

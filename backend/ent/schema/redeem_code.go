@@ -45,6 +45,20 @@ func (RedeemCode) Fields() []ent.Field {
 		field.Float("value").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
+		field.Int("max_redemptions").
+			Default(1),
+		field.Int("redeemed_count").
+			Default(0),
+		field.Bool("per_user_limit").
+			Default(false),
+		field.Bool("random_amount_enabled").
+			Default(false),
+		field.Float("random_min_value").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Default(0),
+		field.Float("random_max_value").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Default(0),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusUnused),
@@ -92,6 +106,7 @@ func (RedeemCode) Edges() []ent.Edge {
 			Ref("redeem_codes").
 			Field("group_id").
 			Unique(),
+		edge.To("usages", RedeemCodeUsage.Type),
 	}
 }
 

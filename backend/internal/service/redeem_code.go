@@ -7,17 +7,23 @@ import (
 )
 
 type RedeemCode struct {
-	ID        int64
-	Code      string
-	Type      string
-	Value     float64
-	Status    string
-	UsedBy    *int64
-	CreatedBy *int64
-	UsedAt    *time.Time
-	Notes     string
-	CreatedAt time.Time
-	ExpiresAt *time.Time
+	ID                  int64
+	Code                string
+	Type                string
+	Value               float64
+	Status              string
+	MaxRedemptions      int
+	RedeemedCount       int
+	PerUserLimit        bool
+	RandomAmountEnabled bool
+	RandomMinValue      float64
+	RandomMaxValue      float64
+	UsedBy              *int64
+	CreatedBy           *int64
+	UsedAt              *time.Time
+	Notes               string
+	CreatedAt           time.Time
+	ExpiresAt           *time.Time
 
 	GroupID      *int64
 	ValidityDays int
@@ -45,7 +51,22 @@ func (r *RedeemCode) IsExpiredAt(now time.Time) bool {
 }
 
 func (r *RedeemCode) CanUse() bool {
-	return r.Status == StatusUnused && !r.IsExpired()
+	return r.Status == StatusUnused && !r.IsExpired() && r.HasRemainingRedemptions()
+}
+
+func (r *RedeemCode) HasRemainingRedemptions() bool {
+	if r == nil {
+		return false
+	}
+	maxRedemptions := r.MaxRedemptions
+	if maxRedemptions <= 0 {
+		maxRedemptions = 1
+	}
+	return r.RedeemedCount < maxRedemptions
+}
+
+func (r *RedeemCode) IsMultiUse() bool {
+	return r != nil && r.MaxRedemptions > 1
 }
 
 func GenerateRedeemCode() (string, error) {

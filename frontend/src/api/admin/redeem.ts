@@ -70,12 +70,20 @@ export async function generate(
   value: number,
   groupId?: number | null,
   validityDays?: number,
-  expiresInDays?: number | null
+  expiresInDays?: number | null,
+  options?: {
+    max_redemptions?: number
+    per_user_limit?: boolean
+    random_amount_enabled?: boolean
+    random_min_value?: number
+    random_max_value?: number
+  }
 ): Promise<RedeemCode[]> {
   const payload: GenerateRedeemCodesRequest = {
     count,
     type,
-    value
+    value,
+    ...options
   }
 
   // 订阅类型专用字段

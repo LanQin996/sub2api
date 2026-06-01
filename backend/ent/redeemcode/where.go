@@ -70,6 +70,36 @@ func Value(v float64) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldEQ(FieldValue, v))
 }
 
+// MaxRedemptions applies equality check predicate on the "max_redemptions" field. It's identical to MaxRedemptionsEQ.
+func MaxRedemptions(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldMaxRedemptions, v))
+}
+
+// RedeemedCount applies equality check predicate on the "redeemed_count" field. It's identical to RedeemedCountEQ.
+func RedeemedCount(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldRedeemedCount, v))
+}
+
+// PerUserLimit applies equality check predicate on the "per_user_limit" field. It's identical to PerUserLimitEQ.
+func PerUserLimit(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldPerUserLimit, v))
+}
+
+// RandomAmountEnabled applies equality check predicate on the "random_amount_enabled" field. It's identical to RandomAmountEnabledEQ.
+func RandomAmountEnabled(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldRandomAmountEnabled, v))
+}
+
+// RandomMinValue applies equality check predicate on the "random_min_value" field. It's identical to RandomMinValueEQ.
+func RandomMinValue(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldRandomMinValue, v))
+}
+
+// RandomMaxValue applies equality check predicate on the "random_max_value" field. It's identical to RandomMaxValueEQ.
+func RandomMaxValue(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldRandomMaxValue, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldEQ(FieldStatus, v))
@@ -283,6 +313,186 @@ func ValueLT(v float64) predicate.RedeemCode {
 // ValueLTE applies the LTE predicate on the "value" field.
 func ValueLTE(v float64) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldLTE(FieldValue, v))
+}
+
+// MaxRedemptionsEQ applies the EQ predicate on the "max_redemptions" field.
+func MaxRedemptionsEQ(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldMaxRedemptions, v))
+}
+
+// MaxRedemptionsNEQ applies the NEQ predicate on the "max_redemptions" field.
+func MaxRedemptionsNEQ(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldMaxRedemptions, v))
+}
+
+// MaxRedemptionsIn applies the In predicate on the "max_redemptions" field.
+func MaxRedemptionsIn(vs ...int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIn(FieldMaxRedemptions, vs...))
+}
+
+// MaxRedemptionsNotIn applies the NotIn predicate on the "max_redemptions" field.
+func MaxRedemptionsNotIn(vs ...int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotIn(FieldMaxRedemptions, vs...))
+}
+
+// MaxRedemptionsGT applies the GT predicate on the "max_redemptions" field.
+func MaxRedemptionsGT(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGT(FieldMaxRedemptions, v))
+}
+
+// MaxRedemptionsGTE applies the GTE predicate on the "max_redemptions" field.
+func MaxRedemptionsGTE(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGTE(FieldMaxRedemptions, v))
+}
+
+// MaxRedemptionsLT applies the LT predicate on the "max_redemptions" field.
+func MaxRedemptionsLT(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLT(FieldMaxRedemptions, v))
+}
+
+// MaxRedemptionsLTE applies the LTE predicate on the "max_redemptions" field.
+func MaxRedemptionsLTE(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLTE(FieldMaxRedemptions, v))
+}
+
+// RedeemedCountEQ applies the EQ predicate on the "redeemed_count" field.
+func RedeemedCountEQ(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldRedeemedCount, v))
+}
+
+// RedeemedCountNEQ applies the NEQ predicate on the "redeemed_count" field.
+func RedeemedCountNEQ(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldRedeemedCount, v))
+}
+
+// RedeemedCountIn applies the In predicate on the "redeemed_count" field.
+func RedeemedCountIn(vs ...int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIn(FieldRedeemedCount, vs...))
+}
+
+// RedeemedCountNotIn applies the NotIn predicate on the "redeemed_count" field.
+func RedeemedCountNotIn(vs ...int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotIn(FieldRedeemedCount, vs...))
+}
+
+// RedeemedCountGT applies the GT predicate on the "redeemed_count" field.
+func RedeemedCountGT(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGT(FieldRedeemedCount, v))
+}
+
+// RedeemedCountGTE applies the GTE predicate on the "redeemed_count" field.
+func RedeemedCountGTE(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGTE(FieldRedeemedCount, v))
+}
+
+// RedeemedCountLT applies the LT predicate on the "redeemed_count" field.
+func RedeemedCountLT(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLT(FieldRedeemedCount, v))
+}
+
+// RedeemedCountLTE applies the LTE predicate on the "redeemed_count" field.
+func RedeemedCountLTE(v int) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLTE(FieldRedeemedCount, v))
+}
+
+// PerUserLimitEQ applies the EQ predicate on the "per_user_limit" field.
+func PerUserLimitEQ(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldPerUserLimit, v))
+}
+
+// PerUserLimitNEQ applies the NEQ predicate on the "per_user_limit" field.
+func PerUserLimitNEQ(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldPerUserLimit, v))
+}
+
+// RandomAmountEnabledEQ applies the EQ predicate on the "random_amount_enabled" field.
+func RandomAmountEnabledEQ(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldRandomAmountEnabled, v))
+}
+
+// RandomAmountEnabledNEQ applies the NEQ predicate on the "random_amount_enabled" field.
+func RandomAmountEnabledNEQ(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldRandomAmountEnabled, v))
+}
+
+// RandomMinValueEQ applies the EQ predicate on the "random_min_value" field.
+func RandomMinValueEQ(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldRandomMinValue, v))
+}
+
+// RandomMinValueNEQ applies the NEQ predicate on the "random_min_value" field.
+func RandomMinValueNEQ(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldRandomMinValue, v))
+}
+
+// RandomMinValueIn applies the In predicate on the "random_min_value" field.
+func RandomMinValueIn(vs ...float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIn(FieldRandomMinValue, vs...))
+}
+
+// RandomMinValueNotIn applies the NotIn predicate on the "random_min_value" field.
+func RandomMinValueNotIn(vs ...float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotIn(FieldRandomMinValue, vs...))
+}
+
+// RandomMinValueGT applies the GT predicate on the "random_min_value" field.
+func RandomMinValueGT(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGT(FieldRandomMinValue, v))
+}
+
+// RandomMinValueGTE applies the GTE predicate on the "random_min_value" field.
+func RandomMinValueGTE(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGTE(FieldRandomMinValue, v))
+}
+
+// RandomMinValueLT applies the LT predicate on the "random_min_value" field.
+func RandomMinValueLT(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLT(FieldRandomMinValue, v))
+}
+
+// RandomMinValueLTE applies the LTE predicate on the "random_min_value" field.
+func RandomMinValueLTE(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLTE(FieldRandomMinValue, v))
+}
+
+// RandomMaxValueEQ applies the EQ predicate on the "random_max_value" field.
+func RandomMaxValueEQ(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldRandomMaxValue, v))
+}
+
+// RandomMaxValueNEQ applies the NEQ predicate on the "random_max_value" field.
+func RandomMaxValueNEQ(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldRandomMaxValue, v))
+}
+
+// RandomMaxValueIn applies the In predicate on the "random_max_value" field.
+func RandomMaxValueIn(vs ...float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIn(FieldRandomMaxValue, vs...))
+}
+
+// RandomMaxValueNotIn applies the NotIn predicate on the "random_max_value" field.
+func RandomMaxValueNotIn(vs ...float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotIn(FieldRandomMaxValue, vs...))
+}
+
+// RandomMaxValueGT applies the GT predicate on the "random_max_value" field.
+func RandomMaxValueGT(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGT(FieldRandomMaxValue, v))
+}
+
+// RandomMaxValueGTE applies the GTE predicate on the "random_max_value" field.
+func RandomMaxValueGTE(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGTE(FieldRandomMaxValue, v))
+}
+
+// RandomMaxValueLT applies the LT predicate on the "random_max_value" field.
+func RandomMaxValueLT(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLT(FieldRandomMaxValue, v))
+}
+
+// RandomMaxValueLTE applies the LTE predicate on the "random_max_value" field.
+func RandomMaxValueLTE(v float64) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLTE(FieldRandomMaxValue, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.
@@ -756,6 +966,29 @@ func HasGroup() predicate.RedeemCode {
 func HasGroupWith(preds ...predicate.Group) predicate.RedeemCode {
 	return predicate.RedeemCode(func(s *sql.Selector) {
 		step := newGroupStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasUsages applies the HasEdge predicate on the "usages" edge.
+func HasUsages() predicate.RedeemCode {
+	return predicate.RedeemCode(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, UsagesTable, UsagesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasUsagesWith applies the HasEdge predicate on the "usages" edge with a given conditions (other predicates).
+func HasUsagesWith(preds ...predicate.RedeemCodeUsage) predicate.RedeemCode {
+	return predicate.RedeemCode(func(s *sql.Selector) {
+		step := newUsagesStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

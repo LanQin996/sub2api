@@ -20,6 +20,18 @@ const (
 	FieldType = "type"
 	// FieldValue holds the string denoting the value field in the database.
 	FieldValue = "value"
+	// FieldMaxRedemptions holds the string denoting the max_redemptions field in the database.
+	FieldMaxRedemptions = "max_redemptions"
+	// FieldRedeemedCount holds the string denoting the redeemed_count field in the database.
+	FieldRedeemedCount = "redeemed_count"
+	// FieldPerUserLimit holds the string denoting the per_user_limit field in the database.
+	FieldPerUserLimit = "per_user_limit"
+	// FieldRandomAmountEnabled holds the string denoting the random_amount_enabled field in the database.
+	FieldRandomAmountEnabled = "random_amount_enabled"
+	// FieldRandomMinValue holds the string denoting the random_min_value field in the database.
+	FieldRandomMinValue = "random_min_value"
+	// FieldRandomMaxValue holds the string denoting the random_max_value field in the database.
+	FieldRandomMaxValue = "random_max_value"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldUsedBy holds the string denoting the used_by field in the database.
@@ -44,6 +56,8 @@ const (
 	EdgeCreator = "creator"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
+	// EdgeUsages holds the string denoting the usages edge name in mutations.
+	EdgeUsages = "usages"
 	// Table holds the table name of the redeemcode in the database.
 	Table = "redeem_codes"
 	// UserTable is the table that holds the user relation/edge.
@@ -67,6 +81,13 @@ const (
 	GroupInverseTable = "groups"
 	// GroupColumn is the table column denoting the group relation/edge.
 	GroupColumn = "group_id"
+	// UsagesTable is the table that holds the usages relation/edge.
+	UsagesTable = "redeem_code_usages"
+	// UsagesInverseTable is the table name for the RedeemCodeUsage entity.
+	// It exists in this package in order to avoid circular dependency with the "redeemcodeusage" package.
+	UsagesInverseTable = "redeem_code_usages"
+	// UsagesColumn is the table column denoting the usages relation/edge.
+	UsagesColumn = "redeem_code_id"
 )
 
 // Columns holds all SQL columns for redeemcode fields.
@@ -75,6 +96,12 @@ var Columns = []string{
 	FieldCode,
 	FieldType,
 	FieldValue,
+	FieldMaxRedemptions,
+	FieldRedeemedCount,
+	FieldPerUserLimit,
+	FieldRandomAmountEnabled,
+	FieldRandomMinValue,
+	FieldRandomMaxValue,
 	FieldStatus,
 	FieldUsedBy,
 	FieldCreatedBy,
@@ -105,6 +132,18 @@ var (
 	TypeValidator func(string) error
 	// DefaultValue holds the default value on creation for the "value" field.
 	DefaultValue float64
+	// DefaultMaxRedemptions holds the default value on creation for the "max_redemptions" field.
+	DefaultMaxRedemptions int
+	// DefaultRedeemedCount holds the default value on creation for the "redeemed_count" field.
+	DefaultRedeemedCount int
+	// DefaultPerUserLimit holds the default value on creation for the "per_user_limit" field.
+	DefaultPerUserLimit bool
+	// DefaultRandomAmountEnabled holds the default value on creation for the "random_amount_enabled" field.
+	DefaultRandomAmountEnabled bool
+	// DefaultRandomMinValue holds the default value on creation for the "random_min_value" field.
+	DefaultRandomMinValue float64
+	// DefaultRandomMaxValue holds the default value on creation for the "random_max_value" field.
+	DefaultRandomMaxValue float64
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -136,6 +175,36 @@ func ByType(opts ...sql.OrderTermOption) OrderOption {
 // ByValue orders the results by the value field.
 func ByValue(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldValue, opts...).ToFunc()
+}
+
+// ByMaxRedemptions orders the results by the max_redemptions field.
+func ByMaxRedemptions(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMaxRedemptions, opts...).ToFunc()
+}
+
+// ByRedeemedCount orders the results by the redeemed_count field.
+func ByRedeemedCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRedeemedCount, opts...).ToFunc()
+}
+
+// ByPerUserLimit orders the results by the per_user_limit field.
+func ByPerUserLimit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPerUserLimit, opts...).ToFunc()
+}
+
+// ByRandomAmountEnabled orders the results by the random_amount_enabled field.
+func ByRandomAmountEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRandomAmountEnabled, opts...).ToFunc()
+}
+
+// ByRandomMinValue orders the results by the random_min_value field.
+func ByRandomMinValue(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRandomMinValue, opts...).ToFunc()
+}
+
+// ByRandomMaxValue orders the results by the random_max_value field.
+func ByRandomMaxValue(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRandomMaxValue, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.
@@ -203,6 +272,20 @@ func ByGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newGroupStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByUsagesCount orders the results by usages count.
+func ByUsagesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUsagesStep(), opts...)
+	}
+}
+
+// ByUsages orders the results by usages terms.
+func ByUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUsagesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -222,5 +305,12 @@ func newGroupStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(GroupInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, GroupTable, GroupColumn),
+	)
+}
+func newUsagesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UsagesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, UsagesTable, UsagesColumn),
 	)
 }

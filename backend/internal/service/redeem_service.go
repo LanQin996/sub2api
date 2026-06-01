@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -58,6 +59,7 @@ type RedeemCodeRepository interface {
 	BatchUpdate(ctx context.Context, ids []int64, fields RedeemCodeBatchUpdateFields) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	Use(ctx context.Context, id, userID int64) error
+	RedeemOnce(ctx context.Context, code *RedeemCode, userID int64, value float64) error
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error)
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]RedeemCode, *pagination.PaginationResult, error)
@@ -72,10 +74,15 @@ type RedeemCodeRepository interface {
 
 // GenerateCodesRequest 生成兑换码请求
 type GenerateCodesRequest struct {
-	Count     int     `json:"count"`
-	Value     float64 `json:"value"`
-	Type      string  `json:"type"`
-	CreatedBy *int64  `json:"created_by,omitempty"`
+	Count               int     `json:"count"`
+	Value               float64 `json:"value"`
+	Type                string  `json:"type"`
+	CreatedBy           *int64  `json:"created_by,omitempty"`
+	MaxRedemptions      int     `json:"max_redemptions"`
+	PerUserLimit        bool    `json:"per_user_limit"`
+	RandomAmountEnabled bool    `json:"random_amount_enabled"`
+	RandomMinValue      float64 `json:"random_min_value"`
+	RandomMaxValue      float64 `json:"random_max_value"`
 }
 
 // RedeemCodeResponse 兑换码响应
@@ -213,6 +220,18 @@ func (s *RedeemService) GenerateCodes(ctx context.Context, req GenerateCodesRequ
 	if req.Count <= 0 {
 		return nil, errors.New("count must be greater than 0")
 	}
+	if req.MaxRedemptions <= 0 {
+		req.MaxRedemptions = 1
+	}
+	if req.RandomAmountEnabled {
+		if req.Type != RedeemTypeBalance {
+			return nil, errors.New("random amount is only supported for balance redeem codes")
+		}
+		if req.RandomMinValue <= 0 || req.RandomMaxValue <= 0 || req.RandomMinValue > req.RandomMaxValue {
+			return nil, errors.New("random amount range is invalid")
+		}
+		req.Value = req.RandomMaxValue
+	}
 
 	// 邀请码类型不需要数值，其他类型需要非零值（支持负数用于退款）
 	if req.Type != RedeemTypeInvitation && req.Value == 0 {
@@ -242,11 +261,16 @@ func (s *RedeemService) GenerateCodes(ctx context.Context, req GenerateCodesRequ
 		}
 
 		codes = append(codes, RedeemCode{
-			Code:      code,
-			Type:      codeType,
-			Value:     value,
-			Status:    StatusUnused,
-			CreatedBy: req.CreatedBy,
+			Code:                code,
+			Type:                codeType,
+			Value:               value,
+			Status:              StatusUnused,
+			CreatedBy:           req.CreatedBy,
+			MaxRedemptions:      req.MaxRedemptions,
+			PerUserLimit:        req.PerUserLimit,
+			RandomAmountEnabled: req.RandomAmountEnabled,
+			RandomMinValue:      req.RandomMinValue,
+			RandomMaxValue:      req.RandomMaxValue,
 		})
 	}
 
@@ -301,6 +325,18 @@ func (s *RedeemService) CreateCode(ctx context.Context, code *RedeemCode) error 
 	if code.Status == "" {
 		code.Status = StatusUnused
 	}
+	if code.MaxRedemptions <= 0 {
+		code.MaxRedemptions = 1
+	}
+	if code.RandomAmountEnabled {
+		if code.Type != RedeemTypeBalance {
+			return errors.New("random amount is only supported for balance redeem codes")
+		}
+		if code.RandomMinValue <= 0 || code.RandomMaxValue <= 0 || code.RandomMinValue > code.RandomMaxValue {
+			return errors.New("random amount range is invalid")
+		}
+		code.Value = code.RandomMaxValue
+	}
 	if code.IsExpired() {
 		return ErrRedeemCodeExpired
 	}
@@ -309,6 +345,26 @@ func (s *RedeemService) CreateCode(ctx context.Context, code *RedeemCode) error 
 		return fmt.Errorf("create redeem code: %w", err)
 	}
 	return nil
+}
+
+func randomRedeemAmount(min, max float64) (float64, error) {
+	if min > max {
+		return 0, errors.New("invalid random amount range")
+	}
+	if min == max {
+		return min, nil
+	}
+	const scale = int64(100000000)
+	minInt := int64(min * float64(scale))
+	maxInt := int64(max * float64(scale))
+	if maxInt < minInt {
+		return 0, errors.New("invalid random amount range")
+	}
+	n, err := rand.Int(rand.Reader, big.NewInt(maxInt-minInt+1))
+	if err != nil {
+		return 0, err
+	}
+	return float64(minInt+n.Int64()) / float64(scale), nil
 }
 
 func (s *RedeemService) BatchUpdate(ctx context.Context, input *RedeemCodeBatchUpdateInput) (*RedeemCodeBatchUpdateResult, error) {
@@ -472,9 +528,17 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	// 将事务放入 context，使 repository 方法能够使用同一事务
 	txCtx := dbent.NewTxContext(ctx, tx)
 
+	grantedValue := redeemCode.Value
+	if redeemCode.RandomAmountEnabled {
+		grantedValue, err = randomRedeemAmount(redeemCode.RandomMinValue, redeemCode.RandomMaxValue)
+		if err != nil {
+			return nil, fmt.Errorf("random redeem amount: %w", err)
+		}
+	}
+
 	// 【关键】先标记兑换码为已使用，确保并发安全
 	// 利用数据库乐观锁（WHERE status = 'unused'）保证原子性
-	if err := s.redeemRepo.Use(txCtx, redeemCode.ID, userID); err != nil {
+	if err := s.redeemRepo.RedeemOnce(txCtx, redeemCode, userID, grantedValue); err != nil {
 		if errors.Is(err, ErrRedeemCodeNotFound) || errors.Is(err, ErrRedeemCodeUsed) {
 			return nil, ErrRedeemCodeUsed
 		}
@@ -484,7 +548,7 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	// 执行兑换逻辑（兑换码已被锁定，此时可安全操作）
 	switch redeemCode.Type {
 	case RedeemTypeBalance:
-		amount := redeemCode.Value
+		amount := grantedValue
 		// 负数为退款扣减，余额最低为 0
 		if amount < 0 && user.Balance+amount < 0 {
 			amount = -user.Balance
@@ -494,7 +558,7 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		}
 
 	case RedeemTypeConcurrency:
-		delta := int(redeemCode.Value)
+		delta := int(grantedValue)
 		// 负数为退款扣减，并发数最低为 0
 		if delta < 0 && user.Concurrency+delta < 0 {
 			delta = -user.Concurrency
@@ -539,14 +603,17 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	s.invalidateRedeemCaches(ctx, userID, redeemCode)
 
 	// 余额类正数兑换码触发邀请返利（best-effort，失败不影响兑换结果）
-	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 {
-		s.tryAccrueAffiliateRebateForRedeem(ctx, userID, redeemCode.Value)
+	if redeemCode.Type == RedeemTypeBalance && grantedValue > 0 {
+		s.tryAccrueAffiliateRebateForRedeem(ctx, userID, grantedValue)
 	}
 
 	// 重新获取更新后的兑换码
 	redeemCode, err = s.redeemRepo.GetByID(ctx, redeemCode.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get updated redeem code: %w", err)
+	}
+	if redeemCode.RandomAmountEnabled {
+		redeemCode.Value = grantedValue
 	}
 
 	return redeemCode, nil

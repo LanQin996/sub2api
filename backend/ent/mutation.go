@@ -36,6 +36,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
@@ -83,6 +84,7 @@ const (
 	TypePromoCodeUsage                = "PromoCodeUsage"
 	TypeProxy                         = "Proxy"
 	TypeRedeemCode                    = "RedeemCode"
+	TypeRedeemCodeUsage               = "RedeemCodeUsage"
 	TypeSecuritySecret                = "SecuritySecret"
 	TypeSetting                       = "Setting"
 	TypeSubscriptionPlan              = "SubscriptionPlan"
@@ -28755,30 +28757,43 @@ func (m *ProxyMutation) ResetEdge(name string) error {
 // RedeemCodeMutation represents an operation that mutates the RedeemCode nodes in the graph.
 type RedeemCodeMutation struct {
 	config
-	op               Op
-	typ              string
-	id               *int64
-	code             *string
-	_type            *string
-	value            *float64
-	addvalue         *float64
-	status           *string
-	used_at          *time.Time
-	notes            *string
-	created_at       *time.Time
-	expires_at       *time.Time
-	validity_days    *int
-	addvalidity_days *int
-	clearedFields    map[string]struct{}
-	user             *int64
-	cleareduser      bool
-	creator          *int64
-	clearedcreator   bool
-	group            *int64
-	clearedgroup     bool
-	done             bool
-	oldValue         func(context.Context) (*RedeemCode, error)
-	predicates       []predicate.RedeemCode
+	op                    Op
+	typ                   string
+	id                    *int64
+	code                  *string
+	_type                 *string
+	value                 *float64
+	addvalue              *float64
+	max_redemptions       *int
+	addmax_redemptions    *int
+	redeemed_count        *int
+	addredeemed_count     *int
+	per_user_limit        *bool
+	random_amount_enabled *bool
+	random_min_value      *float64
+	addrandom_min_value   *float64
+	random_max_value      *float64
+	addrandom_max_value   *float64
+	status                *string
+	used_at               *time.Time
+	notes                 *string
+	created_at            *time.Time
+	expires_at            *time.Time
+	validity_days         *int
+	addvalidity_days      *int
+	clearedFields         map[string]struct{}
+	user                  *int64
+	cleareduser           bool
+	creator               *int64
+	clearedcreator        bool
+	group                 *int64
+	clearedgroup          bool
+	usages                map[int64]struct{}
+	removedusages         map[int64]struct{}
+	clearedusages         bool
+	done                  bool
+	oldValue              func(context.Context) (*RedeemCode, error)
+	predicates            []predicate.RedeemCode
 }
 
 var _ ent.Mutation = (*RedeemCodeMutation)(nil)
@@ -29005,6 +29020,302 @@ func (m *RedeemCodeMutation) AddedValue() (r float64, exists bool) {
 func (m *RedeemCodeMutation) ResetValue() {
 	m.value = nil
 	m.addvalue = nil
+}
+
+// SetMaxRedemptions sets the "max_redemptions" field.
+func (m *RedeemCodeMutation) SetMaxRedemptions(i int) {
+	m.max_redemptions = &i
+	m.addmax_redemptions = nil
+}
+
+// MaxRedemptions returns the value of the "max_redemptions" field in the mutation.
+func (m *RedeemCodeMutation) MaxRedemptions() (r int, exists bool) {
+	v := m.max_redemptions
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxRedemptions returns the old "max_redemptions" field's value of the RedeemCode entity.
+// If the RedeemCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeMutation) OldMaxRedemptions(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxRedemptions is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxRedemptions requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxRedemptions: %w", err)
+	}
+	return oldValue.MaxRedemptions, nil
+}
+
+// AddMaxRedemptions adds i to the "max_redemptions" field.
+func (m *RedeemCodeMutation) AddMaxRedemptions(i int) {
+	if m.addmax_redemptions != nil {
+		*m.addmax_redemptions += i
+	} else {
+		m.addmax_redemptions = &i
+	}
+}
+
+// AddedMaxRedemptions returns the value that was added to the "max_redemptions" field in this mutation.
+func (m *RedeemCodeMutation) AddedMaxRedemptions() (r int, exists bool) {
+	v := m.addmax_redemptions
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxRedemptions resets all changes to the "max_redemptions" field.
+func (m *RedeemCodeMutation) ResetMaxRedemptions() {
+	m.max_redemptions = nil
+	m.addmax_redemptions = nil
+}
+
+// SetRedeemedCount sets the "redeemed_count" field.
+func (m *RedeemCodeMutation) SetRedeemedCount(i int) {
+	m.redeemed_count = &i
+	m.addredeemed_count = nil
+}
+
+// RedeemedCount returns the value of the "redeemed_count" field in the mutation.
+func (m *RedeemCodeMutation) RedeemedCount() (r int, exists bool) {
+	v := m.redeemed_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRedeemedCount returns the old "redeemed_count" field's value of the RedeemCode entity.
+// If the RedeemCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeMutation) OldRedeemedCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRedeemedCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRedeemedCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRedeemedCount: %w", err)
+	}
+	return oldValue.RedeemedCount, nil
+}
+
+// AddRedeemedCount adds i to the "redeemed_count" field.
+func (m *RedeemCodeMutation) AddRedeemedCount(i int) {
+	if m.addredeemed_count != nil {
+		*m.addredeemed_count += i
+	} else {
+		m.addredeemed_count = &i
+	}
+}
+
+// AddedRedeemedCount returns the value that was added to the "redeemed_count" field in this mutation.
+func (m *RedeemCodeMutation) AddedRedeemedCount() (r int, exists bool) {
+	v := m.addredeemed_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRedeemedCount resets all changes to the "redeemed_count" field.
+func (m *RedeemCodeMutation) ResetRedeemedCount() {
+	m.redeemed_count = nil
+	m.addredeemed_count = nil
+}
+
+// SetPerUserLimit sets the "per_user_limit" field.
+func (m *RedeemCodeMutation) SetPerUserLimit(b bool) {
+	m.per_user_limit = &b
+}
+
+// PerUserLimit returns the value of the "per_user_limit" field in the mutation.
+func (m *RedeemCodeMutation) PerUserLimit() (r bool, exists bool) {
+	v := m.per_user_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPerUserLimit returns the old "per_user_limit" field's value of the RedeemCode entity.
+// If the RedeemCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeMutation) OldPerUserLimit(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPerUserLimit is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPerUserLimit requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPerUserLimit: %w", err)
+	}
+	return oldValue.PerUserLimit, nil
+}
+
+// ResetPerUserLimit resets all changes to the "per_user_limit" field.
+func (m *RedeemCodeMutation) ResetPerUserLimit() {
+	m.per_user_limit = nil
+}
+
+// SetRandomAmountEnabled sets the "random_amount_enabled" field.
+func (m *RedeemCodeMutation) SetRandomAmountEnabled(b bool) {
+	m.random_amount_enabled = &b
+}
+
+// RandomAmountEnabled returns the value of the "random_amount_enabled" field in the mutation.
+func (m *RedeemCodeMutation) RandomAmountEnabled() (r bool, exists bool) {
+	v := m.random_amount_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRandomAmountEnabled returns the old "random_amount_enabled" field's value of the RedeemCode entity.
+// If the RedeemCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeMutation) OldRandomAmountEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRandomAmountEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRandomAmountEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRandomAmountEnabled: %w", err)
+	}
+	return oldValue.RandomAmountEnabled, nil
+}
+
+// ResetRandomAmountEnabled resets all changes to the "random_amount_enabled" field.
+func (m *RedeemCodeMutation) ResetRandomAmountEnabled() {
+	m.random_amount_enabled = nil
+}
+
+// SetRandomMinValue sets the "random_min_value" field.
+func (m *RedeemCodeMutation) SetRandomMinValue(f float64) {
+	m.random_min_value = &f
+	m.addrandom_min_value = nil
+}
+
+// RandomMinValue returns the value of the "random_min_value" field in the mutation.
+func (m *RedeemCodeMutation) RandomMinValue() (r float64, exists bool) {
+	v := m.random_min_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRandomMinValue returns the old "random_min_value" field's value of the RedeemCode entity.
+// If the RedeemCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeMutation) OldRandomMinValue(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRandomMinValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRandomMinValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRandomMinValue: %w", err)
+	}
+	return oldValue.RandomMinValue, nil
+}
+
+// AddRandomMinValue adds f to the "random_min_value" field.
+func (m *RedeemCodeMutation) AddRandomMinValue(f float64) {
+	if m.addrandom_min_value != nil {
+		*m.addrandom_min_value += f
+	} else {
+		m.addrandom_min_value = &f
+	}
+}
+
+// AddedRandomMinValue returns the value that was added to the "random_min_value" field in this mutation.
+func (m *RedeemCodeMutation) AddedRandomMinValue() (r float64, exists bool) {
+	v := m.addrandom_min_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRandomMinValue resets all changes to the "random_min_value" field.
+func (m *RedeemCodeMutation) ResetRandomMinValue() {
+	m.random_min_value = nil
+	m.addrandom_min_value = nil
+}
+
+// SetRandomMaxValue sets the "random_max_value" field.
+func (m *RedeemCodeMutation) SetRandomMaxValue(f float64) {
+	m.random_max_value = &f
+	m.addrandom_max_value = nil
+}
+
+// RandomMaxValue returns the value of the "random_max_value" field in the mutation.
+func (m *RedeemCodeMutation) RandomMaxValue() (r float64, exists bool) {
+	v := m.random_max_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRandomMaxValue returns the old "random_max_value" field's value of the RedeemCode entity.
+// If the RedeemCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeMutation) OldRandomMaxValue(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRandomMaxValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRandomMaxValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRandomMaxValue: %w", err)
+	}
+	return oldValue.RandomMaxValue, nil
+}
+
+// AddRandomMaxValue adds f to the "random_max_value" field.
+func (m *RedeemCodeMutation) AddRandomMaxValue(f float64) {
+	if m.addrandom_max_value != nil {
+		*m.addrandom_max_value += f
+	} else {
+		m.addrandom_max_value = &f
+	}
+}
+
+// AddedRandomMaxValue returns the value that was added to the "random_max_value" field in this mutation.
+func (m *RedeemCodeMutation) AddedRandomMaxValue() (r float64, exists bool) {
+	v := m.addrandom_max_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRandomMaxValue resets all changes to the "random_max_value" field.
+func (m *RedeemCodeMutation) ResetRandomMaxValue() {
+	m.random_max_value = nil
+	m.addrandom_max_value = nil
 }
 
 // SetStatus sets the "status" field.
@@ -29536,6 +29847,60 @@ func (m *RedeemCodeMutation) ResetGroup() {
 	m.clearedgroup = false
 }
 
+// AddUsageIDs adds the "usages" edge to the RedeemCodeUsage entity by ids.
+func (m *RedeemCodeMutation) AddUsageIDs(ids ...int64) {
+	if m.usages == nil {
+		m.usages = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.usages[ids[i]] = struct{}{}
+	}
+}
+
+// ClearUsages clears the "usages" edge to the RedeemCodeUsage entity.
+func (m *RedeemCodeMutation) ClearUsages() {
+	m.clearedusages = true
+}
+
+// UsagesCleared reports if the "usages" edge to the RedeemCodeUsage entity was cleared.
+func (m *RedeemCodeMutation) UsagesCleared() bool {
+	return m.clearedusages
+}
+
+// RemoveUsageIDs removes the "usages" edge to the RedeemCodeUsage entity by IDs.
+func (m *RedeemCodeMutation) RemoveUsageIDs(ids ...int64) {
+	if m.removedusages == nil {
+		m.removedusages = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.usages, ids[i])
+		m.removedusages[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedUsages returns the removed IDs of the "usages" edge to the RedeemCodeUsage entity.
+func (m *RedeemCodeMutation) RemovedUsagesIDs() (ids []int64) {
+	for id := range m.removedusages {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// UsagesIDs returns the "usages" edge IDs in the mutation.
+func (m *RedeemCodeMutation) UsagesIDs() (ids []int64) {
+	for id := range m.usages {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetUsages resets all changes to the "usages" edge.
+func (m *RedeemCodeMutation) ResetUsages() {
+	m.usages = nil
+	m.clearedusages = false
+	m.removedusages = nil
+}
+
 // Where appends a list predicates to the RedeemCodeMutation builder.
 func (m *RedeemCodeMutation) Where(ps ...predicate.RedeemCode) {
 	m.predicates = append(m.predicates, ps...)
@@ -29570,7 +29935,7 @@ func (m *RedeemCodeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RedeemCodeMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 18)
 	if m.code != nil {
 		fields = append(fields, redeemcode.FieldCode)
 	}
@@ -29579,6 +29944,24 @@ func (m *RedeemCodeMutation) Fields() []string {
 	}
 	if m.value != nil {
 		fields = append(fields, redeemcode.FieldValue)
+	}
+	if m.max_redemptions != nil {
+		fields = append(fields, redeemcode.FieldMaxRedemptions)
+	}
+	if m.redeemed_count != nil {
+		fields = append(fields, redeemcode.FieldRedeemedCount)
+	}
+	if m.per_user_limit != nil {
+		fields = append(fields, redeemcode.FieldPerUserLimit)
+	}
+	if m.random_amount_enabled != nil {
+		fields = append(fields, redeemcode.FieldRandomAmountEnabled)
+	}
+	if m.random_min_value != nil {
+		fields = append(fields, redeemcode.FieldRandomMinValue)
+	}
+	if m.random_max_value != nil {
+		fields = append(fields, redeemcode.FieldRandomMaxValue)
 	}
 	if m.status != nil {
 		fields = append(fields, redeemcode.FieldStatus)
@@ -29621,6 +30004,18 @@ func (m *RedeemCodeMutation) Field(name string) (ent.Value, bool) {
 		return m.GetType()
 	case redeemcode.FieldValue:
 		return m.Value()
+	case redeemcode.FieldMaxRedemptions:
+		return m.MaxRedemptions()
+	case redeemcode.FieldRedeemedCount:
+		return m.RedeemedCount()
+	case redeemcode.FieldPerUserLimit:
+		return m.PerUserLimit()
+	case redeemcode.FieldRandomAmountEnabled:
+		return m.RandomAmountEnabled()
+	case redeemcode.FieldRandomMinValue:
+		return m.RandomMinValue()
+	case redeemcode.FieldRandomMaxValue:
+		return m.RandomMaxValue()
 	case redeemcode.FieldStatus:
 		return m.Status()
 	case redeemcode.FieldUsedBy:
@@ -29654,6 +30049,18 @@ func (m *RedeemCodeMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldType(ctx)
 	case redeemcode.FieldValue:
 		return m.OldValue(ctx)
+	case redeemcode.FieldMaxRedemptions:
+		return m.OldMaxRedemptions(ctx)
+	case redeemcode.FieldRedeemedCount:
+		return m.OldRedeemedCount(ctx)
+	case redeemcode.FieldPerUserLimit:
+		return m.OldPerUserLimit(ctx)
+	case redeemcode.FieldRandomAmountEnabled:
+		return m.OldRandomAmountEnabled(ctx)
+	case redeemcode.FieldRandomMinValue:
+		return m.OldRandomMinValue(ctx)
+	case redeemcode.FieldRandomMaxValue:
+		return m.OldRandomMaxValue(ctx)
 	case redeemcode.FieldStatus:
 		return m.OldStatus(ctx)
 	case redeemcode.FieldUsedBy:
@@ -29701,6 +30108,48 @@ func (m *RedeemCodeMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetValue(v)
+		return nil
+	case redeemcode.FieldMaxRedemptions:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxRedemptions(v)
+		return nil
+	case redeemcode.FieldRedeemedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRedeemedCount(v)
+		return nil
+	case redeemcode.FieldPerUserLimit:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPerUserLimit(v)
+		return nil
+	case redeemcode.FieldRandomAmountEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRandomAmountEnabled(v)
+		return nil
+	case redeemcode.FieldRandomMinValue:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRandomMinValue(v)
+		return nil
+	case redeemcode.FieldRandomMaxValue:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRandomMaxValue(v)
 		return nil
 	case redeemcode.FieldStatus:
 		v, ok := value.(string)
@@ -29776,6 +30225,18 @@ func (m *RedeemCodeMutation) AddedFields() []string {
 	if m.addvalue != nil {
 		fields = append(fields, redeemcode.FieldValue)
 	}
+	if m.addmax_redemptions != nil {
+		fields = append(fields, redeemcode.FieldMaxRedemptions)
+	}
+	if m.addredeemed_count != nil {
+		fields = append(fields, redeemcode.FieldRedeemedCount)
+	}
+	if m.addrandom_min_value != nil {
+		fields = append(fields, redeemcode.FieldRandomMinValue)
+	}
+	if m.addrandom_max_value != nil {
+		fields = append(fields, redeemcode.FieldRandomMaxValue)
+	}
 	if m.addvalidity_days != nil {
 		fields = append(fields, redeemcode.FieldValidityDays)
 	}
@@ -29789,6 +30250,14 @@ func (m *RedeemCodeMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case redeemcode.FieldValue:
 		return m.AddedValue()
+	case redeemcode.FieldMaxRedemptions:
+		return m.AddedMaxRedemptions()
+	case redeemcode.FieldRedeemedCount:
+		return m.AddedRedeemedCount()
+	case redeemcode.FieldRandomMinValue:
+		return m.AddedRandomMinValue()
+	case redeemcode.FieldRandomMaxValue:
+		return m.AddedRandomMaxValue()
 	case redeemcode.FieldValidityDays:
 		return m.AddedValidityDays()
 	}
@@ -29806,6 +30275,34 @@ func (m *RedeemCodeMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddValue(v)
+		return nil
+	case redeemcode.FieldMaxRedemptions:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxRedemptions(v)
+		return nil
+	case redeemcode.FieldRedeemedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRedeemedCount(v)
+		return nil
+	case redeemcode.FieldRandomMinValue:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRandomMinValue(v)
+		return nil
+	case redeemcode.FieldRandomMaxValue:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRandomMaxValue(v)
 		return nil
 	case redeemcode.FieldValidityDays:
 		v, ok := value.(int)
@@ -29889,6 +30386,24 @@ func (m *RedeemCodeMutation) ResetField(name string) error {
 	case redeemcode.FieldValue:
 		m.ResetValue()
 		return nil
+	case redeemcode.FieldMaxRedemptions:
+		m.ResetMaxRedemptions()
+		return nil
+	case redeemcode.FieldRedeemedCount:
+		m.ResetRedeemedCount()
+		return nil
+	case redeemcode.FieldPerUserLimit:
+		m.ResetPerUserLimit()
+		return nil
+	case redeemcode.FieldRandomAmountEnabled:
+		m.ResetRandomAmountEnabled()
+		return nil
+	case redeemcode.FieldRandomMinValue:
+		m.ResetRandomMinValue()
+		return nil
+	case redeemcode.FieldRandomMaxValue:
+		m.ResetRandomMaxValue()
+		return nil
 	case redeemcode.FieldStatus:
 		m.ResetStatus()
 		return nil
@@ -29922,7 +30437,7 @@ func (m *RedeemCodeMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *RedeemCodeMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.user != nil {
 		edges = append(edges, redeemcode.EdgeUser)
 	}
@@ -29931,6 +30446,9 @@ func (m *RedeemCodeMutation) AddedEdges() []string {
 	}
 	if m.group != nil {
 		edges = append(edges, redeemcode.EdgeGroup)
+	}
+	if m.usages != nil {
+		edges = append(edges, redeemcode.EdgeUsages)
 	}
 	return edges
 }
@@ -29951,25 +30469,42 @@ func (m *RedeemCodeMutation) AddedIDs(name string) []ent.Value {
 		if id := m.group; id != nil {
 			return []ent.Value{*id}
 		}
+	case redeemcode.EdgeUsages:
+		ids := make([]ent.Value, 0, len(m.usages))
+		for id := range m.usages {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *RedeemCodeMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
+	if m.removedusages != nil {
+		edges = append(edges, redeemcode.EdgeUsages)
+	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
 func (m *RedeemCodeMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case redeemcode.EdgeUsages:
+		ids := make([]ent.Value, 0, len(m.removedusages))
+		for id := range m.removedusages {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *RedeemCodeMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.cleareduser {
 		edges = append(edges, redeemcode.EdgeUser)
 	}
@@ -29978,6 +30513,9 @@ func (m *RedeemCodeMutation) ClearedEdges() []string {
 	}
 	if m.clearedgroup {
 		edges = append(edges, redeemcode.EdgeGroup)
+	}
+	if m.clearedusages {
+		edges = append(edges, redeemcode.EdgeUsages)
 	}
 	return edges
 }
@@ -29992,6 +30530,8 @@ func (m *RedeemCodeMutation) EdgeCleared(name string) bool {
 		return m.clearedcreator
 	case redeemcode.EdgeGroup:
 		return m.clearedgroup
+	case redeemcode.EdgeUsages:
+		return m.clearedusages
 	}
 	return false
 }
@@ -30026,8 +30566,635 @@ func (m *RedeemCodeMutation) ResetEdge(name string) error {
 	case redeemcode.EdgeGroup:
 		m.ResetGroup()
 		return nil
+	case redeemcode.EdgeUsages:
+		m.ResetUsages()
+		return nil
 	}
 	return fmt.Errorf("unknown RedeemCode edge %s", name)
+}
+
+// RedeemCodeUsageMutation represents an operation that mutates the RedeemCodeUsage nodes in the graph.
+type RedeemCodeUsageMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *int64
+	value              *float64
+	addvalue           *float64
+	created_at         *time.Time
+	clearedFields      map[string]struct{}
+	redeem_code        *int64
+	clearedredeem_code bool
+	user               *int64
+	cleareduser        bool
+	done               bool
+	oldValue           func(context.Context) (*RedeemCodeUsage, error)
+	predicates         []predicate.RedeemCodeUsage
+}
+
+var _ ent.Mutation = (*RedeemCodeUsageMutation)(nil)
+
+// redeemcodeusageOption allows management of the mutation configuration using functional options.
+type redeemcodeusageOption func(*RedeemCodeUsageMutation)
+
+// newRedeemCodeUsageMutation creates new mutation for the RedeemCodeUsage entity.
+func newRedeemCodeUsageMutation(c config, op Op, opts ...redeemcodeusageOption) *RedeemCodeUsageMutation {
+	m := &RedeemCodeUsageMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRedeemCodeUsage,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRedeemCodeUsageID sets the ID field of the mutation.
+func withRedeemCodeUsageID(id int64) redeemcodeusageOption {
+	return func(m *RedeemCodeUsageMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RedeemCodeUsage
+		)
+		m.oldValue = func(ctx context.Context) (*RedeemCodeUsage, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RedeemCodeUsage.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRedeemCodeUsage sets the old RedeemCodeUsage of the mutation.
+func withRedeemCodeUsage(node *RedeemCodeUsage) redeemcodeusageOption {
+	return func(m *RedeemCodeUsageMutation) {
+		m.oldValue = func(context.Context) (*RedeemCodeUsage, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RedeemCodeUsageMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RedeemCodeUsageMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RedeemCodeUsageMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RedeemCodeUsageMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RedeemCodeUsage.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetRedeemCodeID sets the "redeem_code_id" field.
+func (m *RedeemCodeUsageMutation) SetRedeemCodeID(i int64) {
+	m.redeem_code = &i
+}
+
+// RedeemCodeID returns the value of the "redeem_code_id" field in the mutation.
+func (m *RedeemCodeUsageMutation) RedeemCodeID() (r int64, exists bool) {
+	v := m.redeem_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRedeemCodeID returns the old "redeem_code_id" field's value of the RedeemCodeUsage entity.
+// If the RedeemCodeUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeUsageMutation) OldRedeemCodeID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRedeemCodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRedeemCodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRedeemCodeID: %w", err)
+	}
+	return oldValue.RedeemCodeID, nil
+}
+
+// ResetRedeemCodeID resets all changes to the "redeem_code_id" field.
+func (m *RedeemCodeUsageMutation) ResetRedeemCodeID() {
+	m.redeem_code = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *RedeemCodeUsageMutation) SetUserID(i int64) {
+	m.user = &i
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *RedeemCodeUsageMutation) UserID() (r int64, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the RedeemCodeUsage entity.
+// If the RedeemCodeUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeUsageMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *RedeemCodeUsageMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetValue sets the "value" field.
+func (m *RedeemCodeUsageMutation) SetValue(f float64) {
+	m.value = &f
+	m.addvalue = nil
+}
+
+// Value returns the value of the "value" field in the mutation.
+func (m *RedeemCodeUsageMutation) Value() (r float64, exists bool) {
+	v := m.value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValue returns the old "value" field's value of the RedeemCodeUsage entity.
+// If the RedeemCodeUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeUsageMutation) OldValue(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValue: %w", err)
+	}
+	return oldValue.Value, nil
+}
+
+// AddValue adds f to the "value" field.
+func (m *RedeemCodeUsageMutation) AddValue(f float64) {
+	if m.addvalue != nil {
+		*m.addvalue += f
+	} else {
+		m.addvalue = &f
+	}
+}
+
+// AddedValue returns the value that was added to the "value" field in this mutation.
+func (m *RedeemCodeUsageMutation) AddedValue() (r float64, exists bool) {
+	v := m.addvalue
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetValue resets all changes to the "value" field.
+func (m *RedeemCodeUsageMutation) ResetValue() {
+	m.value = nil
+	m.addvalue = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *RedeemCodeUsageMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *RedeemCodeUsageMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the RedeemCodeUsage entity.
+// If the RedeemCodeUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeUsageMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *RedeemCodeUsageMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearRedeemCode clears the "redeem_code" edge to the RedeemCode entity.
+func (m *RedeemCodeUsageMutation) ClearRedeemCode() {
+	m.clearedredeem_code = true
+	m.clearedFields[redeemcodeusage.FieldRedeemCodeID] = struct{}{}
+}
+
+// RedeemCodeCleared reports if the "redeem_code" edge to the RedeemCode entity was cleared.
+func (m *RedeemCodeUsageMutation) RedeemCodeCleared() bool {
+	return m.clearedredeem_code
+}
+
+// RedeemCodeIDs returns the "redeem_code" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RedeemCodeID instead. It exists only for internal usage by the builders.
+func (m *RedeemCodeUsageMutation) RedeemCodeIDs() (ids []int64) {
+	if id := m.redeem_code; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRedeemCode resets all changes to the "redeem_code" edge.
+func (m *RedeemCodeUsageMutation) ResetRedeemCode() {
+	m.redeem_code = nil
+	m.clearedredeem_code = false
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *RedeemCodeUsageMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[redeemcodeusage.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *RedeemCodeUsageMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *RedeemCodeUsageMutation) UserIDs() (ids []int64) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *RedeemCodeUsageMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// Where appends a list predicates to the RedeemCodeUsageMutation builder.
+func (m *RedeemCodeUsageMutation) Where(ps ...predicate.RedeemCodeUsage) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RedeemCodeUsageMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RedeemCodeUsageMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RedeemCodeUsage, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RedeemCodeUsageMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RedeemCodeUsageMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RedeemCodeUsage).
+func (m *RedeemCodeUsageMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RedeemCodeUsageMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.redeem_code != nil {
+		fields = append(fields, redeemcodeusage.FieldRedeemCodeID)
+	}
+	if m.user != nil {
+		fields = append(fields, redeemcodeusage.FieldUserID)
+	}
+	if m.value != nil {
+		fields = append(fields, redeemcodeusage.FieldValue)
+	}
+	if m.created_at != nil {
+		fields = append(fields, redeemcodeusage.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RedeemCodeUsageMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case redeemcodeusage.FieldRedeemCodeID:
+		return m.RedeemCodeID()
+	case redeemcodeusage.FieldUserID:
+		return m.UserID()
+	case redeemcodeusage.FieldValue:
+		return m.Value()
+	case redeemcodeusage.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RedeemCodeUsageMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case redeemcodeusage.FieldRedeemCodeID:
+		return m.OldRedeemCodeID(ctx)
+	case redeemcodeusage.FieldUserID:
+		return m.OldUserID(ctx)
+	case redeemcodeusage.FieldValue:
+		return m.OldValue(ctx)
+	case redeemcodeusage.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown RedeemCodeUsage field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RedeemCodeUsageMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case redeemcodeusage.FieldRedeemCodeID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRedeemCodeID(v)
+		return nil
+	case redeemcodeusage.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case redeemcodeusage.FieldValue:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValue(v)
+		return nil
+	case redeemcodeusage.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RedeemCodeUsage field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RedeemCodeUsageMutation) AddedFields() []string {
+	var fields []string
+	if m.addvalue != nil {
+		fields = append(fields, redeemcodeusage.FieldValue)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RedeemCodeUsageMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case redeemcodeusage.FieldValue:
+		return m.AddedValue()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RedeemCodeUsageMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case redeemcodeusage.FieldValue:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddValue(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RedeemCodeUsage numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RedeemCodeUsageMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RedeemCodeUsageMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RedeemCodeUsageMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RedeemCodeUsage nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RedeemCodeUsageMutation) ResetField(name string) error {
+	switch name {
+	case redeemcodeusage.FieldRedeemCodeID:
+		m.ResetRedeemCodeID()
+		return nil
+	case redeemcodeusage.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case redeemcodeusage.FieldValue:
+		m.ResetValue()
+		return nil
+	case redeemcodeusage.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown RedeemCodeUsage field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RedeemCodeUsageMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.redeem_code != nil {
+		edges = append(edges, redeemcodeusage.EdgeRedeemCode)
+	}
+	if m.user != nil {
+		edges = append(edges, redeemcodeusage.EdgeUser)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RedeemCodeUsageMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case redeemcodeusage.EdgeRedeemCode:
+		if id := m.redeem_code; id != nil {
+			return []ent.Value{*id}
+		}
+	case redeemcodeusage.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RedeemCodeUsageMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RedeemCodeUsageMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RedeemCodeUsageMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedredeem_code {
+		edges = append(edges, redeemcodeusage.EdgeRedeemCode)
+	}
+	if m.cleareduser {
+		edges = append(edges, redeemcodeusage.EdgeUser)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RedeemCodeUsageMutation) EdgeCleared(name string) bool {
+	switch name {
+	case redeemcodeusage.EdgeRedeemCode:
+		return m.clearedredeem_code
+	case redeemcodeusage.EdgeUser:
+		return m.cleareduser
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RedeemCodeUsageMutation) ClearEdge(name string) error {
+	switch name {
+	case redeemcodeusage.EdgeRedeemCode:
+		m.ClearRedeemCode()
+		return nil
+	case redeemcodeusage.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown RedeemCodeUsage unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RedeemCodeUsageMutation) ResetEdge(name string) error {
+	switch name {
+	case redeemcodeusage.EdgeRedeemCode:
+		m.ResetRedeemCode()
+		return nil
+	case redeemcodeusage.EdgeUser:
+		m.ResetUser()
+		return nil
+	}
+	return fmt.Errorf("unknown RedeemCodeUsage edge %s", name)
 }
 
 // SecuritySecretMutation represents an operation that mutates the SecuritySecret nodes in the graph.
@@ -38319,6 +39486,9 @@ type UserMutation struct {
 	redeem_codes                    map[int64]struct{}
 	removedredeem_codes             map[int64]struct{}
 	clearedredeem_codes             bool
+	redeem_code_usages              map[int64]struct{}
+	removedredeem_code_usages       map[int64]struct{}
+	clearedredeem_code_usages       bool
 	created_invitation_codes        map[int64]struct{}
 	removedcreated_invitation_codes map[int64]struct{}
 	clearedcreated_invitation_codes bool
@@ -39609,6 +40779,60 @@ func (m *UserMutation) ResetRedeemCodes() {
 	m.removedredeem_codes = nil
 }
 
+// AddRedeemCodeUsageIDs adds the "redeem_code_usages" edge to the RedeemCodeUsage entity by ids.
+func (m *UserMutation) AddRedeemCodeUsageIDs(ids ...int64) {
+	if m.redeem_code_usages == nil {
+		m.redeem_code_usages = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.redeem_code_usages[ids[i]] = struct{}{}
+	}
+}
+
+// ClearRedeemCodeUsages clears the "redeem_code_usages" edge to the RedeemCodeUsage entity.
+func (m *UserMutation) ClearRedeemCodeUsages() {
+	m.clearedredeem_code_usages = true
+}
+
+// RedeemCodeUsagesCleared reports if the "redeem_code_usages" edge to the RedeemCodeUsage entity was cleared.
+func (m *UserMutation) RedeemCodeUsagesCleared() bool {
+	return m.clearedredeem_code_usages
+}
+
+// RemoveRedeemCodeUsageIDs removes the "redeem_code_usages" edge to the RedeemCodeUsage entity by IDs.
+func (m *UserMutation) RemoveRedeemCodeUsageIDs(ids ...int64) {
+	if m.removedredeem_code_usages == nil {
+		m.removedredeem_code_usages = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.redeem_code_usages, ids[i])
+		m.removedredeem_code_usages[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedRedeemCodeUsages returns the removed IDs of the "redeem_code_usages" edge to the RedeemCodeUsage entity.
+func (m *UserMutation) RemovedRedeemCodeUsagesIDs() (ids []int64) {
+	for id := range m.removedredeem_code_usages {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// RedeemCodeUsagesIDs returns the "redeem_code_usages" edge IDs in the mutation.
+func (m *UserMutation) RedeemCodeUsagesIDs() (ids []int64) {
+	for id := range m.redeem_code_usages {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetRedeemCodeUsages resets all changes to the "redeem_code_usages" edge.
+func (m *UserMutation) ResetRedeemCodeUsages() {
+	m.redeem_code_usages = nil
+	m.clearedredeem_code_usages = false
+	m.removedredeem_code_usages = nil
+}
+
 // AddCreatedInvitationCodeIDs adds the "created_invitation_codes" edge to the RedeemCode entity by ids.
 func (m *UserMutation) AddCreatedInvitationCodeIDs(ids ...int64) {
 	if m.created_invitation_codes == nil {
@@ -40883,12 +42107,15 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 14)
+	edges := make([]string, 0, 15)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
 	if m.redeem_codes != nil {
 		edges = append(edges, user.EdgeRedeemCodes)
+	}
+	if m.redeem_code_usages != nil {
+		edges = append(edges, user.EdgeRedeemCodeUsages)
 	}
 	if m.created_invitation_codes != nil {
 		edges = append(edges, user.EdgeCreatedInvitationCodes)
@@ -40942,6 +42169,12 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 	case user.EdgeRedeemCodes:
 		ids := make([]ent.Value, 0, len(m.redeem_codes))
 		for id := range m.redeem_codes {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeRedeemCodeUsages:
+		ids := make([]ent.Value, 0, len(m.redeem_code_usages))
+		for id := range m.redeem_code_usages {
 			ids = append(ids, id)
 		}
 		return ids
@@ -41023,12 +42256,15 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 14)
+	edges := make([]string, 0, 15)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
 	if m.removedredeem_codes != nil {
 		edges = append(edges, user.EdgeRedeemCodes)
+	}
+	if m.removedredeem_code_usages != nil {
+		edges = append(edges, user.EdgeRedeemCodeUsages)
 	}
 	if m.removedcreated_invitation_codes != nil {
 		edges = append(edges, user.EdgeCreatedInvitationCodes)
@@ -41082,6 +42318,12 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 	case user.EdgeRedeemCodes:
 		ids := make([]ent.Value, 0, len(m.removedredeem_codes))
 		for id := range m.removedredeem_codes {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeRedeemCodeUsages:
+		ids := make([]ent.Value, 0, len(m.removedredeem_code_usages))
+		for id := range m.removedredeem_code_usages {
 			ids = append(ids, id)
 		}
 		return ids
@@ -41163,12 +42405,15 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 14)
+	edges := make([]string, 0, 15)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
 	if m.clearedredeem_codes {
 		edges = append(edges, user.EdgeRedeemCodes)
+	}
+	if m.clearedredeem_code_usages {
+		edges = append(edges, user.EdgeRedeemCodeUsages)
 	}
 	if m.clearedcreated_invitation_codes {
 		edges = append(edges, user.EdgeCreatedInvitationCodes)
@@ -41217,6 +42462,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedapi_keys
 	case user.EdgeRedeemCodes:
 		return m.clearedredeem_codes
+	case user.EdgeRedeemCodeUsages:
+		return m.clearedredeem_code_usages
 	case user.EdgeCreatedInvitationCodes:
 		return m.clearedcreated_invitation_codes
 	case user.EdgeSubscriptions:
@@ -41262,6 +42509,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeRedeemCodes:
 		m.ResetRedeemCodes()
+		return nil
+	case user.EdgeRedeemCodeUsages:
+		m.ResetRedeemCodeUsages()
 		return nil
 	case user.EdgeCreatedInvitationCodes:
 		m.ResetCreatedInvitationCodes()

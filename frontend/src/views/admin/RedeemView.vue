@@ -130,7 +130,12 @@
 
           <template #cell-value="{ value, row }">
             <span class="text-sm font-medium text-gray-900 dark:text-white">
-              <template v-if="row.type === 'balance'">${{ value.toFixed(2) }}</template>
+              <template v-if="row.type === 'balance'">
+                <span v-if="row.random_amount_enabled">
+                  ${{ row.random_min_value.toFixed(2) }} - ${{ row.random_max_value.toFixed(2) }}
+                </span>
+                <span v-else>${{ value.toFixed(2) }}</span>
+              </template>
               <template v-else-if="row.type === 'subscription'">
                 {{ row.validity_days || 30 }} {{ t('admin.redeem.days') }}
                 <span v-if="row.group" class="ml-1 text-xs text-gray-500 dark:text-gray-400"
@@ -158,7 +163,11 @@
 
           <template #cell-used_by="{ value, row }">
             <span class="text-sm text-gray-500 dark:text-dark-400">
-              {{ row.user?.email || (value ? t('admin.redeem.userPrefix', { id: value }) : '-') }}
+              {{
+                row.max_redemptions > 1
+                  ? `${row.redeemed_count}/${row.max_redemptions}`
+                  : row.user?.email || (value ? t('admin.redeem.userPrefix', { id: value }) : '-')
+              }}
             </span>
           </template>
 
@@ -277,7 +286,7 @@
       <div v-if="showGenerateDialog" class="fixed inset-0 z-50 flex items-center justify-center">
         <div class="fixed inset-0 bg-black/50" @click="showGenerateDialog = false"></div>
         <div
-          class="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-dark-800"
+          class="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl dark:bg-dark-800"
         >
           <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('admin.redeem.generateCodesTitle') }}
@@ -287,8 +296,25 @@
               <label class="input-label">{{ t('admin.redeem.codeType') }}</label>
               <Select v-model="generateForm.type" :options="typeOptions" />
             </div>
+            <label
+              v-if="generateForm.type === 'balance'"
+              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="generateForm.random_amount_enabled"
+                type="checkbox"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>{{ t('admin.redeem.randomAmount') }}</span>
+            </label>
             <!-- 余额/并发类型：显示数值输入 -->
-            <div v-if="generateForm.type !== 'subscription' && generateForm.type !== 'invitation'">
+            <div
+              v-if="
+                generateForm.type !== 'subscription' &&
+                generateForm.type !== 'invitation' &&
+                !generateForm.random_amount_enabled
+              "
+            >
               <label class="input-label">
                 {{
                   generateForm.type === 'balance'
@@ -306,6 +332,33 @@
               />
             </div>
             <!-- 邀请码类型：显示提示信息 -->
+            <div
+              v-if="generateForm.type === 'balance' && generateForm.random_amount_enabled"
+              class="grid grid-cols-2 gap-3"
+            >
+              <div>
+                <label class="input-label">{{ t('admin.redeem.randomMinAmount') }}</label>
+                <input
+                  v-model.number="generateForm.random_min_value"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  class="input"
+                />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.redeem.randomMaxAmount') }}</label>
+                <input
+                  v-model.number="generateForm.random_max_value"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  class="input"
+                />
+              </div>
+            </div>
             <div v-if="generateForm.type === 'invitation'" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
               <p class="text-sm text-blue-700 dark:text-blue-300">
                 {{ t('admin.redeem.invitationHint') }}
@@ -396,6 +449,25 @@
                 class="input"
               />
             </div>
+            <div>
+              <label class="input-label">{{ t('admin.redeem.maxRedemptions') }}</label>
+              <input
+                v-model.number="generateForm.max_redemptions"
+                type="number"
+                min="1"
+                max="100000"
+                required
+                class="input"
+              />
+            </div>
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                v-model="generateForm.per_user_limit"
+                type="checkbox"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>{{ t('admin.redeem.perUserLimit') }}</span>
+            </label>
             <div class="flex justify-end gap-3 pt-2">
               <button type="button" @click="showGenerateDialog = false" class="btn btn-secondary">
                 {{ t('common.cancel') }}
@@ -831,6 +903,11 @@ const generateForm = reactive({
   type: 'balance' as RedeemCodeType,
   value: 10,
   count: 1,
+  max_redemptions: 1,
+  per_user_limit: false,
+  random_amount_enabled: false,
+  random_min_value: 1,
+  random_max_value: 10,
   group_id: null as number | null,
   validity_days: 30,
   expiry_option: 'never' as RedeemCodeExpiryOption,
@@ -843,8 +920,12 @@ watch(
   (newType) => {
     if (newType === 'invitation') {
       generateForm.value = 0
+      generateForm.random_amount_enabled = false
     } else if (generateForm.value === 0) {
       generateForm.value = 10
+    }
+    if (newType !== 'balance') {
+      generateForm.random_amount_enabled = false
     }
   }
 )
@@ -1029,6 +1110,15 @@ const handleGenerateCodes = async () => {
     appStore.showError(t('admin.redeem.expiryDaysRequired'))
     return
   }
+  if (
+    generateForm.random_amount_enabled &&
+    (generateForm.random_min_value <= 0 ||
+      generateForm.random_max_value <= 0 ||
+      generateForm.random_min_value > generateForm.random_max_value)
+  ) {
+    appStore.showError(t('admin.redeem.randomAmountInvalid'))
+    return
+  }
 
   generating.value = true
   try {
@@ -1038,7 +1128,14 @@ const handleGenerateCodes = async () => {
       generateForm.value,
       generateForm.type === 'subscription' ? generateForm.group_id : undefined,
       generateForm.type === 'subscription' ? generateForm.validity_days : undefined,
-      expiresInDays
+      expiresInDays,
+      {
+        max_redemptions: generateForm.max_redemptions,
+        per_user_limit: generateForm.per_user_limit,
+        random_amount_enabled: generateForm.random_amount_enabled,
+        random_min_value: generateForm.random_min_value,
+        random_max_value: generateForm.random_max_value
+      }
     )
     showGenerateDialog.value = false
     generatedCodes.value = result
@@ -1048,6 +1145,9 @@ const handleGenerateCodes = async () => {
     generateForm.validity_days = 30
     generateForm.expiry_option = 'never'
     generateForm.custom_expiry_days = 7
+    generateForm.max_redemptions = 1
+    generateForm.per_user_limit = false
+    generateForm.random_amount_enabled = false
     loadCodes()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToGenerate'))

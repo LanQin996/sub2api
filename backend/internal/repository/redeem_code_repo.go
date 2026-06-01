@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -22,12 +24,25 @@ func NewRedeemCodeRepository(client *dbent.Client) service.RedeemCodeRepository 
 	return &redeemCodeRepository{client: client}
 }
 
+func normalizeMaxRedemptions(value int) int {
+	if value <= 0 {
+		return 1
+	}
+	return value
+}
+
 func (r *redeemCodeRepository) Create(ctx context.Context, code *service.RedeemCode) error {
 	created, err := r.client.RedeemCode.Create().
 		SetCode(code.Code).
 		SetType(code.Type).
 		SetValue(code.Value).
 		SetStatus(code.Status).
+		SetMaxRedemptions(normalizeMaxRedemptions(code.MaxRedemptions)).
+		SetRedeemedCount(code.RedeemedCount).
+		SetPerUserLimit(code.PerUserLimit).
+		SetRandomAmountEnabled(code.RandomAmountEnabled).
+		SetRandomMinValue(code.RandomMinValue).
+		SetRandomMaxValue(code.RandomMaxValue).
 		SetNotes(code.Notes).
 		SetValidityDays(code.ValidityDays).
 		SetNillableExpiresAt(code.ExpiresAt).
@@ -56,6 +71,12 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 			SetType(c.Type).
 			SetValue(c.Value).
 			SetStatus(c.Status).
+			SetMaxRedemptions(normalizeMaxRedemptions(c.MaxRedemptions)).
+			SetRedeemedCount(c.RedeemedCount).
+			SetPerUserLimit(c.PerUserLimit).
+			SetRandomAmountEnabled(c.RandomAmountEnabled).
+			SetRandomMinValue(c.RandomMinValue).
+			SetRandomMaxValue(c.RandomMaxValue).
 			SetNotes(c.Notes).
 			SetValidityDays(c.ValidityDays).
 			SetNillableExpiresAt(c.ExpiresAt).
@@ -211,6 +232,12 @@ func (r *redeemCodeRepository) Update(ctx context.Context, code *service.RedeemC
 		SetType(code.Type).
 		SetValue(code.Value).
 		SetStatus(code.Status).
+		SetMaxRedemptions(normalizeMaxRedemptions(code.MaxRedemptions)).
+		SetRedeemedCount(code.RedeemedCount).
+		SetPerUserLimit(code.PerUserLimit).
+		SetRandomAmountEnabled(code.RandomAmountEnabled).
+		SetRandomMinValue(code.RandomMinValue).
+		SetRandomMaxValue(code.RandomMaxValue).
 		SetNotes(code.Notes).
 		SetValidityDays(code.ValidityDays)
 
@@ -337,19 +364,89 @@ func (r *redeemCodeRepository) batchUpdate(ctx context.Context, client *dbent.Cl
 }
 
 func (r *redeemCodeRepository) Use(ctx context.Context, id, userID int64) error {
-	now := time.Now()
-	client := clientFromContext(ctx, r.client)
-	affected, err := client.RedeemCode.Update().
-		Where(redeemcode.IDEQ(id), redeemcode.StatusEQ(service.StatusUnused)).
-		SetStatus(service.StatusUsed).
-		SetUsedBy(userID).
-		SetUsedAt(now).
-		Save(ctx)
+	return r.RedeemOnce(ctx, &service.RedeemCode{ID: id, MaxRedemptions: 1}, userID, 0)
+}
+
+func (r *redeemCodeRepository) RedeemOnce(ctx context.Context, code *service.RedeemCode, userID int64, value float64) error {
+	if code == nil || code.ID <= 0 {
+		return service.ErrRedeemCodeNotFound
+	}
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return r.redeemOnce(ctx, tx.Client(), code, userID, value)
+	}
+
+	tx, err := r.client.Tx(ctx)
 	if err != nil {
 		return err
 	}
-	if affected == 0 {
+	txCtx := dbent.NewTxContext(ctx, tx)
+	defer func() { _ = tx.Rollback() }()
+
+	if err := r.redeemOnce(txCtx, tx.Client(), code, userID, value); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *redeemCodeRepository) redeemOnce(ctx context.Context, client *dbent.Client, code *service.RedeemCode, userID int64, value float64) error {
+	now := time.Now()
+	current, err := client.RedeemCode.Query().
+		Where(redeemcode.IDEQ(code.ID)).
+		ForUpdate(entsql.WithLockAction(entsql.NoWait)).
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return service.ErrRedeemCodeNotFound
+		}
+		return err
+	}
+	if current.Status != service.StatusUnused {
 		return service.ErrRedeemCodeUsed
+	}
+	maxRedemptions := normalizeMaxRedemptions(current.MaxRedemptions)
+	if current.RedeemedCount >= maxRedemptions {
+		return service.ErrRedeemCodeUsed
+	}
+	if current.PerUserLimit {
+		exists, err := client.RedeemCodeUsage.Query().
+			Where(
+				redeemcodeusage.RedeemCodeIDEQ(code.ID),
+				redeemcodeusage.UserIDEQ(userID),
+			).
+			Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return service.ErrRedeemCodeUsed
+		}
+	}
+
+	if err := client.RedeemCodeUsage.Create().
+		SetRedeemCodeID(code.ID).
+		SetUserID(userID).
+		SetValue(value).
+		SetCreatedAt(now).
+		Exec(ctx); err != nil {
+		if dbent.IsConstraintError(err) || errors.Is(err, service.ErrRedeemCodeUsed) {
+			return service.ErrRedeemCodeUsed
+		}
+		return err
+	}
+
+	up := client.RedeemCode.UpdateOneID(code.ID).
+		AddRedeemedCount(1)
+	nextCount := current.RedeemedCount + 1
+	if nextCount >= maxRedemptions {
+		up.SetStatus(service.StatusUsed).
+			SetUsedBy(userID).
+			SetUsedAt(now)
+	} else if current.UsedBy == nil {
+		up.SetUsedBy(userID).
+			SetUsedAt(now)
+	}
+	if _, err := up.Save(ctx); err != nil {
+		return err
 	}
 	return nil
 }
@@ -453,19 +550,25 @@ func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
 		return nil
 	}
 	out := &service.RedeemCode{
-		ID:           m.ID,
-		Code:         m.Code,
-		Type:         m.Type,
-		Value:        m.Value,
-		Status:       m.Status,
-		UsedBy:       m.UsedBy,
-		CreatedBy:    m.CreatedBy,
-		UsedAt:       m.UsedAt,
-		Notes:        derefString(m.Notes),
-		CreatedAt:    m.CreatedAt,
-		ExpiresAt:    m.ExpiresAt,
-		GroupID:      m.GroupID,
-		ValidityDays: m.ValidityDays,
+		ID:                  m.ID,
+		Code:                m.Code,
+		Type:                m.Type,
+		Value:               m.Value,
+		Status:              m.Status,
+		MaxRedemptions:      m.MaxRedemptions,
+		RedeemedCount:       m.RedeemedCount,
+		PerUserLimit:        m.PerUserLimit,
+		RandomAmountEnabled: m.RandomAmountEnabled,
+		RandomMinValue:      m.RandomMinValue,
+		RandomMaxValue:      m.RandomMaxValue,
+		UsedBy:              m.UsedBy,
+		CreatedBy:           m.CreatedBy,
+		UsedAt:              m.UsedAt,
+		Notes:               derefString(m.Notes),
+		CreatedAt:           m.CreatedAt,
+		ExpiresAt:           m.ExpiresAt,
+		GroupID:             m.GroupID,
+		ValidityDays:        m.ValidityDays,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

@@ -405,12 +405,17 @@ type UpdateProxyInput struct {
 }
 
 type GenerateRedeemCodesInput struct {
-	Count        int
-	Type         string
-	Value        float64
-	GroupID      *int64 // 订阅类型专用：关联的分组ID
-	ValidityDays int    // 订阅类型专用：有效天数
-	ExpiresAt    *time.Time
+	Count               int
+	Type                string
+	Value               float64
+	GroupID             *int64 // 订阅类型专用：关联的分组ID
+	ValidityDays        int    // 订阅类型专用：有效天数
+	ExpiresAt           *time.Time
+	MaxRedemptions      int
+	PerUserLimit        bool
+	RandomAmountEnabled bool
+	RandomMinValue      float64
+	RandomMaxValue      float64
 }
 
 type ProxyBatchDeleteResult struct {
@@ -3088,6 +3093,18 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 	if input.ExpiresAt != nil && !input.ExpiresAt.After(time.Now()) {
 		return nil, ErrRedeemCodeExpired
 	}
+	if input.MaxRedemptions <= 0 {
+		input.MaxRedemptions = 1
+	}
+	if input.RandomAmountEnabled {
+		if input.Type != RedeemTypeBalance {
+			return nil, errors.New("random amount is only supported for balance redeem codes")
+		}
+		if input.RandomMinValue <= 0 || input.RandomMaxValue <= 0 || input.RandomMinValue > input.RandomMaxValue {
+			return nil, errors.New("random amount range is invalid")
+		}
+		input.Value = input.RandomMaxValue
+	}
 
 	// 如果是订阅类型，验证必须有 GroupID
 	if input.Type == RedeemTypeSubscription {
@@ -3111,11 +3128,16 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 			return nil, err
 		}
 		code := RedeemCode{
-			Code:      codeValue,
-			Type:      input.Type,
-			Value:     input.Value,
-			Status:    StatusUnused,
-			ExpiresAt: input.ExpiresAt,
+			Code:                codeValue,
+			Type:                input.Type,
+			Value:               input.Value,
+			Status:              StatusUnused,
+			ExpiresAt:           input.ExpiresAt,
+			MaxRedemptions:      input.MaxRedemptions,
+			PerUserLimit:        input.PerUserLimit,
+			RandomAmountEnabled: input.RandomAmountEnabled,
+			RandomMinValue:      input.RandomMinValue,
+			RandomMaxValue:      input.RandomMaxValue,
 		}
 		// 订阅类型专用字段
 		if input.Type == RedeemTypeSubscription {

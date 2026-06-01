@@ -25,6 +25,18 @@ type RedeemCode struct {
 	Type string `json:"type,omitempty"`
 	// Value holds the value of the "value" field.
 	Value float64 `json:"value,omitempty"`
+	// MaxRedemptions holds the value of the "max_redemptions" field.
+	MaxRedemptions int `json:"max_redemptions,omitempty"`
+	// RedeemedCount holds the value of the "redeemed_count" field.
+	RedeemedCount int `json:"redeemed_count,omitempty"`
+	// PerUserLimit holds the value of the "per_user_limit" field.
+	PerUserLimit bool `json:"per_user_limit,omitempty"`
+	// RandomAmountEnabled holds the value of the "random_amount_enabled" field.
+	RandomAmountEnabled bool `json:"random_amount_enabled,omitempty"`
+	// RandomMinValue holds the value of the "random_min_value" field.
+	RandomMinValue float64 `json:"random_min_value,omitempty"`
+	// RandomMaxValue holds the value of the "random_max_value" field.
+	RandomMaxValue float64 `json:"random_max_value,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// UsedBy holds the value of the "used_by" field.
@@ -57,9 +69,11 @@ type RedeemCodeEdges struct {
 	Creator *User `json:"creator,omitempty"`
 	// Group holds the value of the group edge.
 	Group *Group `json:"group,omitempty"`
+	// Usages holds the value of the usages edge.
+	Usages []*RedeemCodeUsage `json:"usages,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -95,14 +109,25 @@ func (e RedeemCodeEdges) GroupOrErr() (*Group, error) {
 	return nil, &NotLoadedError{edge: "group"}
 }
 
+// UsagesOrErr returns the Usages value or an error if the edge
+// was not loaded in eager-loading.
+func (e RedeemCodeEdges) UsagesOrErr() ([]*RedeemCodeUsage, error) {
+	if e.loadedTypes[3] {
+		return e.Usages, nil
+	}
+	return nil, &NotLoadedError{edge: "usages"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*RedeemCode) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case redeemcode.FieldValue:
+		case redeemcode.FieldPerUserLimit, redeemcode.FieldRandomAmountEnabled:
+			values[i] = new(sql.NullBool)
+		case redeemcode.FieldValue, redeemcode.FieldRandomMinValue, redeemcode.FieldRandomMaxValue:
 			values[i] = new(sql.NullFloat64)
-		case redeemcode.FieldID, redeemcode.FieldUsedBy, redeemcode.FieldCreatedBy, redeemcode.FieldGroupID, redeemcode.FieldValidityDays:
+		case redeemcode.FieldID, redeemcode.FieldMaxRedemptions, redeemcode.FieldRedeemedCount, redeemcode.FieldUsedBy, redeemcode.FieldCreatedBy, redeemcode.FieldGroupID, redeemcode.FieldValidityDays:
 			values[i] = new(sql.NullInt64)
 		case redeemcode.FieldCode, redeemcode.FieldType, redeemcode.FieldStatus, redeemcode.FieldNotes:
 			values[i] = new(sql.NullString)
@@ -146,6 +171,42 @@ func (_m *RedeemCode) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field value", values[i])
 			} else if value.Valid {
 				_m.Value = value.Float64
+			}
+		case redeemcode.FieldMaxRedemptions:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field max_redemptions", values[i])
+			} else if value.Valid {
+				_m.MaxRedemptions = int(value.Int64)
+			}
+		case redeemcode.FieldRedeemedCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field redeemed_count", values[i])
+			} else if value.Valid {
+				_m.RedeemedCount = int(value.Int64)
+			}
+		case redeemcode.FieldPerUserLimit:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field per_user_limit", values[i])
+			} else if value.Valid {
+				_m.PerUserLimit = value.Bool
+			}
+		case redeemcode.FieldRandomAmountEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field random_amount_enabled", values[i])
+			} else if value.Valid {
+				_m.RandomAmountEnabled = value.Bool
+			}
+		case redeemcode.FieldRandomMinValue:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field random_min_value", values[i])
+			} else if value.Valid {
+				_m.RandomMinValue = value.Float64
+			}
+		case redeemcode.FieldRandomMaxValue:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field random_max_value", values[i])
+			} else if value.Valid {
+				_m.RandomMaxValue = value.Float64
 			}
 		case redeemcode.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -235,6 +296,11 @@ func (_m *RedeemCode) QueryGroup() *GroupQuery {
 	return NewRedeemCodeClient(_m.config).QueryGroup(_m)
 }
 
+// QueryUsages queries the "usages" edge of the RedeemCode entity.
+func (_m *RedeemCode) QueryUsages() *RedeemCodeUsageQuery {
+	return NewRedeemCodeClient(_m.config).QueryUsages(_m)
+}
+
 // Update returns a builder for updating this RedeemCode.
 // Note that you need to call RedeemCode.Unwrap() before calling this method if this RedeemCode
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -266,6 +332,24 @@ func (_m *RedeemCode) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("value=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Value))
+	builder.WriteString(", ")
+	builder.WriteString("max_redemptions=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MaxRedemptions))
+	builder.WriteString(", ")
+	builder.WriteString("redeemed_count=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RedeemedCount))
+	builder.WriteString(", ")
+	builder.WriteString("per_user_limit=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PerUserLimit))
+	builder.WriteString(", ")
+	builder.WriteString("random_amount_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RandomAmountEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("random_min_value=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RandomMinValue))
+	builder.WriteString(", ")
+	builder.WriteString("random_max_value=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RandomMaxValue))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

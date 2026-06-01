@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
@@ -54,6 +55,90 @@ func (_c *RedeemCodeCreate) SetValue(v float64) *RedeemCodeCreate {
 func (_c *RedeemCodeCreate) SetNillableValue(v *float64) *RedeemCodeCreate {
 	if v != nil {
 		_c.SetValue(*v)
+	}
+	return _c
+}
+
+// SetMaxRedemptions sets the "max_redemptions" field.
+func (_c *RedeemCodeCreate) SetMaxRedemptions(v int) *RedeemCodeCreate {
+	_c.mutation.SetMaxRedemptions(v)
+	return _c
+}
+
+// SetNillableMaxRedemptions sets the "max_redemptions" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableMaxRedemptions(v *int) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetMaxRedemptions(*v)
+	}
+	return _c
+}
+
+// SetRedeemedCount sets the "redeemed_count" field.
+func (_c *RedeemCodeCreate) SetRedeemedCount(v int) *RedeemCodeCreate {
+	_c.mutation.SetRedeemedCount(v)
+	return _c
+}
+
+// SetNillableRedeemedCount sets the "redeemed_count" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableRedeemedCount(v *int) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetRedeemedCount(*v)
+	}
+	return _c
+}
+
+// SetPerUserLimit sets the "per_user_limit" field.
+func (_c *RedeemCodeCreate) SetPerUserLimit(v bool) *RedeemCodeCreate {
+	_c.mutation.SetPerUserLimit(v)
+	return _c
+}
+
+// SetNillablePerUserLimit sets the "per_user_limit" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillablePerUserLimit(v *bool) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetPerUserLimit(*v)
+	}
+	return _c
+}
+
+// SetRandomAmountEnabled sets the "random_amount_enabled" field.
+func (_c *RedeemCodeCreate) SetRandomAmountEnabled(v bool) *RedeemCodeCreate {
+	_c.mutation.SetRandomAmountEnabled(v)
+	return _c
+}
+
+// SetNillableRandomAmountEnabled sets the "random_amount_enabled" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableRandomAmountEnabled(v *bool) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetRandomAmountEnabled(*v)
+	}
+	return _c
+}
+
+// SetRandomMinValue sets the "random_min_value" field.
+func (_c *RedeemCodeCreate) SetRandomMinValue(v float64) *RedeemCodeCreate {
+	_c.mutation.SetRandomMinValue(v)
+	return _c
+}
+
+// SetNillableRandomMinValue sets the "random_min_value" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableRandomMinValue(v *float64) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetRandomMinValue(*v)
+	}
+	return _c
+}
+
+// SetRandomMaxValue sets the "random_max_value" field.
+func (_c *RedeemCodeCreate) SetRandomMaxValue(v float64) *RedeemCodeCreate {
+	_c.mutation.SetRandomMaxValue(v)
+	return _c
+}
+
+// SetNillableRandomMaxValue sets the "random_max_value" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableRandomMaxValue(v *float64) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetRandomMaxValue(*v)
 	}
 	return _c
 }
@@ -227,6 +312,21 @@ func (_c *RedeemCodeCreate) SetGroup(v *Group) *RedeemCodeCreate {
 	return _c.SetGroupID(v.ID)
 }
 
+// AddUsageIDs adds the "usages" edge to the RedeemCodeUsage entity by IDs.
+func (_c *RedeemCodeCreate) AddUsageIDs(ids ...int64) *RedeemCodeCreate {
+	_c.mutation.AddUsageIDs(ids...)
+	return _c
+}
+
+// AddUsages adds the "usages" edges to the RedeemCodeUsage entity.
+func (_c *RedeemCodeCreate) AddUsages(v ...*RedeemCodeUsage) *RedeemCodeCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddUsageIDs(ids...)
+}
+
 // Mutation returns the RedeemCodeMutation object of the builder.
 func (_c *RedeemCodeCreate) Mutation() *RedeemCodeMutation {
 	return _c.mutation
@@ -270,6 +370,30 @@ func (_c *RedeemCodeCreate) defaults() {
 		v := redeemcode.DefaultValue
 		_c.mutation.SetValue(v)
 	}
+	if _, ok := _c.mutation.MaxRedemptions(); !ok {
+		v := redeemcode.DefaultMaxRedemptions
+		_c.mutation.SetMaxRedemptions(v)
+	}
+	if _, ok := _c.mutation.RedeemedCount(); !ok {
+		v := redeemcode.DefaultRedeemedCount
+		_c.mutation.SetRedeemedCount(v)
+	}
+	if _, ok := _c.mutation.PerUserLimit(); !ok {
+		v := redeemcode.DefaultPerUserLimit
+		_c.mutation.SetPerUserLimit(v)
+	}
+	if _, ok := _c.mutation.RandomAmountEnabled(); !ok {
+		v := redeemcode.DefaultRandomAmountEnabled
+		_c.mutation.SetRandomAmountEnabled(v)
+	}
+	if _, ok := _c.mutation.RandomMinValue(); !ok {
+		v := redeemcode.DefaultRandomMinValue
+		_c.mutation.SetRandomMinValue(v)
+	}
+	if _, ok := _c.mutation.RandomMaxValue(); !ok {
+		v := redeemcode.DefaultRandomMaxValue
+		_c.mutation.SetRandomMaxValue(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := redeemcode.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -304,6 +428,24 @@ func (_c *RedeemCodeCreate) check() error {
 	}
 	if _, ok := _c.mutation.Value(); !ok {
 		return &ValidationError{Name: "value", err: errors.New(`ent: missing required field "RedeemCode.value"`)}
+	}
+	if _, ok := _c.mutation.MaxRedemptions(); !ok {
+		return &ValidationError{Name: "max_redemptions", err: errors.New(`ent: missing required field "RedeemCode.max_redemptions"`)}
+	}
+	if _, ok := _c.mutation.RedeemedCount(); !ok {
+		return &ValidationError{Name: "redeemed_count", err: errors.New(`ent: missing required field "RedeemCode.redeemed_count"`)}
+	}
+	if _, ok := _c.mutation.PerUserLimit(); !ok {
+		return &ValidationError{Name: "per_user_limit", err: errors.New(`ent: missing required field "RedeemCode.per_user_limit"`)}
+	}
+	if _, ok := _c.mutation.RandomAmountEnabled(); !ok {
+		return &ValidationError{Name: "random_amount_enabled", err: errors.New(`ent: missing required field "RedeemCode.random_amount_enabled"`)}
+	}
+	if _, ok := _c.mutation.RandomMinValue(); !ok {
+		return &ValidationError{Name: "random_min_value", err: errors.New(`ent: missing required field "RedeemCode.random_min_value"`)}
+	}
+	if _, ok := _c.mutation.RandomMaxValue(); !ok {
+		return &ValidationError{Name: "random_max_value", err: errors.New(`ent: missing required field "RedeemCode.random_max_value"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "RedeemCode.status"`)}
@@ -357,6 +499,30 @@ func (_c *RedeemCodeCreate) createSpec() (*RedeemCode, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Value(); ok {
 		_spec.SetField(redeemcode.FieldValue, field.TypeFloat64, value)
 		_node.Value = value
+	}
+	if value, ok := _c.mutation.MaxRedemptions(); ok {
+		_spec.SetField(redeemcode.FieldMaxRedemptions, field.TypeInt, value)
+		_node.MaxRedemptions = value
+	}
+	if value, ok := _c.mutation.RedeemedCount(); ok {
+		_spec.SetField(redeemcode.FieldRedeemedCount, field.TypeInt, value)
+		_node.RedeemedCount = value
+	}
+	if value, ok := _c.mutation.PerUserLimit(); ok {
+		_spec.SetField(redeemcode.FieldPerUserLimit, field.TypeBool, value)
+		_node.PerUserLimit = value
+	}
+	if value, ok := _c.mutation.RandomAmountEnabled(); ok {
+		_spec.SetField(redeemcode.FieldRandomAmountEnabled, field.TypeBool, value)
+		_node.RandomAmountEnabled = value
+	}
+	if value, ok := _c.mutation.RandomMinValue(); ok {
+		_spec.SetField(redeemcode.FieldRandomMinValue, field.TypeFloat64, value)
+		_node.RandomMinValue = value
+	}
+	if value, ok := _c.mutation.RandomMaxValue(); ok {
+		_spec.SetField(redeemcode.FieldRandomMaxValue, field.TypeFloat64, value)
+		_node.RandomMaxValue = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(redeemcode.FieldStatus, field.TypeString, value)
@@ -431,6 +597,22 @@ func (_c *RedeemCodeCreate) createSpec() (*RedeemCode, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.GroupID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.UsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.UsagesTable,
+			Columns: []string{redeemcode.UsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(redeemcodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -524,6 +706,102 @@ func (u *RedeemCodeUpsert) UpdateValue() *RedeemCodeUpsert {
 // AddValue adds v to the "value" field.
 func (u *RedeemCodeUpsert) AddValue(v float64) *RedeemCodeUpsert {
 	u.Add(redeemcode.FieldValue, v)
+	return u
+}
+
+// SetMaxRedemptions sets the "max_redemptions" field.
+func (u *RedeemCodeUpsert) SetMaxRedemptions(v int) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldMaxRedemptions, v)
+	return u
+}
+
+// UpdateMaxRedemptions sets the "max_redemptions" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateMaxRedemptions() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldMaxRedemptions)
+	return u
+}
+
+// AddMaxRedemptions adds v to the "max_redemptions" field.
+func (u *RedeemCodeUpsert) AddMaxRedemptions(v int) *RedeemCodeUpsert {
+	u.Add(redeemcode.FieldMaxRedemptions, v)
+	return u
+}
+
+// SetRedeemedCount sets the "redeemed_count" field.
+func (u *RedeemCodeUpsert) SetRedeemedCount(v int) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldRedeemedCount, v)
+	return u
+}
+
+// UpdateRedeemedCount sets the "redeemed_count" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateRedeemedCount() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldRedeemedCount)
+	return u
+}
+
+// AddRedeemedCount adds v to the "redeemed_count" field.
+func (u *RedeemCodeUpsert) AddRedeemedCount(v int) *RedeemCodeUpsert {
+	u.Add(redeemcode.FieldRedeemedCount, v)
+	return u
+}
+
+// SetPerUserLimit sets the "per_user_limit" field.
+func (u *RedeemCodeUpsert) SetPerUserLimit(v bool) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldPerUserLimit, v)
+	return u
+}
+
+// UpdatePerUserLimit sets the "per_user_limit" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdatePerUserLimit() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldPerUserLimit)
+	return u
+}
+
+// SetRandomAmountEnabled sets the "random_amount_enabled" field.
+func (u *RedeemCodeUpsert) SetRandomAmountEnabled(v bool) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldRandomAmountEnabled, v)
+	return u
+}
+
+// UpdateRandomAmountEnabled sets the "random_amount_enabled" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateRandomAmountEnabled() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldRandomAmountEnabled)
+	return u
+}
+
+// SetRandomMinValue sets the "random_min_value" field.
+func (u *RedeemCodeUpsert) SetRandomMinValue(v float64) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldRandomMinValue, v)
+	return u
+}
+
+// UpdateRandomMinValue sets the "random_min_value" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateRandomMinValue() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldRandomMinValue)
+	return u
+}
+
+// AddRandomMinValue adds v to the "random_min_value" field.
+func (u *RedeemCodeUpsert) AddRandomMinValue(v float64) *RedeemCodeUpsert {
+	u.Add(redeemcode.FieldRandomMinValue, v)
+	return u
+}
+
+// SetRandomMaxValue sets the "random_max_value" field.
+func (u *RedeemCodeUpsert) SetRandomMaxValue(v float64) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldRandomMaxValue, v)
+	return u
+}
+
+// UpdateRandomMaxValue sets the "random_max_value" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateRandomMaxValue() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldRandomMaxValue)
+	return u
+}
+
+// AddRandomMaxValue adds v to the "random_max_value" field.
+func (u *RedeemCodeUpsert) AddRandomMaxValue(v float64) *RedeemCodeUpsert {
+	u.Add(redeemcode.FieldRandomMaxValue, v)
 	return u
 }
 
@@ -756,6 +1034,118 @@ func (u *RedeemCodeUpsertOne) AddValue(v float64) *RedeemCodeUpsertOne {
 func (u *RedeemCodeUpsertOne) UpdateValue() *RedeemCodeUpsertOne {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.UpdateValue()
+	})
+}
+
+// SetMaxRedemptions sets the "max_redemptions" field.
+func (u *RedeemCodeUpsertOne) SetMaxRedemptions(v int) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetMaxRedemptions(v)
+	})
+}
+
+// AddMaxRedemptions adds v to the "max_redemptions" field.
+func (u *RedeemCodeUpsertOne) AddMaxRedemptions(v int) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddMaxRedemptions(v)
+	})
+}
+
+// UpdateMaxRedemptions sets the "max_redemptions" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateMaxRedemptions() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateMaxRedemptions()
+	})
+}
+
+// SetRedeemedCount sets the "redeemed_count" field.
+func (u *RedeemCodeUpsertOne) SetRedeemedCount(v int) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetRedeemedCount(v)
+	})
+}
+
+// AddRedeemedCount adds v to the "redeemed_count" field.
+func (u *RedeemCodeUpsertOne) AddRedeemedCount(v int) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddRedeemedCount(v)
+	})
+}
+
+// UpdateRedeemedCount sets the "redeemed_count" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateRedeemedCount() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateRedeemedCount()
+	})
+}
+
+// SetPerUserLimit sets the "per_user_limit" field.
+func (u *RedeemCodeUpsertOne) SetPerUserLimit(v bool) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetPerUserLimit(v)
+	})
+}
+
+// UpdatePerUserLimit sets the "per_user_limit" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdatePerUserLimit() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdatePerUserLimit()
+	})
+}
+
+// SetRandomAmountEnabled sets the "random_amount_enabled" field.
+func (u *RedeemCodeUpsertOne) SetRandomAmountEnabled(v bool) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetRandomAmountEnabled(v)
+	})
+}
+
+// UpdateRandomAmountEnabled sets the "random_amount_enabled" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateRandomAmountEnabled() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateRandomAmountEnabled()
+	})
+}
+
+// SetRandomMinValue sets the "random_min_value" field.
+func (u *RedeemCodeUpsertOne) SetRandomMinValue(v float64) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetRandomMinValue(v)
+	})
+}
+
+// AddRandomMinValue adds v to the "random_min_value" field.
+func (u *RedeemCodeUpsertOne) AddRandomMinValue(v float64) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddRandomMinValue(v)
+	})
+}
+
+// UpdateRandomMinValue sets the "random_min_value" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateRandomMinValue() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateRandomMinValue()
+	})
+}
+
+// SetRandomMaxValue sets the "random_max_value" field.
+func (u *RedeemCodeUpsertOne) SetRandomMaxValue(v float64) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetRandomMaxValue(v)
+	})
+}
+
+// AddRandomMaxValue adds v to the "random_max_value" field.
+func (u *RedeemCodeUpsertOne) AddRandomMaxValue(v float64) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddRandomMaxValue(v)
+	})
+}
+
+// UpdateRandomMaxValue sets the "random_max_value" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateRandomMaxValue() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateRandomMaxValue()
 	})
 }
 
@@ -1177,6 +1567,118 @@ func (u *RedeemCodeUpsertBulk) AddValue(v float64) *RedeemCodeUpsertBulk {
 func (u *RedeemCodeUpsertBulk) UpdateValue() *RedeemCodeUpsertBulk {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.UpdateValue()
+	})
+}
+
+// SetMaxRedemptions sets the "max_redemptions" field.
+func (u *RedeemCodeUpsertBulk) SetMaxRedemptions(v int) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetMaxRedemptions(v)
+	})
+}
+
+// AddMaxRedemptions adds v to the "max_redemptions" field.
+func (u *RedeemCodeUpsertBulk) AddMaxRedemptions(v int) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddMaxRedemptions(v)
+	})
+}
+
+// UpdateMaxRedemptions sets the "max_redemptions" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateMaxRedemptions() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateMaxRedemptions()
+	})
+}
+
+// SetRedeemedCount sets the "redeemed_count" field.
+func (u *RedeemCodeUpsertBulk) SetRedeemedCount(v int) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetRedeemedCount(v)
+	})
+}
+
+// AddRedeemedCount adds v to the "redeemed_count" field.
+func (u *RedeemCodeUpsertBulk) AddRedeemedCount(v int) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddRedeemedCount(v)
+	})
+}
+
+// UpdateRedeemedCount sets the "redeemed_count" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateRedeemedCount() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateRedeemedCount()
+	})
+}
+
+// SetPerUserLimit sets the "per_user_limit" field.
+func (u *RedeemCodeUpsertBulk) SetPerUserLimit(v bool) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetPerUserLimit(v)
+	})
+}
+
+// UpdatePerUserLimit sets the "per_user_limit" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdatePerUserLimit() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdatePerUserLimit()
+	})
+}
+
+// SetRandomAmountEnabled sets the "random_amount_enabled" field.
+func (u *RedeemCodeUpsertBulk) SetRandomAmountEnabled(v bool) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetRandomAmountEnabled(v)
+	})
+}
+
+// UpdateRandomAmountEnabled sets the "random_amount_enabled" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateRandomAmountEnabled() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateRandomAmountEnabled()
+	})
+}
+
+// SetRandomMinValue sets the "random_min_value" field.
+func (u *RedeemCodeUpsertBulk) SetRandomMinValue(v float64) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetRandomMinValue(v)
+	})
+}
+
+// AddRandomMinValue adds v to the "random_min_value" field.
+func (u *RedeemCodeUpsertBulk) AddRandomMinValue(v float64) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddRandomMinValue(v)
+	})
+}
+
+// UpdateRandomMinValue sets the "random_min_value" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateRandomMinValue() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateRandomMinValue()
+	})
+}
+
+// SetRandomMaxValue sets the "random_max_value" field.
+func (u *RedeemCodeUpsertBulk) SetRandomMaxValue(v float64) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetRandomMaxValue(v)
+	})
+}
+
+// AddRandomMaxValue adds v to the "random_max_value" field.
+func (u *RedeemCodeUpsertBulk) AddRandomMaxValue(v float64) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.AddRandomMaxValue(v)
+	})
+}
+
+// UpdateRandomMaxValue sets the "random_max_value" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateRandomMaxValue() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateRandomMaxValue()
 	})
 }
 

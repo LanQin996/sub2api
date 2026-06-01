@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
@@ -28,6 +30,7 @@ type RedeemCodeQuery struct {
 	withUser    *UserQuery
 	withCreator *UserQuery
 	withGroup   *GroupQuery
+	withUsages  *RedeemCodeUsageQuery
 	modifiers   []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -124,6 +127,28 @@ func (_q *RedeemCodeQuery) QueryGroup() *GroupQuery {
 			sqlgraph.From(redeemcode.Table, redeemcode.FieldID, selector),
 			sqlgraph.To(group.Table, group.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, redeemcode.GroupTable, redeemcode.GroupColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryUsages chains the current query on the "usages" edge.
+func (_q *RedeemCodeQuery) QueryUsages() *RedeemCodeUsageQuery {
+	query := (&RedeemCodeUsageClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(redeemcode.Table, redeemcode.FieldID, selector),
+			sqlgraph.To(redeemcodeusage.Table, redeemcodeusage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, redeemcode.UsagesTable, redeemcode.UsagesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -326,6 +351,7 @@ func (_q *RedeemCodeQuery) Clone() *RedeemCodeQuery {
 		withUser:    _q.withUser.Clone(),
 		withCreator: _q.withCreator.Clone(),
 		withGroup:   _q.withGroup.Clone(),
+		withUsages:  _q.withUsages.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -362,6 +388,17 @@ func (_q *RedeemCodeQuery) WithGroup(opts ...func(*GroupQuery)) *RedeemCodeQuery
 		opt(query)
 	}
 	_q.withGroup = query
+	return _q
+}
+
+// WithUsages tells the query-builder to eager-load the nodes that are connected to
+// the "usages" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *RedeemCodeQuery) WithUsages(opts ...func(*RedeemCodeUsageQuery)) *RedeemCodeQuery {
+	query := (&RedeemCodeUsageClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withUsages = query
 	return _q
 }
 
@@ -443,10 +480,11 @@ func (_q *RedeemCodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*R
 	var (
 		nodes       = []*RedeemCode{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
 			_q.withUser != nil,
 			_q.withCreator != nil,
 			_q.withGroup != nil,
+			_q.withUsages != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -485,6 +523,13 @@ func (_q *RedeemCodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*R
 	if query := _q.withGroup; query != nil {
 		if err := _q.loadGroup(ctx, query, nodes, nil,
 			func(n *RedeemCode, e *Group) { n.Edges.Group = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withUsages; query != nil {
+		if err := _q.loadUsages(ctx, query, nodes,
+			func(n *RedeemCode) { n.Edges.Usages = []*RedeemCodeUsage{} },
+			func(n *RedeemCode, e *RedeemCodeUsage) { n.Edges.Usages = append(n.Edges.Usages, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -584,6 +629,36 @@ func (_q *RedeemCodeQuery) loadGroup(ctx context.Context, query *GroupQuery, nod
 		for i := range nodes {
 			assign(nodes[i], n)
 		}
+	}
+	return nil
+}
+func (_q *RedeemCodeQuery) loadUsages(ctx context.Context, query *RedeemCodeUsageQuery, nodes []*RedeemCode, init func(*RedeemCode), assign func(*RedeemCode, *RedeemCodeUsage)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*RedeemCode)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(redeemcodeusage.FieldRedeemCodeID)
+	}
+	query.Where(predicate.RedeemCodeUsage(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(redeemcode.UsagesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.RedeemCodeID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "redeem_code_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

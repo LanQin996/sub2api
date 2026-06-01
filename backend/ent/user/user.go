@@ -67,6 +67,8 @@ const (
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
 	EdgeRedeemCodes = "redeem_codes"
+	// EdgeRedeemCodeUsages holds the string denoting the redeem_code_usages edge name in mutations.
+	EdgeRedeemCodeUsages = "redeem_code_usages"
 	// EdgeCreatedInvitationCodes holds the string denoting the created_invitation_codes edge name in mutations.
 	EdgeCreatedInvitationCodes = "created_invitation_codes"
 	// EdgeSubscriptions holds the string denoting the subscriptions edge name in mutations.
@@ -109,6 +111,13 @@ const (
 	RedeemCodesInverseTable = "redeem_codes"
 	// RedeemCodesColumn is the table column denoting the redeem_codes relation/edge.
 	RedeemCodesColumn = "used_by"
+	// RedeemCodeUsagesTable is the table that holds the redeem_code_usages relation/edge.
+	RedeemCodeUsagesTable = "redeem_code_usages"
+	// RedeemCodeUsagesInverseTable is the table name for the RedeemCodeUsage entity.
+	// It exists in this package in order to avoid circular dependency with the "redeemcodeusage" package.
+	RedeemCodeUsagesInverseTable = "redeem_code_usages"
+	// RedeemCodeUsagesColumn is the table column denoting the redeem_code_usages relation/edge.
+	RedeemCodeUsagesColumn = "user_id"
 	// CreatedInvitationCodesTable is the table that holds the created_invitation_codes relation/edge.
 	CreatedInvitationCodesTable = "redeem_codes"
 	// CreatedInvitationCodesInverseTable is the table name for the RedeemCode entity.
@@ -457,6 +466,20 @@ func ByRedeemCodes(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByRedeemCodeUsagesCount orders the results by redeem_code_usages count.
+func ByRedeemCodeUsagesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newRedeemCodeUsagesStep(), opts...)
+	}
+}
+
+// ByRedeemCodeUsages orders the results by redeem_code_usages terms.
+func ByRedeemCodeUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newRedeemCodeUsagesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByCreatedInvitationCodesCount orders the results by created_invitation_codes count.
 func ByCreatedInvitationCodesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -650,6 +673,13 @@ func newRedeemCodesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(RedeemCodesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, RedeemCodesTable, RedeemCodesColumn),
+	)
+}
+func newRedeemCodeUsagesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(RedeemCodeUsagesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, RedeemCodeUsagesTable, RedeemCodeUsagesColumn),
 	)
 }
 func newCreatedInvitationCodesStep() *sqlgraph.Step {
