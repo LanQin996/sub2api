@@ -413,7 +413,11 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	}
 	subject := s.buildPaymentSubject(plan, limitAmount, cfg, sel)
 	outTradeNo := order.OutTradeNo
-	canonicalReturnURL, err := CanonicalizeReturnURL(req.ReturnURL, req.SrcHost, req.SrcURL)
+	returnURL := req.ReturnURL
+	if configuredReturnURL := buildConfiguredPaymentReturnURL(cfg.SiteURL); configuredReturnURL != "" {
+		returnURL = configuredReturnURL
+	}
+	canonicalReturnURL, err := CanonicalizeReturnURL(returnURL, req.SrcHost, req.SrcURL, cfg.SiteURL)
 	if err != nil {
 		return nil, err
 	}
@@ -491,6 +495,14 @@ func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.Inst
 		IsMobile:           req.IsMobile,
 		InstanceSubMethods: selectedInstanceSupportedTypes(sel),
 	}
+}
+
+func buildConfiguredPaymentReturnURL(siteURL string) string {
+	base := strings.TrimRight(strings.TrimSpace(siteURL), "/")
+	if base == "" {
+		return ""
+	}
+	return base + paymentResultReturnPath
 }
 
 func selectedInstanceSupportedTypes(sel *payment.InstanceSelection) string {

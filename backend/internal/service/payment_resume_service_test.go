@@ -106,6 +106,23 @@ func TestCanonicalizeReturnURLAllowsConfiguredFrontendHost(t *testing.T) {
 	}
 }
 
+func TestCanonicalizeReturnURLAllowsExplicitHost(t *testing.T) {
+	t.Parallel()
+
+	got, err := CanonicalizeReturnURL(
+		"https://api.777358.xyz/payment/result",
+		"api.imgwwo.top",
+		"",
+		"https://api.777358.xyz",
+	)
+	if err != nil {
+		t.Fatalf("CanonicalizeReturnURL returned error: %v", err)
+	}
+	if got != "https://api.777358.xyz/payment/result" {
+		t.Fatalf("CanonicalizeReturnURL = %q, want %q", got, "https://api.777358.xyz/payment/result")
+	}
+}
+
 func TestCanonicalizeReturnURLRejectsNonCanonicalPath(t *testing.T) {
 	t.Parallel()
 

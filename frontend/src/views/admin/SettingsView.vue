@@ -5922,6 +5922,20 @@
                     </p>
                   </div>
                   <div>
+                    <label class="input-label">{{
+                      t("admin.settings.payment.siteUrl")
+                    }}</label>
+                    <input
+                      v-model.trim="form.payment_site_url"
+                      type="url"
+                      class="input"
+                      placeholder="https://api.777358.xyz"
+                    />
+                    <p class="mt-0.5 text-xs text-gray-400">
+                      {{ t("admin.settings.payment.siteUrlHint") }}
+                    </p>
+                  </div>
+                  <div>
                     <label class="input-label"
                       >{{ t("admin.settings.payment.orderTimeout") }}
                       <span class="text-red-500">*</span></label
@@ -7040,6 +7054,7 @@ const form = reactive<SettingsForm>({
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
   payment_recharge_fee_rate: 0,
+  payment_site_url: "",
   payment_enabled_types: [],
   payment_help_image_url: "",
   payment_help_text: "",
@@ -8312,6 +8327,7 @@ async function saveSettings() {
       payment_balance_recharge_multiplier:
         Number(form.payment_balance_recharge_multiplier) || 1,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
+      payment_site_url: form.payment_site_url.trim(),
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,
       payment_product_name_prefix: form.payment_product_name_prefix,

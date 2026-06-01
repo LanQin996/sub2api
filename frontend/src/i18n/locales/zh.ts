@@ -6052,6 +6052,8 @@ export default {
         rechargeFeeRate: '充值手续费率',
         rechargeFeeRateHint: '用户充值时额外收取的手续费百分比，0 表示不收取手续费',
         rechargeFeePreview: '预览：充值 100 元，手续费 {fee} 元',
+        siteUrl: '支付站点域名',
+        siteUrlHint: '可选。填写后支付返回地址固定使用该域名；留空则继续使用用户当前访问域名。',
         orderTimeout: '订单超时时间',
         orderTimeoutHint: '单位：分钟，至少 1 分钟',
         maxPendingOrders: '最大待支付订单数',
