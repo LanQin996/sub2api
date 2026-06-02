@@ -77,7 +77,29 @@
                 :key="image.id"
                 class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-900"
               >
-                <img :src="image.url" :alt="image.prompt" class="aspect-square w-full object-cover" />
+                <div
+                  v-if="image.status === 'pending'"
+                  class="flex aspect-square w-full flex-col items-center justify-center gap-3 bg-gray-100 p-6 text-center dark:bg-dark-700"
+                >
+                  <Icon name="sparkles" size="xl" class="animate-pulse text-primary-500" />
+                  <div>
+                    <p class="text-sm font-medium text-gray-900 dark:text-white">
+                      {{ ui.imageGenerating }}
+                    </p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-dark-300">
+                      {{ ui.elapsedSeconds.replace('{seconds}', String(image.elapsedSeconds)) }}
+                    </p>
+                  </div>
+                </div>
+                <div
+                  v-else-if="image.status === 'error'"
+                  class="flex aspect-square w-full flex-col items-center justify-center gap-3 bg-red-50 p-6 text-center dark:bg-red-500/10"
+                >
+                  <Icon name="exclamationCircle" size="xl" class="text-red-500" />
+                  <p class="text-sm font-medium text-red-700 dark:text-red-300">{{ ui.imageFailed }}</p>
+                  <p class="line-clamp-4 text-xs text-red-600 dark:text-red-300">{{ image.error }}</p>
+                </div>
+                <img v-else :src="image.url" :alt="image.prompt" class="aspect-square w-full object-cover" />
                 <div class="p-3">
                   <div class="mb-2 flex items-center gap-2 text-xs text-gray-500 dark:text-dark-300">
                     <span>{{ image.mode === 'edit' ? ui.editImage : ui.generateImage }}</span>
@@ -85,7 +107,7 @@
                     <span>{{ image.format }}</span>
                   </div>
                   <p class="line-clamp-2 text-sm text-gray-700 dark:text-dark-100">{{ image.prompt }}</p>
-                  <a :href="image.url" target="_blank" rel="noreferrer" class="mt-2 inline-flex text-sm text-primary-600 hover:text-primary-700">
+                  <a v-if="image.status === 'done'" :href="image.url" target="_blank" rel="noreferrer" class="mt-2 inline-flex text-sm text-primary-600 hover:text-primary-700">
                     {{ ui.openImage }}
                   </a>
                 </div>
@@ -286,6 +308,9 @@ interface GeneratedImage {
   size: string
   format: string
   mode: ImageMode
+  status: 'pending' | 'done' | 'error'
+  elapsedSeconds: number
+  error?: string
 }
 
 const { t } = useI18n()
@@ -316,7 +341,8 @@ const selectedChatModel = ref<string | number | boolean | null>(localStorage.get
 const selectedImageModel = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_SELECTED_IMAGE_MODEL) || 'gpt-image-1')
 const customChatModel = ref(localStorage.getItem(STORAGE_CHAT_MODEL) || 'gpt-4o-mini')
 const customImageModel = ref(localStorage.getItem(STORAGE_IMAGE_MODEL) || 'gpt-image-1')
-const availableModelNames = ref<string[]>([])
+const keyModelMap = ref<Record<string, string[]>>({})
+const keyModelsLoaded = ref<Record<string, boolean>>({})
 const imageSize = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_IMAGE_SIZE) || '1024x1024')
 const customImageWidth = ref(Number(localStorage.getItem(STORAGE_CUSTOM_IMAGE_WIDTH) || 1024))
 const customImageHeight = ref(Number(localStorage.getItem(STORAGE_CUSTOM_IMAGE_HEIGHT) || 1024))
@@ -340,6 +366,7 @@ const chatLoading = ref(false)
 const imageLoading = ref(false)
 const errorMessage = ref('')
 const chatScrollRef = ref<HTMLElement | null>(null)
+const imageTimers = new Map<string, number>()
 
 const imageCountOptions: SelectOption[] = [
   { value: '1', label: '1' },
@@ -368,12 +395,20 @@ function uniqueModels(models: string[]): string[] {
 }
 
 function modelsForSelectedKey(): string[] {
-  return availableModelNames.value
+  return keyModelMap.value[String(selectedKeyId.value || '')] || []
 }
 
 function isLikelyImageModel(model: string): boolean {
   const normalized = model.toLowerCase()
   return normalized.includes('image') || normalized.includes('dall') || normalized.includes('flux') || normalized.includes('stable-diffusion')
+}
+
+function hasChatModelsForKey(keyId: string | number): boolean {
+  return (keyModelMap.value[String(keyId)] || []).some((model) => !isLikelyImageModel(model))
+}
+
+function hasImageModelsForKey(keyId: string | number): boolean {
+  return (keyModelMap.value[String(keyId)] || []).some((model) => isLikelyImageModel(model))
 }
 
 function modelOptions(models: string[]): SelectOption[] {
@@ -385,25 +420,24 @@ function modelOptions(models: string[]): SelectOption[] {
 
 const chatModelOptions = computed<SelectOption[]>(() => {
   const keyModels = modelsForSelectedKey().filter((model) => !isLikelyImageModel(model))
-  const chatModels = keyModels.length > 0 ? uniqueModels(keyModels) : defaultChatModels
+  const chatModels = keyModels.length > 0 ? uniqueModels(keyModels) : (selectedModelsLoaded.value ? [] : defaultChatModels)
   return modelOptions(chatModels)
 })
 
 const imageModelOptions = computed<SelectOption[]>(() => {
   const keyModels = modelsForSelectedKey().filter((model) => isLikelyImageModel(model))
-  const imageModels = keyModels.length > 0 ? uniqueModels(keyModels) : defaultImageModels
+  const imageModels = keyModels.length > 0 ? uniqueModels(keyModels) : (selectedModelsLoaded.value ? [] : defaultImageModels)
   return modelOptions(imageModels)
 })
 
 function ensureSelectedModelIsAvailable(
   selectedModel: typeof selectedChatModel,
   options: SelectOption[],
-  fallback: string,
 ) {
   const value = String(selectedModel.value || '')
   if (value === 'custom') return
   if (options.some((option) => option.value === value)) return
-  selectedModel.value = options.find((option) => option.value !== 'custom')?.value ?? fallback
+  selectedModel.value = options.find((option) => option.value !== 'custom')?.value ?? 'custom'
 }
 
 const imageSizeOptions = computed<SelectOption[]>(() => [
@@ -436,8 +470,8 @@ const imageQualityOptions: SelectOption[] = [
 
 const imageBackgroundOptions: SelectOption[] = [
   { value: 'auto', label: 'Auto' },
-  { value: 'transparent', label: '\u900f\u660e' },
-  { value: 'opaque', label: '\u4e0d\u900f\u660e' }
+  { value: 'transparent', label: ui.transparent },
+  { value: 'opaque', label: ui.opaque }
 ]
 
 const imageOutputFormatOptions: SelectOption[] = [
@@ -447,15 +481,22 @@ const imageOutputFormatOptions: SelectOption[] = [
 ]
 
 const keyOptions = computed<SelectOption[]>(() =>
-  apiKeys.value.map((key) => ({
-    value: String(key.id),
-    label: `${key.name} (${maskApiKey(key.key)})`
-  }))
+  apiKeys.value
+    .filter((key) => {
+      const keyId = String(key.id)
+      if (!keyModelsLoaded.value[keyId]) return true
+      return mode.value === 'image' ? hasImageModelsForKey(keyId) : hasChatModelsForKey(keyId)
+    })
+    .map((key) => ({
+      value: String(key.id),
+      label: `${key.name} (${maskApiKey(key.key)})`
+    }))
 )
 
 const selectedKey = computed(() =>
   apiKeys.value.find((key) => String(key.id) === String(selectedKeyId.value)) || null
 )
+const selectedModelsLoaded = computed(() => keyModelsLoaded.value[String(selectedKeyId.value || '')] === true)
 const selectedKeyLabel = computed(() => {
   if (!selectedKey.value) return ''
   return `${selectedKey.value.name} / ${maskApiKey(selectedKey.value.key)}`
@@ -521,7 +562,9 @@ function extractImages(data: any, prompt: string, imageMode: ImageMode): Generat
         prompt,
         size: resolvedImageSize.value,
         format: String(imageOutputFormat.value || 'png').toUpperCase(),
-        mode: imageMode
+        mode: imageMode,
+        status: 'done',
+        elapsedSeconds: 0
       }
     })
     .filter(Boolean) as GeneratedImage[]
@@ -543,29 +586,38 @@ async function loadKeys() {
   }
 }
 
-async function loadModels() {
-  if (!selectedApiKey.value) {
-    availableModelNames.value = []
-    return
+async function fetchModelsForApiKey(apiKey: string): Promise<string[]> {
+  const response = await fetch(`${normalizeEndpoint(endpointBase.value)}/models`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${apiKey}`
+    }
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`)
   }
+  return Array.isArray(data?.data)
+    ? uniqueModels(data.data.map((item: any) => String(item?.id || '').trim()))
+    : []
+}
+
+async function loadModelsForKey(key: ApiKey) {
+  const keyId = String(key.id)
+  try {
+    const models = await fetchModelsForApiKey(key.key)
+    keyModelMap.value = { ...keyModelMap.value, [keyId]: models }
+    keyModelsLoaded.value = { ...keyModelsLoaded.value, [keyId]: true }
+  } catch {
+    keyModelMap.value = { ...keyModelMap.value, [keyId]: [] }
+    keyModelsLoaded.value = { ...keyModelsLoaded.value, [keyId]: false }
+  }
+}
+
+async function loadAllKeyModels() {
   loadingModels.value = true
   try {
-    const response = await fetch(`${normalizeEndpoint(endpointBase.value)}/models`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${selectedApiKey.value}`
-      }
-    })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) {
-      throw new Error(data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`)
-    }
-    const models = Array.isArray(data?.data)
-      ? data.data.map((item: any) => String(item?.id || '').trim())
-      : []
-    availableModelNames.value = uniqueModels(models)
-  } catch {
-    availableModelNames.value = []
+    await Promise.all(apiKeys.value.map((key) => loadModelsForKey(key)))
   } finally {
     loadingModels.value = false
   }
@@ -637,20 +689,62 @@ async function generateImage() {
   const prompt = imagePrompt.value.trim()
   errorMessage.value = ''
   imageLoading.value = true
+  const imageMode: ImageMode = imageEditFiles.value.length > 0 ? 'edit' : 'generate'
+  const taskId = crypto.randomUUID()
+  const task: GeneratedImage = {
+    id: taskId,
+    url: '',
+    prompt,
+    size: resolvedImageSize.value,
+    format: String(imageOutputFormat.value || 'png').toUpperCase(),
+    mode: imageMode,
+    status: 'pending',
+    elapsedSeconds: 0
+  }
+  images.value.unshift(task)
+  startImageTimer(taskId)
   try {
     const payload = buildImagePayload()
-    const imageMode: ImageMode = imageEditFiles.value.length > 0 ? 'edit' : 'generate'
     const data =
       imageMode === 'edit'
         ? await callOpenAICompatForm('/images/edits', payload, imageEditFiles.value)
         : await callOpenAICompat('/images/generations', payload)
     const generated = extractImages(data, prompt, imageMode)
     if (generated.length === 0) throw new Error(ui.imageNoReturn)
-    images.value.unshift(...generated)
+    replaceImageTask(taskId, generated)
   } catch (error) {
-    errorMessage.value = (error as { message?: string }).message || ui.imageFailed
+    const message = (error as { message?: string }).message || ui.imageFailed
+    errorMessage.value = message
+    updateImageTask(taskId, { status: 'error', error: message })
   } finally {
+    stopImageTimer(taskId)
     imageLoading.value = false
+  }
+}
+
+function updateImageTask(taskId: string, updates: Partial<GeneratedImage>) {
+  images.value = images.value.map((image) => image.id === taskId ? { ...image, ...updates } : image)
+}
+
+function replaceImageTask(taskId: string, generated: GeneratedImage[]) {
+  images.value = images.value.flatMap((image) => image.id === taskId ? generated : [image])
+}
+
+function startImageTimer(taskId: string) {
+  stopImageTimer(taskId)
+  const timer = window.setInterval(() => {
+    images.value = images.value.map((image) =>
+      image.id === taskId ? { ...image, elapsedSeconds: image.elapsedSeconds + 1 } : image
+    )
+  }, 1000)
+  imageTimers.set(taskId, timer)
+}
+
+function stopImageTimer(taskId: string) {
+  const timer = imageTimers.get(taskId)
+  if (timer !== undefined) {
+    window.clearInterval(timer)
+    imageTimers.delete(taskId)
   }
 }
 
@@ -690,17 +784,27 @@ function clearImages() {
   images.value = []
 }
 
+function ensureSelectedKeySupportsMode() {
+  if (!keyOptions.value.some((option) => String(option.value) === String(selectedKeyId.value))) {
+    selectedKeyId.value = keyOptions.value[0]?.value ?? null
+  }
+}
+
 watch(selectedKeyId, (value) => {
   if (value) localStorage.setItem(STORAGE_KEY_ID, String(value))
 })
-watch(selectedApiKey, () => {
-  loadModels()
-})
+watch(
+  [mode, keyOptions],
+  () => {
+    ensureSelectedKeySupportsMode()
+  },
+  { immediate: true }
+)
 watch(
   [selectedKeyId, chatModelOptions, imageModelOptions],
   () => {
-    ensureSelectedModelIsAvailable(selectedChatModel, chatModelOptions.value, 'gpt-4o-mini')
-    ensureSelectedModelIsAvailable(selectedImageModel, imageModelOptions.value, 'gpt-image-1')
+    ensureSelectedModelIsAvailable(selectedChatModel, chatModelOptions.value)
+    ensureSelectedModelIsAvailable(selectedImageModel, imageModelOptions.value)
   },
   { immediate: true }
 )
@@ -720,6 +824,7 @@ onMounted(async () => {
     await appStore.fetchPublicSettings()
   }
   await loadKeys()
-  await loadModels()
+  await loadAllKeyModels()
+  ensureSelectedKeySupportsMode()
 })
 </script>
