@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -407,12 +408,7 @@ func TestOpenAIGatewayServiceLocalizeOpenAIImageResponseURLs(t *testing.T) {
 	}))
 	defer imageServer.Close()
 
-	previousCWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(t.TempDir()))
-	t.Cleanup(func() {
-		require.NoError(t, os.Chdir(previousCWD))
-	})
+	withOpenAIImageTempCWD(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
 	rec := httptest.NewRecorder()
@@ -421,11 +417,37 @@ func TestOpenAIGatewayServiceLocalizeOpenAIImageResponseURLs(t *testing.T) {
 
 	svc := &OpenAIGatewayService{}
 	body := []byte(fmt.Sprintf(`{"data":[{"url":%q}]}`, imageServer.URL+"/generated.png"))
-	rewritten, err := svc.localizeOpenAIImageResponseURLs(context.Background(), c, body)
+	rewritten, err := svc.localizeOpenAIImageResponseURLs(context.Background(), c, body, "")
 	require.NoError(t, err)
 	localURL := gjson.GetBytes(rewritten, "data.0.url").String()
 
 	require.True(t, strings.HasPrefix(localURL, "/images/"))
+	diskPath := filepath.Join("data", "public", "images", filepath.FromSlash(strings.TrimPrefix(localURL, "/images/")))
+	require.FileExists(t, diskPath)
+	saved, err := os.ReadFile(diskPath)
+	require.NoError(t, err)
+	require.Equal(t, imageBytes, saved)
+}
+
+func TestOpenAIGatewayServiceLocalizeOpenAIImageResponseB64JSON(t *testing.T) {
+	imageBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0x00, 0x00, 0x00, 0x00, 0x00}
+	withOpenAIImageTempCWD(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	b64 := base64.StdEncoding.EncodeToString(imageBytes)
+	body := []byte(fmt.Sprintf(`{"data":[{"b64_json":%q,"url":"https://upstream.example/generated.png"}]}`, b64))
+	rewritten, err := svc.localizeOpenAIImageResponseURLs(context.Background(), c, body, "")
+	require.NoError(t, err)
+	localURL := gjson.GetBytes(rewritten, "data.0.url").String()
+
+	require.True(t, strings.HasPrefix(localURL, "/images/"))
+	require.NotContains(t, localURL, "upstream.example")
+	require.Equal(t, b64, gjson.GetBytes(rewritten, "data.0.b64_json").String())
 	diskPath := filepath.Join("data", "public", "images", filepath.FromSlash(strings.TrimPrefix(localURL, "/images/")))
 	require.FileExists(t, diskPath)
 	saved, err := os.ReadFile(diskPath)
@@ -446,7 +468,7 @@ func TestOpenAIGatewayServiceLocalizeOpenAIImageResponseURLsFailsClosed(t *testi
 
 	svc := &OpenAIGatewayService{}
 	body := []byte(fmt.Sprintf(`{"data":[{"url":%q}]}`, imageServer.URL+"/generated.png"))
-	rewritten, err := svc.localizeOpenAIImageResponseURLs(context.Background(), c, body)
+	rewritten, err := svc.localizeOpenAIImageResponseURLs(context.Background(), c, body, "")
 
 	require.Error(t, err)
 	require.Nil(t, rewritten)
@@ -631,8 +653,20 @@ func findOpenAIImageTestSSEEvent(events []openAIImageTestSSEEvent, name string) 
 	return openAIImageTestSSEEvent{}, false
 }
 
+func withOpenAIImageTempCWD(t *testing.T) {
+	t.Helper()
+	previousCWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(t.TempDir()))
+	t.Cleanup(func() {
+		require.NoError(t, os.Chdir(previousCWD))
+	})
+}
+
 func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	withOpenAIImageTempCWD(t)
+
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","n":3}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
@@ -704,6 +738,9 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "gpt-image-2", gjson.Get(rec.Body.String(), "model").String())
 	require.Len(t, gjson.Get(rec.Body.String(), "data").Array(), 3)
+	require.True(t, strings.HasPrefix(gjson.Get(rec.Body.String(), "data.0.url").String(), "/images/"))
+	require.True(t, strings.HasPrefix(gjson.Get(rec.Body.String(), "data.1.url").String(), "/images/"))
+	require.True(t, strings.HasPrefix(gjson.Get(rec.Body.String(), "data.2.url").String(), "/images/"))
 	require.Equal(t, "aW1hZ2UtMQ==", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 	require.Equal(t, "aW1hZ2UtMg==", gjson.Get(rec.Body.String(), "data.1.b64_json").String())
 	require.Equal(t, "aW1hZ2UtMw==", gjson.Get(rec.Body.String(), "data.2.b64_json").String())
@@ -766,6 +803,8 @@ func TestOpenAIGatewayServiceForwardImages_OAuthNonStreamModerationBlockedReturn
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	withOpenAIImageTempCWD(t)
+
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
@@ -816,11 +855,14 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, strings.HasPrefix(gjson.Get(rec.Body.String(), "data.0.url").String(), "/images/"))
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONResponseBillsImage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	withOpenAIImageTempCWD(t)
+
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"b64_json"}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
@@ -865,6 +907,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONResponseBillsImage(t 
 	require.Equal(t, 21, result.Usage.OutputTokens)
 	require.Equal(t, 9, result.Usage.ImageOutputTokens)
 	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, strings.HasPrefix(gjson.Get(rec.Body.String(), "data.0.url").String(), "/images/"))
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
@@ -975,6 +1018,7 @@ func TestExtractOpenAIImagesBillableCountFromJSONBytes_CompletedEvent(t *testing
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyEditUsesConfiguredV1BaseURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	withOpenAIImageTempCWD(t)
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -1033,6 +1077,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyEditUsesConfiguredV1BaseURL(t *
 	require.Contains(t, string(upstream.lastBody), `name="model"`)
 	require.Contains(t, string(upstream.lastBody), "gpt-image-2")
 	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, strings.HasPrefix(gjson.Get(rec.Body.String(), "data.0.url").String(), "/images/"))
 	require.Equal(t, "ZWRpdGVk", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
@@ -1167,6 +1212,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingDrainsAfterClientDisco
 
 func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	withOpenAIImageTempCWD(t)
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -1241,6 +1287,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t
 	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String(), "data:image/png;base64,"))
 	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "tools.0.input_image_mask.image_url").String(), "data:image/png;base64,"))
 	require.Equal(t, "replace background with aurora", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
+	require.True(t, strings.HasPrefix(gjson.Get(rec.Body.String(), "data.0.url").String(), "/images/"))
 	require.Equal(t, "ZWRpdGVk", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 	require.Equal(t, "replace background with aurora", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
 }

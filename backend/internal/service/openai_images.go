@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
@@ -696,7 +697,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
+		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c, proxyURL)
 		if err != nil {
 			return nil, err
 		}
@@ -857,12 +858,12 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	return dst
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context) (OpenAIUsage, int, []string, error) {
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context, proxyURL string) (OpenAIUsage, int, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
-	body, err = s.localizeOpenAIImageResponseURLs(c.Request.Context(), c, body)
+	body, err = s.localizeOpenAIImageResponseURLs(c.Request.Context(), c, body, proxyURL)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": gin.H{
@@ -885,7 +886,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
 }
 
-func (s *OpenAIGatewayService) localizeOpenAIImageResponseURLs(ctx context.Context, c *gin.Context, body []byte) ([]byte, error) {
+func (s *OpenAIGatewayService) localizeOpenAIImageResponseURLs(ctx context.Context, c *gin.Context, body []byte, proxyURL string) ([]byte, error) {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return body, nil
 	}
@@ -897,12 +898,13 @@ func (s *OpenAIGatewayService) localizeOpenAIImageResponseURLs(ctx context.Conte
 	rewritten := body
 	for index, item := range data.Array() {
 		rawURL := strings.TrimSpace(item.Get("url").String())
-		if !shouldLocalizeOpenAIImageURL(rawURL) {
+		b64JSON := strings.TrimSpace(item.Get("b64_json").String())
+		if !shouldLocalizeOpenAIImageResult(rawURL, b64JSON) {
 			continue
 		}
-		localURL, err := saveRemoteOpenAIImageURL(ctx, c.Request.Header, rawURL)
+		localURL, err := saveOpenAIImageResultLocally(ctx, c.Request.Header, rawURL, b64JSON, proxyURL)
 		if err != nil {
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] localize image url failed")
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] localize image url failed: %v", err)
 			return nil, fmt.Errorf("localize image url: %w", err)
 		}
 		next, err := sjson.SetBytes(rewritten, fmt.Sprintf("data.%d.url", index), localURL)
@@ -915,24 +917,50 @@ func (s *OpenAIGatewayService) localizeOpenAIImageResponseURLs(ctx context.Conte
 	return rewritten, nil
 }
 
-func shouldLocalizeOpenAIImageURL(rawURL string) bool {
+func shouldLocalizeOpenAIImageResult(rawURL string, b64JSON string) bool {
+	if normalizeOpenAIImageBase64(b64JSON) != "" {
+		return true
+	}
 	rawURL = strings.TrimSpace(rawURL)
-	if rawURL == "" {
+	if rawURL == "" || strings.HasPrefix(rawURL, "/images/") {
 		return false
 	}
 	lower := strings.ToLower(rawURL)
-	if strings.HasPrefix(lower, "data:") || strings.HasPrefix(rawURL, "/images/") {
-		return false
-	}
-	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+	return strings.HasPrefix(lower, "data:image/") || strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
 }
 
-func saveRemoteOpenAIImageURL(ctx context.Context, headers http.Header, rawURL string) (string, error) {
+func saveOpenAIImageResultLocally(ctx context.Context, headers http.Header, rawURL string, b64JSON string, proxyURL string) (string, error) {
+	inlineImage := strings.TrimSpace(b64JSON)
+	if normalizeOpenAIImageBase64(inlineImage) == "" && strings.HasPrefix(strings.ToLower(strings.TrimSpace(rawURL)), "data:image/") {
+		inlineImage = rawURL
+	}
+	if normalized := normalizeOpenAIImageBase64(inlineImage); normalized != "" {
+		imageBytes, err := base64.StdEncoding.DecodeString(normalized)
+		if err != nil {
+			return "", err
+		}
+		return saveOpenAIImageBytesLocally(imageBytes, rawURL)
+	}
+	return saveRemoteOpenAIImageURL(ctx, headers, rawURL, proxyURL)
+}
+
+func saveRemoteOpenAIImageURL(ctx context.Context, headers http.Header, rawURL string, proxyURL string) (string, error) {
 	client := req.C()
+	if proxy := strings.TrimSpace(proxyURL); proxy != "" {
+		trimmed, _, err := proxyurl.Parse(proxy)
+		if err != nil {
+			return "", err
+		}
+		client.SetProxyURL(trimmed)
+	}
 	imageBytes, err := downloadOpenAIImageBytes(ctx, client, headers, rawURL, openAIUpstreamErrorBodyReadLimit)
 	if err != nil {
 		return "", err
 	}
+	return saveOpenAIImageBytesLocally(imageBytes, rawURL)
+}
+
+func saveOpenAIImageBytesLocally(imageBytes []byte, rawURL string) (string, error) {
 	if len(imageBytes) == 0 {
 		return "", fmt.Errorf("downloaded image is empty")
 	}
@@ -1406,8 +1434,8 @@ func normalizeOpenAIImageBase64(raw string) string {
 			raw = raw[idx+1:]
 		}
 	}
-	raw = strings.TrimSpace(raw)
-	raw = strings.TrimRight(raw, "=") + strings.Repeat("=", (4-len(raw)%4)%4)
+	raw = strings.TrimRight(strings.TrimSpace(raw), "=")
+	raw += strings.Repeat("=", (4-len(raw)%4)%4)
 	if raw == "" {
 		return ""
 	}
