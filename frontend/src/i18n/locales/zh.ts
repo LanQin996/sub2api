@@ -250,6 +250,7 @@ export default {
     clearImages: '清空图片',
     loadKeyFailed: '加载 API Key 失败',
     requestFailed: '请求失败',
+    streamUnavailable: '当前浏览器或接口不支持流式响应',
     noText: '模型没有返回文本内容。',
     chatFailed: '聊天请求失败',
     imageNoReturn: '图片接口没有返回图片',

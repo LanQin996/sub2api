@@ -640,6 +640,59 @@ async function callOpenAICompat(path: string, payload: Record<string, unknown>) 
   return data
 }
 
+async function callOpenAICompatStream(
+  path: string,
+  payload: Record<string, unknown>,
+  onDelta: (content: string) => void,
+) {
+  const response = await fetch(`${normalizeEndpoint(endpointBase.value)}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${selectedApiKey.value}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  })
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    const message = data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`
+    throw new Error(message)
+  }
+
+  if (!response.body) {
+    throw new Error(ui.streamUnavailable)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split(/\r?\n/)
+    buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || !trimmed.startsWith('data:')) continue
+      const data = trimmed.slice(5).trim()
+      if (data === '[DONE]') return
+      try {
+        const parsed = JSON.parse(data)
+        const delta = parsed?.choices?.[0]?.delta?.content
+          ?? parsed?.choices?.[0]?.message?.content
+          ?? ''
+        if (delta) onDelta(delta)
+      } catch {
+        // Ignore malformed stream keepalive chunks.
+      }
+    }
+  }
+}
+
 async function callOpenAICompatForm(path: string, payload: Record<string, unknown>, files: File[]) {
   const formData = new FormData()
   Object.entries(payload).forEach(([key, value]) => appendImageFormValue(formData, key, value))
@@ -666,22 +719,37 @@ async function sendChat() {
   chatInput.value = ''
   errorMessage.value = ''
   messages.value.push({ id: crypto.randomUUID(), role: 'user', content })
+  const assistantMessageId = crypto.randomUUID()
+  messages.value.push({ id: assistantMessageId, role: 'assistant', content: '' })
   chatLoading.value = true
   await scrollChatToBottom()
   try {
-    const data = await callOpenAICompat('/chat/completions', {
+    await callOpenAICompatStream('/chat/completions', {
       model: resolvedChatModel.value,
-      messages: messages.value.map((message) => ({ role: message.role, content: message.content })),
-      stream: false
+      messages: messages.value
+        .filter((message) => message.id !== assistantMessageId)
+        .map((message) => ({ role: message.role, content: message.content })),
+      stream: true
+    }, async (delta) => {
+      appendChatDelta(assistantMessageId, delta)
+      await scrollChatToBottom()
     })
-    const reply = data?.choices?.[0]?.message?.content || ui.noText
-    messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: reply })
+    if (!messages.value.find((message) => message.id === assistantMessageId)?.content) {
+      appendChatDelta(assistantMessageId, ui.noText)
+    }
   } catch (error) {
     errorMessage.value = (error as { message?: string }).message || ui.chatFailed
+    appendChatDelta(assistantMessageId, errorMessage.value)
   } finally {
     chatLoading.value = false
     await scrollChatToBottom()
   }
+}
+
+function appendChatDelta(messageId: string, delta: string) {
+  messages.value = messages.value.map((message) =>
+    message.id === messageId ? { ...message, content: `${message.content}${delta}` } : message
+  )
 }
 
 async function generateImage() {

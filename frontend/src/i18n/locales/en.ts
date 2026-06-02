@@ -250,6 +250,7 @@ export default {
     clearImages: 'Clear images',
     loadKeyFailed: 'Failed to load API keys',
     requestFailed: 'Request failed',
+    streamUnavailable: 'Streaming response is not available in this browser or endpoint',
     noText: 'The model did not return text content.',
     chatFailed: 'Chat request failed',
     imageNoReturn: 'The image endpoint did not return an image',
