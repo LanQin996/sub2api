@@ -128,30 +128,46 @@
         </section>
 
         <aside class="flex min-h-0 flex-col gap-4 overflow-y-auto">
-          <section class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ ui.modelSettings }}</h2>
+          <section v-if="mode === 'chat'" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ ui.chatSettings }}</h2>
             <div class="mt-4 space-y-4">
               <label class="block">
-                <span class="text-sm text-gray-600 dark:text-dark-200">{{ ui.chatModel }}</span>
-                <input v-model="chatModel" class="input mt-1 w-full" placeholder="gpt-4o-mini" />
+                <span class="flex items-center justify-between gap-2 text-sm text-gray-600 dark:text-dark-200">
+                  <span>{{ ui.chatModel }}</span>
+                  <span v-if="loadingModels" class="text-xs text-gray-400">{{ ui.loadingModels }}</span>
+                </span>
+                <Select v-model="selectedChatModel" class="mt-1" :options="chatModelOptions" />
               </label>
-              <label class="block">
-                <span class="text-sm text-gray-600 dark:text-dark-200">{{ ui.imageModel }}</span>
-                <input v-model="imageModel" class="input mt-1 w-full" placeholder="gpt-image-1" />
-              </label>
-              <label class="block">
-                <span class="text-sm text-gray-600 dark:text-dark-200">{{ ui.endpoint }}</span>
-                <input v-model="endpointBase" class="input mt-1 w-full font-mono text-xs" />
-              </label>
+              <input
+                v-if="isCustomChatModel"
+                v-model="customChatModel"
+                class="input w-full font-mono text-sm"
+                :placeholder="ui.customModelPlaceholder"
+              />
             </div>
           </section>
 
-          <section class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+          <section v-if="mode === 'image'" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
             <div class="flex items-center justify-between gap-3">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ ui.imageSettings }}</h2>
               <span class="text-xs text-gray-500 dark:text-dark-300">
                 {{ imageEditFiles.length > 0 ? ui.editMode : ui.generateMode }}
               </span>
+            </div>
+            <div class="mt-4 space-y-4">
+              <label class="block">
+                <span class="flex items-center justify-between gap-2 text-sm text-gray-600 dark:text-dark-200">
+                  <span>{{ ui.imageModel }}</span>
+                  <span v-if="loadingModels" class="text-xs text-gray-400">{{ ui.loadingModels }}</span>
+                </span>
+                <Select v-model="selectedImageModel" class="mt-1" :options="imageModelOptions" />
+              </label>
+              <input
+                v-if="isCustomImageModel"
+                v-model="customImageModel"
+                class="input w-full font-mono text-sm"
+                :placeholder="ui.customModelPlaceholder"
+              />
             </div>
             <div class="mt-4 grid grid-cols-2 gap-3">
               <label class="block">
@@ -249,6 +265,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { keysAPI } from '@/api/keys'
+import { userChannelsAPI } from '@/api/channels'
 import { useAppStore } from '@/stores/app'
 import { maskApiKey } from '@/utils/maskApiKey'
 import type { ApiKey, SelectOption } from '@/types'
@@ -280,6 +297,8 @@ const ui = new Proxy({} as Record<string, string>, {
 const STORAGE_KEY_ID = 'playground:selected-key-id'
 const STORAGE_CHAT_MODEL = 'playground:chat-model'
 const STORAGE_IMAGE_MODEL = 'playground:image-model'
+const STORAGE_SELECTED_CHAT_MODEL = 'playground:selected-chat-model'
+const STORAGE_SELECTED_IMAGE_MODEL = 'playground:selected-image-model'
 const STORAGE_IMAGE_SIZE = 'playground:image-size'
 const STORAGE_CUSTOM_IMAGE_WIDTH = 'playground:custom-image-width'
 const STORAGE_CUSTOM_IMAGE_HEIGHT = 'playground:custom-image-height'
@@ -287,15 +306,18 @@ const STORAGE_IMAGE_COUNT = 'playground:image-count'
 const STORAGE_IMAGE_QUALITY = 'playground:image-quality'
 const STORAGE_IMAGE_BACKGROUND = 'playground:image-background'
 const STORAGE_IMAGE_OUTPUT_FORMAT = 'playground:image-output-format'
-const STORAGE_ENDPOINT = 'playground:endpoint-base'
 
 const appStore = useAppStore()
 const apiKeys = ref<ApiKey[]>([])
 const selectedKeyId = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_KEY_ID) || null)
 const loadingKeys = ref(false)
+const loadingModels = ref(false)
 const mode = ref<Mode>('chat')
-const chatModel = ref(localStorage.getItem(STORAGE_CHAT_MODEL) || 'gpt-4o-mini')
-const imageModel = ref(localStorage.getItem(STORAGE_IMAGE_MODEL) || 'gpt-image-1')
+const selectedChatModel = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_SELECTED_CHAT_MODEL) || 'gpt-4o-mini')
+const selectedImageModel = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_SELECTED_IMAGE_MODEL) || 'gpt-image-1')
+const customChatModel = ref(localStorage.getItem(STORAGE_CHAT_MODEL) || 'gpt-4o-mini')
+const customImageModel = ref(localStorage.getItem(STORAGE_IMAGE_MODEL) || 'gpt-image-1')
+const availableModelNames = ref<string[]>([])
 const imageSize = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_IMAGE_SIZE) || '1024x1024')
 const customImageWidth = ref(Number(localStorage.getItem(STORAGE_CUSTOM_IMAGE_WIDTH) || 1024))
 const customImageHeight = ref(Number(localStorage.getItem(STORAGE_CUSTOM_IMAGE_HEIGHT) || 1024))
@@ -303,7 +325,7 @@ const imageCount = ref<string | number | boolean | null>(localStorage.getItem(ST
 const imageQuality = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_IMAGE_QUALITY) || 'auto')
 const imageBackground = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_IMAGE_BACKGROUND) || 'auto')
 const imageOutputFormat = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_IMAGE_OUTPUT_FORMAT) || 'png')
-const endpointBase = ref(localStorage.getItem(STORAGE_ENDPOINT) || '')
+const endpointBase = computed(() => resolveDefaultEndpoint())
 const chatInput = ref('')
 const imagePrompt = ref('')
 const imageEditFiles = ref<File[]>([])
@@ -327,23 +349,70 @@ const imageCountOptions: SelectOption[] = [
   { value: '4', label: '4' }
 ]
 
+const defaultChatModels = [
+  'gpt-4o-mini',
+  'gpt-4o',
+  'gpt-4.1-mini',
+  'gpt-4.1',
+  'claude-3-5-sonnet-latest',
+  'gemini-2.0-flash'
+]
+
+const defaultImageModels = [
+  'gpt-image-1',
+  'dall-e-3',
+  'dall-e-2'
+]
+
+function uniqueModels(models: string[]): string[] {
+  return Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+}
+
+function isLikelyImageModel(model: string): boolean {
+  const normalized = model.toLowerCase()
+  return normalized.includes('image') || normalized.includes('dall') || normalized.includes('flux') || normalized.includes('stable-diffusion')
+}
+
+function modelOptions(models: string[]): SelectOption[] {
+  return [
+    ...models.map((model) => ({ value: model, label: model })),
+    { value: 'custom', label: ui.customModel }
+  ]
+}
+
+const chatModelOptions = computed<SelectOption[]>(() => {
+  const chatModels = uniqueModels([
+    ...defaultChatModels,
+    ...availableModelNames.value.filter((model) => !isLikelyImageModel(model))
+  ])
+  return modelOptions(chatModels)
+})
+
+const imageModelOptions = computed<SelectOption[]>(() => {
+  const imageModels = uniqueModels([
+    ...defaultImageModels,
+    ...availableModelNames.value.filter((model) => isLikelyImageModel(model))
+  ])
+  return modelOptions(imageModels)
+})
+
 const imageSizeOptions = computed<SelectOption[]>(() => [
-  { value: '1024x1024', label: `1024×1024 — ${ui.sizeSquare}` },
-  { value: '1536x1024', label: `1536×1024 — ${ui.sizeLandscape32}` },
-  { value: '1024x1536', label: `1024×1536 — ${ui.sizePortrait23}` },
-  { value: '2048x1536', label: `2048×1536 — ${ui.sizeLandscape43}` },
-  { value: '1536x2048', label: `1536×2048 — ${ui.sizePortrait34}` },
-  { value: '2048x2048', label: `2048×2048 — ${ui.size2kSquare}` },
-  { value: '2304x2304', label: `2304×2304 — ${ui.size2kPlusSquare}` },
-  { value: '2560x1440', label: `2560×1440 — ${ui.sizeLandscape169}` },
-  { value: '1440x2560', label: `1440×2560 — ${ui.sizePortrait916}` },
-  { value: '2560x2560', label: `2560×2560 — ${ui.size25kSquare}` },
-  { value: '1792x3200', label: `1792×3200 — ${ui.sizeTallPortrait}` },
-  { value: '2016x3584', label: `2016×3584 — ${ui.sizeUltraTallPortrait}` },
-  { value: '3584x2016', label: `3584×2016 — ${ui.sizeHdLandscape169}` },
-  { value: '3840x2160', label: `3840×2160 — ${ui.size4kLandscape}` },
-  { value: '3840x1280', label: `3840×1280 — ${ui.sizeUltraWideBanner}` },
-  { value: '1280x3840', label: `1280×3840 — ${ui.sizeUltraTallBanner}` },
+  { value: '1024x1024', label: `1024x1024 - ${ui.sizeSquare}` },
+  { value: '1536x1024', label: `1536x1024 - ${ui.sizeLandscape32}` },
+  { value: '1024x1536', label: `1024x1536 - ${ui.sizePortrait23}` },
+  { value: '2048x1536', label: `2048x1536 - ${ui.sizeLandscape43}` },
+  { value: '1536x2048', label: `1536x2048 - ${ui.sizePortrait34}` },
+  { value: '2048x2048', label: `2048x2048 - ${ui.size2kSquare}` },
+  { value: '2304x2304', label: `2304x2304 - ${ui.size2kPlusSquare}` },
+  { value: '2560x1440', label: `2560x1440 - ${ui.sizeLandscape169}` },
+  { value: '1440x2560', label: `1440x2560 - ${ui.sizePortrait916}` },
+  { value: '2560x2560', label: `2560x2560 - ${ui.size25kSquare}` },
+  { value: '1792x3200', label: `1792x3200 - ${ui.sizeTallPortrait}` },
+  { value: '2016x3584', label: `2016x3584 - ${ui.sizeUltraTallPortrait}` },
+  { value: '3584x2016', label: `3584x2016 - ${ui.sizeHdLandscape169}` },
+  { value: '3840x2160', label: `3840x2160 - ${ui.size4kLandscape}` },
+  { value: '3840x1280', label: `3840x1280 - ${ui.sizeUltraWideBanner}` },
+  { value: '1280x3840', label: `1280x3840 - ${ui.sizeUltraTallBanner}` },
   { value: 'custom', label: ui.customSize },
   { value: 'auto', label: 'Auto' }
 ])
@@ -382,8 +451,16 @@ const selectedKeyLabel = computed(() => {
   return `${selectedKey.value.name} / ${maskApiKey(selectedKey.value.key)}`
 })
 const selectedApiKey = computed(() => selectedKey.value?.key || '')
-const canSendChat = computed(() => !!selectedApiKey.value && chatInput.value.trim().length > 0 && !chatLoading.value)
-const canGenerateImage = computed(() => !!selectedApiKey.value && imagePrompt.value.trim().length > 0 && !imageLoading.value)
+const isCustomChatModel = computed(() => selectedChatModel.value === 'custom')
+const isCustomImageModel = computed(() => selectedImageModel.value === 'custom')
+const resolvedChatModel = computed(() =>
+  isCustomChatModel.value ? customChatModel.value.trim() : String(selectedChatModel.value || 'gpt-4o-mini')
+)
+const resolvedImageModel = computed(() =>
+  isCustomImageModel.value ? customImageModel.value.trim() : String(selectedImageModel.value || 'gpt-image-1')
+)
+const canSendChat = computed(() => !!selectedApiKey.value && !!resolvedChatModel.value && chatInput.value.trim().length > 0 && !chatLoading.value)
+const canGenerateImage = computed(() => !!selectedApiKey.value && !!resolvedImageModel.value && imagePrompt.value.trim().length > 0 && !imageLoading.value)
 const isCustomImageSize = computed(() => imageSize.value === 'custom')
 const resolvedImageSize = computed(() => {
   if (!isCustomImageSize.value) return String(imageSize.value || '1024x1024')
@@ -406,7 +483,7 @@ function resolveDefaultEndpoint(): string {
 
 function buildImagePayload(): Record<string, unknown> {
   const payload: Record<string, unknown> = {
-    model: imageModel.value.trim(),
+    model: resolvedImageModel.value,
     prompt: imagePrompt.value.trim(),
     n: Number(imageCount.value || 1),
     size: resolvedImageSize.value,
@@ -453,6 +530,26 @@ async function loadKeys() {
     errorMessage.value = (error as { message?: string }).message || ui.loadKeyFailed
   } finally {
     loadingKeys.value = false
+  }
+}
+
+async function loadModels() {
+  loadingModels.value = true
+  try {
+    const channels = await userChannelsAPI.getAvailable()
+    const models: string[] = []
+    for (const channel of channels) {
+      for (const platform of channel.platforms || []) {
+        for (const model of platform.supported_models || []) {
+          if (model.name) models.push(model.name)
+        }
+      }
+    }
+    availableModelNames.value = uniqueModels(models)
+  } catch {
+    availableModelNames.value = []
+  } finally {
+    loadingModels.value = false
   }
 }
 
@@ -503,7 +600,7 @@ async function sendChat() {
   await scrollChatToBottom()
   try {
     const data = await callOpenAICompat('/chat/completions', {
-      model: chatModel.value.trim(),
+      model: resolvedChatModel.value,
       messages: messages.value.map((message) => ({ role: message.role, content: message.content })),
       stream: false
     })
@@ -578,8 +675,10 @@ function clearImages() {
 watch(selectedKeyId, (value) => {
   if (value) localStorage.setItem(STORAGE_KEY_ID, String(value))
 })
-watch(chatModel, (value) => localStorage.setItem(STORAGE_CHAT_MODEL, value))
-watch(imageModel, (value) => localStorage.setItem(STORAGE_IMAGE_MODEL, value))
+watch(selectedChatModel, (value) => localStorage.setItem(STORAGE_SELECTED_CHAT_MODEL, String(value || 'gpt-4o-mini')))
+watch(selectedImageModel, (value) => localStorage.setItem(STORAGE_SELECTED_IMAGE_MODEL, String(value || 'gpt-image-1')))
+watch(customChatModel, (value) => localStorage.setItem(STORAGE_CHAT_MODEL, value))
+watch(customImageModel, (value) => localStorage.setItem(STORAGE_IMAGE_MODEL, value))
 watch(imageSize, (value) => localStorage.setItem(STORAGE_IMAGE_SIZE, String(value || '')))
 watch(customImageWidth, (value) => localStorage.setItem(STORAGE_CUSTOM_IMAGE_WIDTH, String(value || 1024)))
 watch(customImageHeight, (value) => localStorage.setItem(STORAGE_CUSTOM_IMAGE_HEIGHT, String(value || 1024)))
@@ -587,15 +686,10 @@ watch(imageCount, (value) => localStorage.setItem(STORAGE_IMAGE_COUNT, String(va
 watch(imageQuality, (value) => localStorage.setItem(STORAGE_IMAGE_QUALITY, String(value || 'auto')))
 watch(imageBackground, (value) => localStorage.setItem(STORAGE_IMAGE_BACKGROUND, String(value || 'auto')))
 watch(imageOutputFormat, (value) => localStorage.setItem(STORAGE_IMAGE_OUTPUT_FORMAT, String(value || 'png')))
-watch(endpointBase, (value) => localStorage.setItem(STORAGE_ENDPOINT, value))
-
 onMounted(async () => {
   if (!appStore.publicSettingsLoaded) {
     await appStore.fetchPublicSettings()
   }
-  if (!endpointBase.value) {
-    endpointBase.value = resolveDefaultEndpoint()
-  }
-  await loadKeys()
+  await Promise.all([loadKeys(), loadModels()])
 })
 </script>
