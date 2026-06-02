@@ -420,18 +420,14 @@ function modelOptions(models: string[]): SelectOption[] {
 }
 
 const chatModelOptions = computed<SelectOption[]>(() => {
-  const chatModels = uniqueModels([
-    ...defaultChatModels,
-    ...modelsForSelectedKey().filter((model) => !isLikelyImageModel(model))
-  ])
+  const keyModels = modelsForSelectedKey().filter((model) => !isLikelyImageModel(model))
+  const chatModels = keyModels.length > 0 ? uniqueModels(keyModels) : defaultChatModels
   return modelOptions(chatModels)
 })
 
 const imageModelOptions = computed<SelectOption[]>(() => {
-  const imageModels = uniqueModels([
-    ...defaultImageModels,
-    ...modelsForSelectedKey().filter((model) => isLikelyImageModel(model))
-  ])
+  const keyModels = modelsForSelectedKey().filter((model) => isLikelyImageModel(model))
+  const imageModels = keyModels.length > 0 ? uniqueModels(keyModels) : defaultImageModels
   return modelOptions(imageModels)
 })
 
