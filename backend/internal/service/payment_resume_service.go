@@ -232,7 +232,7 @@ func visibleMethodSourceSettingKey(method string) string {
 	}
 }
 
-func CanonicalizeReturnURL(raw string, srcHost string, srcURL string) (string, error) {
+func CanonicalizeReturnURL(raw string, srcHost string, srcURL string, allowedHosts ...string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", nil
@@ -251,15 +251,23 @@ func CanonicalizeReturnURL(raw string, srcHost string, srcURL string) (string, e
 	if parsed.Path != paymentResultReturnPath {
 		return "", infraerrors.BadRequest("INVALID_RETURN_URL", "return_url must target the canonical internal payment result page")
 	}
-	if !allowedReturnURLHost(parsed.Host, srcHost, srcURL) {
+	if !allowedReturnURLHost(parsed.Host, srcHost, srcURL, allowedHosts...) {
 		return "", infraerrors.BadRequest("INVALID_RETURN_URL", "return_url must use the same host as the current site or browser origin")
 	}
 	return parsed.String(), nil
 }
 
-func allowedReturnURLHost(returnURLHost string, requestHost string, refererURL string) bool {
+func allowedReturnURLHost(returnURLHost string, requestHost string, refererURL string, allowedHosts ...string) bool {
 	if sameOriginHost(returnURLHost, requestHost) {
 		return true
+	}
+	for _, allowed := range allowedHosts {
+		if sameOriginHost(returnURLHost, allowed) {
+			return true
+		}
+		if parsedAllowed, err := url.Parse(strings.TrimSpace(allowed)); err == nil && parsedAllowed.Host != "" && sameOriginHost(returnURLHost, parsedAllowed.Host) {
+			return true
+		}
 	}
 
 	refererURL = strings.TrimSpace(refererURL)

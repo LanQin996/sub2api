@@ -211,6 +211,7 @@ type SystemSettings struct {
 	PaymentBalanceDisabled           bool     `json:"payment_balance_disabled"`
 	PaymentBalanceRechargeMultiplier float64  `json:"payment_balance_recharge_multiplier"`
 	PaymentRechargeFeeRate           float64  `json:"payment_recharge_fee_rate"`
+	PaymentSiteURL                   string   `json:"payment_site_url"`
 	PaymentLoadBalanceStrat          string   `json:"payment_load_balance_strategy"`
 	PaymentProductNamePrefix         string   `json:"payment_product_name_prefix"`
 	PaymentProductNameSuffix         string   `json:"payment_product_name_suffix"`

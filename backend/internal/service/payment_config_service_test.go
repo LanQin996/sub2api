@@ -432,6 +432,32 @@ func TestUpdatePaymentConfig_PersistsVisibleMethodRouting(t *testing.T) {
 	}
 }
 
+func TestUpdatePaymentConfig_PersistsSiteURL(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		SiteURL: paymentConfigStrPtr("https://api.777358.xyz/"),
+	})
+	if err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+	if repo.values[SettingSiteURL] != "https://api.777358.xyz" {
+		t.Fatalf("site URL = %q, want https://api.777358.xyz", repo.values[SettingSiteURL])
+	}
+}
+
+func TestUpdatePaymentConfig_RejectsInvalidSiteURL(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	if err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		SiteURL: paymentConfigStrPtr("ftp://api.777358.xyz"),
+	}); err == nil {
+		t.Fatal("UpdatePaymentConfig should reject non-http site URL")
+	}
+}
+
 func paymentConfigStrPtr(value string) *string {
 	return &value
 }

@@ -5965,6 +5965,8 @@ export default {
         rechargeFeeRate: 'Recharge Fee Rate',
         rechargeFeeRateHint: 'Percentage of service fee charged on top of recharge amount, 0 means no fee',
         rechargeFeePreview: 'Preview: Recharge 100, fee {fee}',
+        siteUrl: 'Payment Site URL',
+        siteUrlHint: 'Optional. When set, payment return URLs always use this domain; when empty, the current browser origin is used.',
         orderTimeout: 'Order Timeout',
         orderTimeoutHint: 'In minutes, minimum 1',
         maxPendingOrders: 'Max Pending Orders',
