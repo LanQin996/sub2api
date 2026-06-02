@@ -2,12 +2,19 @@ package routes
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterCommonRoutes 注册通用路由（健康检查、状态等）
 func RegisterCommonRoutes(r *gin.Engine) {
+	publicImagesDir := filepath.Join("data", "public", "images")
+	if err := os.MkdirAll(publicImagesDir, 0o755); err == nil {
+		r.Static("/images", publicImagesDir)
+	}
+
 	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})

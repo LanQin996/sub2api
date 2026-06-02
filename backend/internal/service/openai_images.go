@@ -14,6 +14,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -40,6 +43,7 @@ const (
 	openAIImageMaxDownloadBytes    = 20 << 20 // 20MB per image download
 	openAIImageMaxUploadPartSize   = 20 << 20 // 20MB per multipart upload part
 	openAIImagesResponsesMainModel = "gpt-5.4-mini"
+	openAIImageLocalPublicRoot     = "data/public/images"
 )
 
 type OpenAIImagesCapability string
@@ -858,6 +862,16 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
+	body, err = s.localizeOpenAIImageResponseURLs(c.Request.Context(), c, body)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{
+			"error": gin.H{
+				"type":    "api_error",
+				"message": "Failed to store generated image locally",
+			},
+		})
+		return OpenAIUsage{}, 0, nil, err
+	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -869,6 +883,94 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 
 	usage, _ := extractOpenAIUsageFromJSONBytes(body)
 	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
+}
+
+func (s *OpenAIGatewayService) localizeOpenAIImageResponseURLs(ctx context.Context, c *gin.Context, body []byte) ([]byte, error) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body, nil
+	}
+	data := gjson.GetBytes(body, "data")
+	if !data.IsArray() {
+		return body, nil
+	}
+
+	rewritten := body
+	for index, item := range data.Array() {
+		rawURL := strings.TrimSpace(item.Get("url").String())
+		if !shouldLocalizeOpenAIImageURL(rawURL) {
+			continue
+		}
+		localURL, err := saveRemoteOpenAIImageURL(ctx, c.Request.Header, rawURL)
+		if err != nil {
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] localize image url failed")
+			return nil, fmt.Errorf("localize image url: %w", err)
+		}
+		next, err := sjson.SetBytes(rewritten, fmt.Sprintf("data.%d.url", index), localURL)
+		if err != nil {
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] rewrite image url failed: %v", err)
+			return nil, fmt.Errorf("rewrite image url: %w", err)
+		}
+		rewritten = next
+	}
+	return rewritten, nil
+}
+
+func shouldLocalizeOpenAIImageURL(rawURL string) bool {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return false
+	}
+	lower := strings.ToLower(rawURL)
+	if strings.HasPrefix(lower, "data:") || strings.HasPrefix(rawURL, "/images/") {
+		return false
+	}
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+}
+
+func saveRemoteOpenAIImageURL(ctx context.Context, headers http.Header, rawURL string) (string, error) {
+	client := req.C()
+	imageBytes, err := downloadOpenAIImageBytes(ctx, client, headers, rawURL, openAIUpstreamErrorBodyReadLimit)
+	if err != nil {
+		return "", err
+	}
+	if len(imageBytes) == 0 {
+		return "", fmt.Errorf("downloaded image is empty")
+	}
+	contentType := http.DetectContentType(imageBytes)
+	ext := openAIImageExtension(contentType, rawURL)
+	now := time.Now().UTC()
+	sum := sha256.Sum256(imageBytes)
+	fileName := fmt.Sprintf("%d_%s%s", now.UnixNano(), hex.EncodeToString(sum[:8]), ext)
+	relDir := path.Join(fmt.Sprintf("%04d", now.Year()), fmt.Sprintf("%02d", now.Month()), fmt.Sprintf("%02d", now.Day()))
+	diskDir := filepath.Join(openAIImageLocalPublicRoot, filepath.FromSlash(relDir))
+	if err := os.MkdirAll(diskDir, 0o755); err != nil {
+		return "", err
+	}
+	diskPath := filepath.Join(diskDir, fileName)
+	if err := os.WriteFile(diskPath, imageBytes, 0o644); err != nil {
+		return "", err
+	}
+	return "/images/" + path.Join(relDir, fileName), nil
+}
+
+func openAIImageExtension(contentType string, rawURL string) string {
+	switch strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0])) {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	}
+	if parsedExt := strings.ToLower(path.Ext(strings.Split(rawURL, "?")[0])); parsedExt == ".jpg" || parsedExt == ".jpeg" || parsedExt == ".png" || parsedExt == ".webp" || parsedExt == ".gif" {
+		if parsedExt == ".jpeg" {
+			return ".jpg"
+		}
+		return parsedExt
+	}
+	return ".png"
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(

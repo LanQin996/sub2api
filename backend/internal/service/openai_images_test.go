@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -395,6 +397,59 @@ func TestCollectOpenAIImagePointers_RecognizesDirectAssets(t *testing.T) {
 	require.True(t, sawBase64)
 	require.True(t, sawURL)
 	require.True(t, sawPointer)
+}
+
+func TestOpenAIGatewayServiceLocalizeOpenAIImageResponseURLs(t *testing.T) {
+	imageBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0x00, 0x00, 0x00, 0x00}
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(imageBytes)
+	}))
+	defer imageServer.Close()
+
+	previousCWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(t.TempDir()))
+	t.Cleanup(func() {
+		require.NoError(t, os.Chdir(previousCWD))
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	body := []byte(fmt.Sprintf(`{"data":[{"url":%q}]}`, imageServer.URL+"/generated.png"))
+	rewritten, err := svc.localizeOpenAIImageResponseURLs(context.Background(), c, body)
+	require.NoError(t, err)
+	localURL := gjson.GetBytes(rewritten, "data.0.url").String()
+
+	require.True(t, strings.HasPrefix(localURL, "/images/"))
+	diskPath := filepath.Join("data", "public", "images", filepath.FromSlash(strings.TrimPrefix(localURL, "/images/")))
+	require.FileExists(t, diskPath)
+	saved, err := os.ReadFile(diskPath)
+	require.NoError(t, err)
+	require.Equal(t, imageBytes, saved)
+}
+
+func TestOpenAIGatewayServiceLocalizeOpenAIImageResponseURLsFailsClosed(t *testing.T) {
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "gone", http.StatusGone)
+	}))
+	defer imageServer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	body := []byte(fmt.Sprintf(`{"data":[{"url":%q}]}`, imageServer.URL+"/generated.png"))
+	rewritten, err := svc.localizeOpenAIImageResponseURLs(context.Background(), c, body)
+
+	require.Error(t, err)
+	require.Nil(t, rewritten)
 }
 
 func TestResolveOpenAIImageBytes_PrefersInlineBase64(t *testing.T) {
