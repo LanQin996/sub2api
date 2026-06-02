@@ -301,7 +301,6 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { keysAPI } from '@/api/keys'
-import { useAppStore } from '@/stores/app'
 import { maskApiKey } from '@/utils/maskApiKey'
 import type { ApiKey, SelectOption } from '@/types'
 
@@ -368,7 +367,6 @@ function readJsonStorage<T>(key: string, fallback: T): T {
   }
 }
 
-const appStore = useAppStore()
 const apiKeys = ref<ApiKey[]>([])
 const selectedChatKeyId = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_CHAT_KEY_ID) || null)
 const selectedImageKeyId = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_IMAGE_KEY_ID) || null)
@@ -585,8 +583,7 @@ function normalizeEndpoint(value: string): string {
 }
 
 function resolveDefaultEndpoint(): string {
-  const configured = appStore.cachedPublicSettings?.api_base_url || appStore.apiBaseUrl
-  return normalizeEndpoint(configured || window.location.origin)
+  return normalizeEndpoint(window.location.origin)
 }
 
 function buildImagePayload(): Record<string, unknown> {
@@ -981,9 +978,6 @@ watch(
   { deep: true }
 )
 onMounted(async () => {
-  if (!appStore.publicSettingsLoaded) {
-    await appStore.fetchPublicSettings()
-  }
   await loadKeys()
   await loadAllKeyModels()
   ensureSelectedKeysSupportModes()
