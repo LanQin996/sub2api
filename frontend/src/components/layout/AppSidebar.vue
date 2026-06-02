@@ -293,6 +293,21 @@ const ChartIcon = {
     )
 }
 
+const PlaygroundIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.142-4.03 7.5-9 7.5a10.4 10.4 0 01-3.43-.57L3 21l1.53-4.07A7.03 7.03 0 013 12c0-4.142 4.03-7.5 9-7.5s9 3.358 9 7.5z'
+        })
+      ]
+    )
+}
+
 const GiftIcon = {
   render: () =>
     h(
@@ -686,6 +701,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+    { path: '/playground', label: t('nav.playground'), icon: PlaygroundIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/ranking', label: t('nav.ranking'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/models', label: t('nav.modelMarketplace'), icon: ModelMarketplaceIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
