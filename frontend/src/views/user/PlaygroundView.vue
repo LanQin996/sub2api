@@ -7,13 +7,6 @@
           <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">{{ ui.subtitle }}</p>
         </div>
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Select
-            v-model="selectedKeyId"
-            :options="keyOptions"
-            class="w-full sm:w-72"
-            :placeholder="ui.selectKey"
-            :disabled="loadingKeys || apiKeys.length === 0"
-          />
           <button class="btn btn-secondary" :disabled="loadingKeys" @click="loadKeys">
             <Icon name="refresh" size="sm" :class="loadingKeys ? 'animate-spin' : ''" />
           </button>
@@ -44,9 +37,6 @@
               <Icon name="sparkles" size="sm" class="mr-2" />
               {{ ui.image }}
             </button>
-            <div class="ml-auto min-w-0 text-xs text-gray-500 dark:text-dark-300">
-              {{ ui.currentKey }}<span class="font-mono">{{ selectedKeyLabel || ui.notSelected }}</span>
-            </div>
           </div>
 
           <div v-if="mode === 'chat'" ref="chatScrollRef" class="min-h-0 flex-1 overflow-y-auto p-4">
@@ -154,6 +144,16 @@
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ ui.chatSettings }}</h2>
             <div class="mt-4 space-y-4">
               <label class="block">
+                <span class="text-sm text-gray-600 dark:text-dark-200">{{ ui.chatKey }}</span>
+                <Select
+                  v-model="selectedChatKeyId"
+                  class="mt-1"
+                  :options="chatKeyOptions"
+                  :placeholder="ui.selectKey"
+                  :disabled="loadingKeys || chatKeyOptions.length === 0"
+                />
+              </label>
+              <label class="block">
                 <span class="flex items-center justify-between gap-2 text-sm text-gray-600 dark:text-dark-200">
                   <span>{{ ui.chatModel }}</span>
                   <span v-if="loadingModels" class="text-xs text-gray-400">{{ ui.loadingModels }}</span>
@@ -166,6 +166,10 @@
                 class="input w-full font-mono text-sm"
                 :placeholder="ui.customModelPlaceholder"
               />
+              <label class="block">
+                <span class="text-sm text-gray-600 dark:text-dark-200">{{ ui.reasoningEffort }}</span>
+                <Select v-model="chatReasoningEffort" class="mt-1" :options="reasoningEffortOptions" />
+              </label>
             </div>
           </section>
 
@@ -177,6 +181,16 @@
               </span>
             </div>
             <div class="mt-4 space-y-4">
+              <label class="block">
+                <span class="text-sm text-gray-600 dark:text-dark-200">{{ ui.imageKey }}</span>
+                <Select
+                  v-model="selectedImageKeyId"
+                  class="mt-1"
+                  :options="imageKeyOptions"
+                  :placeholder="ui.selectKey"
+                  :disabled="loadingKeys || imageKeyOptions.length === 0"
+                />
+              </label>
               <label class="block">
                 <span class="flex items-center justify-between gap-2 text-sm text-gray-600 dark:text-dark-200">
                   <span>{{ ui.imageModel }}</span>
@@ -318,8 +332,10 @@ const ui = new Proxy({} as Record<string, string>, {
   get: (_target, key: string) => t(`playground.${key}`)
 })
 
-const STORAGE_KEY_ID = 'playground:selected-key-id'
+const STORAGE_CHAT_KEY_ID = 'playground:selected-chat-key-id'
+const STORAGE_IMAGE_KEY_ID = 'playground:selected-image-key-id'
 const STORAGE_CHAT_MODEL = 'playground:chat-model'
+const STORAGE_CHAT_REASONING_EFFORT = 'playground:chat-reasoning-effort'
 const STORAGE_IMAGE_MODEL = 'playground:image-model'
 const STORAGE_SELECTED_CHAT_MODEL = 'playground:selected-chat-model'
 const STORAGE_SELECTED_IMAGE_MODEL = 'playground:selected-image-model'
@@ -330,16 +346,39 @@ const STORAGE_IMAGE_COUNT = 'playground:image-count'
 const STORAGE_IMAGE_QUALITY = 'playground:image-quality'
 const STORAGE_IMAGE_BACKGROUND = 'playground:image-background'
 const STORAGE_IMAGE_OUTPUT_FORMAT = 'playground:image-output-format'
+const STORAGE_CHAT_MESSAGES = 'playground:chat-messages'
+const STORAGE_IMAGE_HISTORY = 'playground:image-history'
+
+function defaultMessages(): ChatMessage[] {
+  return [
+    {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: ui.hello
+    }
+  ]
+}
+
+function readJsonStorage<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) as T : fallback
+  } catch {
+    return fallback
+  }
+}
 
 const appStore = useAppStore()
 const apiKeys = ref<ApiKey[]>([])
-const selectedKeyId = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_KEY_ID) || null)
+const selectedChatKeyId = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_CHAT_KEY_ID) || null)
+const selectedImageKeyId = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_IMAGE_KEY_ID) || null)
 const loadingKeys = ref(false)
 const loadingModels = ref(false)
 const mode = ref<Mode>('chat')
 const selectedChatModel = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_SELECTED_CHAT_MODEL) || 'gpt-4o-mini')
 const selectedImageModel = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_SELECTED_IMAGE_MODEL) || 'gpt-image-1')
 const customChatModel = ref(localStorage.getItem(STORAGE_CHAT_MODEL) || 'gpt-4o-mini')
+const chatReasoningEffort = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_CHAT_REASONING_EFFORT) || 'auto')
 const customImageModel = ref(localStorage.getItem(STORAGE_IMAGE_MODEL) || 'gpt-image-1')
 const keyModelMap = ref<Record<string, string[]>>({})
 const keyModelsLoaded = ref<Record<string, boolean>>({})
@@ -354,14 +393,8 @@ const endpointBase = computed(() => resolveDefaultEndpoint())
 const chatInput = ref('')
 const imagePrompt = ref('')
 const imageEditFiles = ref<File[]>([])
-const messages = ref<ChatMessage[]>([
-  {
-    id: crypto.randomUUID(),
-    role: 'assistant',
-    content: ui.hello
-  }
-])
-const images = ref<GeneratedImage[]>([])
+const messages = ref<ChatMessage[]>(readJsonStorage<ChatMessage[]>(STORAGE_CHAT_MESSAGES, defaultMessages()))
+const images = ref<GeneratedImage[]>(readJsonStorage<GeneratedImage[]>(STORAGE_IMAGE_HISTORY, []))
 const chatLoading = ref(false)
 const imageLoading = ref(false)
 const errorMessage = ref('')
@@ -374,6 +407,13 @@ const imageCountOptions: SelectOption[] = [
   { value: '3', label: '3' },
   { value: '4', label: '4' }
 ]
+
+const reasoningEffortOptions = computed<SelectOption[]>(() => [
+  { value: 'auto', label: 'Auto' },
+  { value: 'low', label: ui.reasoningLow },
+  { value: 'medium', label: ui.reasoningMedium },
+  { value: 'high', label: ui.reasoningHigh }
+])
 
 const defaultChatModels = [
   'gpt-4o-mini',
@@ -394,8 +434,8 @@ function uniqueModels(models: string[]): string[] {
   return Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
 }
 
-function modelsForSelectedKey(): string[] {
-  return keyModelMap.value[String(selectedKeyId.value || '')] || []
+function modelsForKey(keyId: string | number | boolean | null): string[] {
+  return keyModelMap.value[String(keyId || '')] || []
 }
 
 function isLikelyImageModel(model: string): boolean {
@@ -419,14 +459,14 @@ function modelOptions(models: string[]): SelectOption[] {
 }
 
 const chatModelOptions = computed<SelectOption[]>(() => {
-  const keyModels = modelsForSelectedKey().filter((model) => !isLikelyImageModel(model))
-  const chatModels = keyModels.length > 0 ? uniqueModels(keyModels) : (selectedModelsLoaded.value ? [] : defaultChatModels)
+  const keyModels = modelsForKey(selectedChatKeyId.value).filter((model) => !isLikelyImageModel(model))
+  const chatModels = keyModels.length > 0 ? uniqueModels(keyModels) : (selectedChatModelsLoaded.value ? [] : defaultChatModels)
   return modelOptions(chatModels)
 })
 
 const imageModelOptions = computed<SelectOption[]>(() => {
-  const keyModels = modelsForSelectedKey().filter((model) => isLikelyImageModel(model))
-  const imageModels = keyModels.length > 0 ? uniqueModels(keyModels) : (selectedModelsLoaded.value ? [] : defaultImageModels)
+  const keyModels = modelsForKey(selectedImageKeyId.value).filter((model) => isLikelyImageModel(model))
+  const imageModels = keyModels.length > 0 ? uniqueModels(keyModels) : (selectedImageModelsLoaded.value ? [] : defaultImageModels)
   return modelOptions(imageModels)
 })
 
@@ -480,28 +520,45 @@ const imageOutputFormatOptions: SelectOption[] = [
   { value: 'webp', label: 'WEBP' }
 ]
 
-const keyOptions = computed<SelectOption[]>(() =>
-  apiKeys.value
+function makeKeyOptions(predicate: (keyId: string) => boolean): SelectOption[] {
+  return apiKeys.value
     .filter((key) => {
       const keyId = String(key.id)
       if (!keyModelsLoaded.value[keyId]) return true
-      return mode.value === 'image' ? hasImageModelsForKey(keyId) : hasChatModelsForKey(keyId)
+      return predicate(keyId)
     })
+    .map((key) => ({
+      value: String(key.id),
+      label: `${key.name} (${maskApiKey(key.key)})`
+    }))
+}
+
+const chatKeyOptions = computed<SelectOption[]>(() =>
+  makeKeyOptions((keyId) => hasChatModelsForKey(keyId))
+)
+
+const imageKeyOptions = computed<SelectOption[]>(() =>
+  makeKeyOptions((keyId) => hasImageModelsForKey(keyId))
+)
+
+const allKeyOptions = computed<SelectOption[]>(() =>
+  apiKeys.value
     .map((key) => ({
       value: String(key.id),
       label: `${key.name} (${maskApiKey(key.key)})`
     }))
 )
 
-const selectedKey = computed(() =>
-  apiKeys.value.find((key) => String(key.id) === String(selectedKeyId.value)) || null
+const selectedChatKey = computed(() =>
+  apiKeys.value.find((key) => String(key.id) === String(selectedChatKeyId.value)) || null
 )
-const selectedModelsLoaded = computed(() => keyModelsLoaded.value[String(selectedKeyId.value || '')] === true)
-const selectedKeyLabel = computed(() => {
-  if (!selectedKey.value) return ''
-  return `${selectedKey.value.name} / ${maskApiKey(selectedKey.value.key)}`
-})
-const selectedApiKey = computed(() => selectedKey.value?.key || '')
+const selectedImageKey = computed(() =>
+  apiKeys.value.find((key) => String(key.id) === String(selectedImageKeyId.value)) || null
+)
+const selectedChatModelsLoaded = computed(() => keyModelsLoaded.value[String(selectedChatKeyId.value || '')] === true)
+const selectedImageModelsLoaded = computed(() => keyModelsLoaded.value[String(selectedImageKeyId.value || '')] === true)
+const selectedChatApiKey = computed(() => selectedChatKey.value?.key || '')
+const selectedImageApiKey = computed(() => selectedImageKey.value?.key || '')
 const isCustomChatModel = computed(() => selectedChatModel.value === 'custom')
 const isCustomImageModel = computed(() => selectedImageModel.value === 'custom')
 const resolvedChatModel = computed(() =>
@@ -510,8 +567,8 @@ const resolvedChatModel = computed(() =>
 const resolvedImageModel = computed(() =>
   isCustomImageModel.value ? customImageModel.value.trim() : String(selectedImageModel.value || 'gpt-image-1')
 )
-const canSendChat = computed(() => !!selectedApiKey.value && !!resolvedChatModel.value && chatInput.value.trim().length > 0 && !chatLoading.value)
-const canGenerateImage = computed(() => !!selectedApiKey.value && !!resolvedImageModel.value && imagePrompt.value.trim().length > 0 && !imageLoading.value)
+const canSendChat = computed(() => !!selectedChatApiKey.value && !!resolvedChatModel.value && chatInput.value.trim().length > 0 && !chatLoading.value)
+const canGenerateImage = computed(() => !!selectedImageApiKey.value && !!resolvedImageModel.value && imagePrompt.value.trim().length > 0 && !imageLoading.value)
 const isCustomImageSize = computed(() => imageSize.value === 'custom')
 const resolvedImageSize = computed(() => {
   if (!isCustomImageSize.value) return String(imageSize.value || '1024x1024')
@@ -541,6 +598,20 @@ function buildImagePayload(): Record<string, unknown> {
     quality: imageQuality.value || 'auto',
     background: imageBackground.value || 'auto',
     output_format: imageOutputFormat.value || 'png'
+  }
+  return payload
+}
+
+function buildChatPayload(assistantMessageId: string): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    model: resolvedChatModel.value,
+    messages: messages.value
+      .filter((message) => message.id !== assistantMessageId)
+      .map((message) => ({ role: message.role, content: message.content })),
+    stream: true
+  }
+  if (chatReasoningEffort.value && chatReasoningEffort.value !== 'auto') {
+    payload.reasoning_effort = chatReasoningEffort.value
   }
   return payload
 }
@@ -576,8 +647,11 @@ async function loadKeys() {
   try {
     const data = await keysAPI.list(1, 100, { status: 'active', sort_by: 'created_at', sort_order: 'desc' })
     apiKeys.value = data.items
-    if (!selectedKey.value && apiKeys.value.length > 0) {
-      selectedKeyId.value = String(apiKeys.value[0].id)
+    if (!selectedChatKey.value && apiKeys.value.length > 0) {
+      selectedChatKeyId.value = String(apiKeys.value[0].id)
+    }
+    if (!selectedImageKey.value && apiKeys.value.length > 0) {
+      selectedImageKeyId.value = String(apiKeys.value[0].id)
     }
   } catch (error) {
     errorMessage.value = (error as { message?: string }).message || ui.loadKeyFailed
@@ -623,11 +697,11 @@ async function loadAllKeyModels() {
   }
 }
 
-async function callOpenAICompat(path: string, payload: Record<string, unknown>) {
+async function callOpenAICompat(path: string, payload: Record<string, unknown>, apiKey: string) {
   const response = await fetch(`${normalizeEndpoint(endpointBase.value)}${path}`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${selectedApiKey.value}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload)
@@ -643,12 +717,13 @@ async function callOpenAICompat(path: string, payload: Record<string, unknown>) 
 async function callOpenAICompatStream(
   path: string,
   payload: Record<string, unknown>,
+  apiKey: string,
   onDelta: (content: string) => void,
 ) {
   const response = await fetch(`${normalizeEndpoint(endpointBase.value)}${path}`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${selectedApiKey.value}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload)
@@ -693,7 +768,7 @@ async function callOpenAICompatStream(
   }
 }
 
-async function callOpenAICompatForm(path: string, payload: Record<string, unknown>, files: File[]) {
+async function callOpenAICompatForm(path: string, payload: Record<string, unknown>, files: File[], apiKey: string) {
   const formData = new FormData()
   Object.entries(payload).forEach(([key, value]) => appendImageFormValue(formData, key, value))
   files.forEach((file) => formData.append('image', file))
@@ -701,7 +776,7 @@ async function callOpenAICompatForm(path: string, payload: Record<string, unknow
   const response = await fetch(`${normalizeEndpoint(endpointBase.value)}${path}`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${selectedApiKey.value}`
+      Authorization: `Bearer ${apiKey}`
     },
     body: formData
   })
@@ -724,13 +799,7 @@ async function sendChat() {
   chatLoading.value = true
   await scrollChatToBottom()
   try {
-    await callOpenAICompatStream('/chat/completions', {
-      model: resolvedChatModel.value,
-      messages: messages.value
-        .filter((message) => message.id !== assistantMessageId)
-        .map((message) => ({ role: message.role, content: message.content })),
-      stream: true
-    }, async (delta) => {
+    await callOpenAICompatStream('/chat/completions', buildChatPayload(assistantMessageId), selectedChatApiKey.value, async (delta) => {
       appendChatDelta(assistantMessageId, delta)
       await scrollChatToBottom()
     })
@@ -775,8 +844,8 @@ async function generateImage() {
     const payload = buildImagePayload()
     const data =
       imageMode === 'edit'
-        ? await callOpenAICompatForm('/images/edits', payload, imageEditFiles.value)
-        : await callOpenAICompat('/images/generations', payload)
+        ? await callOpenAICompatForm('/images/edits', payload, imageEditFiles.value, selectedImageApiKey.value)
+        : await callOpenAICompat('/images/generations', payload, selectedImageApiKey.value)
     const generated = extractImages(data, prompt, imageMode)
     if (generated.length === 0) throw new Error(ui.imageNoReturn)
     replaceImageTask(taskId, generated)
@@ -846,30 +915,38 @@ function clearChat() {
       content: ui.cleared
     }
   ]
+  localStorage.removeItem(STORAGE_CHAT_MESSAGES)
 }
 
 function clearImages() {
   images.value = []
+  localStorage.removeItem(STORAGE_IMAGE_HISTORY)
 }
 
-function ensureSelectedKeySupportsMode() {
-  if (!keyOptions.value.some((option) => String(option.value) === String(selectedKeyId.value))) {
-    selectedKeyId.value = keyOptions.value[0]?.value ?? null
+function ensureSelectedKeysSupportModes() {
+  if (!chatKeyOptions.value.some((option) => String(option.value) === String(selectedChatKeyId.value))) {
+    selectedChatKeyId.value = chatKeyOptions.value[0]?.value ?? allKeyOptions.value[0]?.value ?? null
+  }
+  if (!imageKeyOptions.value.some((option) => String(option.value) === String(selectedImageKeyId.value))) {
+    selectedImageKeyId.value = imageKeyOptions.value[0]?.value ?? allKeyOptions.value[0]?.value ?? null
   }
 }
 
-watch(selectedKeyId, (value) => {
-  if (value) localStorage.setItem(STORAGE_KEY_ID, String(value))
+watch(selectedChatKeyId, (value) => {
+  if (value) localStorage.setItem(STORAGE_CHAT_KEY_ID, String(value))
+})
+watch(selectedImageKeyId, (value) => {
+  if (value) localStorage.setItem(STORAGE_IMAGE_KEY_ID, String(value))
 })
 watch(
-  [mode, keyOptions],
+  [chatKeyOptions, imageKeyOptions],
   () => {
-    ensureSelectedKeySupportsMode()
+    ensureSelectedKeysSupportModes()
   },
   { immediate: true }
 )
 watch(
-  [selectedKeyId, chatModelOptions, imageModelOptions],
+  [selectedChatKeyId, selectedImageKeyId, chatModelOptions, imageModelOptions],
   () => {
     ensureSelectedModelIsAvailable(selectedChatModel, chatModelOptions.value)
     ensureSelectedModelIsAvailable(selectedImageModel, imageModelOptions.value)
@@ -879,6 +956,7 @@ watch(
 watch(selectedChatModel, (value) => localStorage.setItem(STORAGE_SELECTED_CHAT_MODEL, String(value || 'gpt-4o-mini')))
 watch(selectedImageModel, (value) => localStorage.setItem(STORAGE_SELECTED_IMAGE_MODEL, String(value || 'gpt-image-1')))
 watch(customChatModel, (value) => localStorage.setItem(STORAGE_CHAT_MODEL, value))
+watch(chatReasoningEffort, (value) => localStorage.setItem(STORAGE_CHAT_REASONING_EFFORT, String(value || 'auto')))
 watch(customImageModel, (value) => localStorage.setItem(STORAGE_IMAGE_MODEL, value))
 watch(imageSize, (value) => localStorage.setItem(STORAGE_IMAGE_SIZE, String(value || '')))
 watch(customImageWidth, (value) => localStorage.setItem(STORAGE_CUSTOM_IMAGE_WIDTH, String(value || 1024)))
@@ -887,12 +965,27 @@ watch(imageCount, (value) => localStorage.setItem(STORAGE_IMAGE_COUNT, String(va
 watch(imageQuality, (value) => localStorage.setItem(STORAGE_IMAGE_QUALITY, String(value || 'auto')))
 watch(imageBackground, (value) => localStorage.setItem(STORAGE_IMAGE_BACKGROUND, String(value || 'auto')))
 watch(imageOutputFormat, (value) => localStorage.setItem(STORAGE_IMAGE_OUTPUT_FORMAT, String(value || 'png')))
+watch(
+  messages,
+  (value) => {
+    localStorage.setItem(STORAGE_CHAT_MESSAGES, JSON.stringify(value))
+  },
+  { deep: true }
+)
+watch(
+  images,
+  (value) => {
+    const persisted = value.filter((image) => image.status !== 'pending')
+    localStorage.setItem(STORAGE_IMAGE_HISTORY, JSON.stringify(persisted))
+  },
+  { deep: true }
+)
 onMounted(async () => {
   if (!appStore.publicSettingsLoaded) {
     await appStore.fetchPublicSettings()
   }
   await loadKeys()
   await loadAllKeyModels()
-  ensureSelectedKeySupportsMode()
+  ensureSelectedKeysSupportModes()
 })
 </script>
