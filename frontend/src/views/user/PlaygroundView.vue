@@ -289,6 +289,11 @@ interface GeneratedImage {
   mode: ImageMode
 }
 
+interface PlaygroundModelOption {
+  name: string
+  groupIds: number[]
+}
+
 const { t } = useI18n()
 const ui = new Proxy({} as Record<string, string>, {
   get: (_target, key: string) => t(`playground.${key}`)
@@ -317,7 +322,7 @@ const selectedChatModel = ref<string | number | boolean | null>(localStorage.get
 const selectedImageModel = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_SELECTED_IMAGE_MODEL) || 'gpt-image-1')
 const customChatModel = ref(localStorage.getItem(STORAGE_CHAT_MODEL) || 'gpt-4o-mini')
 const customImageModel = ref(localStorage.getItem(STORAGE_IMAGE_MODEL) || 'gpt-image-1')
-const availableModelNames = ref<string[]>([])
+const availableModels = ref<PlaygroundModelOption[]>([])
 const imageSize = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_IMAGE_SIZE) || '1024x1024')
 const customImageWidth = ref(Number(localStorage.getItem(STORAGE_CUSTOM_IMAGE_WIDTH) || 1024))
 const customImageHeight = ref(Number(localStorage.getItem(STORAGE_CUSTOM_IMAGE_HEIGHT) || 1024))
@@ -368,6 +373,40 @@ function uniqueModels(models: string[]): string[] {
   return Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
 }
 
+function mergeModelOptions(models: PlaygroundModelOption[]): PlaygroundModelOption[] {
+  const byName = new Map<string, Set<number>>()
+  for (const model of models) {
+    const name = model.name.trim()
+    if (!name) continue
+    const groupIds = byName.get(name) || new Set<number>()
+    for (const groupId of model.groupIds) {
+      groupIds.add(groupId)
+    }
+    byName.set(name, groupIds)
+  }
+  return Array.from(byName.entries())
+    .map(([name, groupIds]) => ({ name, groupIds: Array.from(groupIds) }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function groupsForAvailableModel(sectionGroupIds: number[], modelGroupIds?: number[]): number[] {
+  if (!modelGroupIds || modelGroupIds.length === 0) return sectionGroupIds
+  const allowed = new Set(modelGroupIds)
+  return sectionGroupIds.filter((groupId) => allowed.has(groupId))
+}
+
+function modelsForSelectedKey(): string[] {
+  const selectedGroupId = selectedKey.value?.group_id ?? selectedKey.value?.group?.id ?? null
+  if (!selectedGroupId) {
+    return availableModels.value
+      .filter((model) => model.groupIds.length === 0)
+      .map((model) => model.name)
+  }
+  return availableModels.value
+    .filter((model) => model.groupIds.length === 0 || model.groupIds.includes(selectedGroupId))
+    .map((model) => model.name)
+}
+
 function isLikelyImageModel(model: string): boolean {
   const normalized = model.toLowerCase()
   return normalized.includes('image') || normalized.includes('dall') || normalized.includes('flux') || normalized.includes('stable-diffusion')
@@ -383,7 +422,7 @@ function modelOptions(models: string[]): SelectOption[] {
 const chatModelOptions = computed<SelectOption[]>(() => {
   const chatModels = uniqueModels([
     ...defaultChatModels,
-    ...availableModelNames.value.filter((model) => !isLikelyImageModel(model))
+    ...modelsForSelectedKey().filter((model) => !isLikelyImageModel(model))
   ])
   return modelOptions(chatModels)
 })
@@ -391,10 +430,21 @@ const chatModelOptions = computed<SelectOption[]>(() => {
 const imageModelOptions = computed<SelectOption[]>(() => {
   const imageModels = uniqueModels([
     ...defaultImageModels,
-    ...availableModelNames.value.filter((model) => isLikelyImageModel(model))
+    ...modelsForSelectedKey().filter((model) => isLikelyImageModel(model))
   ])
   return modelOptions(imageModels)
 })
+
+function ensureSelectedModelIsAvailable(
+  selectedModel: typeof selectedChatModel,
+  options: SelectOption[],
+  fallback: string,
+) {
+  const value = String(selectedModel.value || '')
+  if (value === 'custom') return
+  if (options.some((option) => option.value === value)) return
+  selectedModel.value = options.find((option) => option.value !== 'custom')?.value ?? fallback
+}
 
 const imageSizeOptions = computed<SelectOption[]>(() => [
   { value: '1024x1024', label: `1024x1024 - ${ui.sizeSquare}` },
@@ -537,17 +587,22 @@ async function loadModels() {
   loadingModels.value = true
   try {
     const channels = await userChannelsAPI.getAvailable()
-    const models: string[] = []
+    const models: PlaygroundModelOption[] = []
     for (const channel of channels) {
       for (const platform of channel.platforms || []) {
+        const sectionGroupIds = (platform.groups || []).map((group) => group.id)
         for (const model of platform.supported_models || []) {
-          if (model.name) models.push(model.name)
+          if (!model.name) continue
+          models.push({
+            name: model.name,
+            groupIds: groupsForAvailableModel(sectionGroupIds, model.group_ids)
+          })
         }
       }
     }
-    availableModelNames.value = uniqueModels(models)
+    availableModels.value = mergeModelOptions(models)
   } catch {
-    availableModelNames.value = []
+    availableModels.value = []
   } finally {
     loadingModels.value = false
   }
@@ -675,6 +730,14 @@ function clearImages() {
 watch(selectedKeyId, (value) => {
   if (value) localStorage.setItem(STORAGE_KEY_ID, String(value))
 })
+watch(
+  [selectedKeyId, chatModelOptions, imageModelOptions],
+  () => {
+    ensureSelectedModelIsAvailable(selectedChatModel, chatModelOptions.value, 'gpt-4o-mini')
+    ensureSelectedModelIsAvailable(selectedImageModel, imageModelOptions.value, 'gpt-image-1')
+  },
+  { immediate: true }
+)
 watch(selectedChatModel, (value) => localStorage.setItem(STORAGE_SELECTED_CHAT_MODEL, String(value || 'gpt-4o-mini')))
 watch(selectedImageModel, (value) => localStorage.setItem(STORAGE_SELECTED_IMAGE_MODEL, String(value || 'gpt-image-1')))
 watch(customChatModel, (value) => localStorage.setItem(STORAGE_CHAT_MODEL, value))
