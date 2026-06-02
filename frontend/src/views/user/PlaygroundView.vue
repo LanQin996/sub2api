@@ -87,7 +87,7 @@
                       {{ ui.imageGenerating }}
                     </p>
                     <p class="mt-1 text-xs text-gray-500 dark:text-dark-300">
-                      {{ ui.elapsedSeconds.replace('{seconds}', String(image.elapsedSeconds)) }}
+                      {{ t('playground.elapsedSeconds', { seconds: image.elapsedSeconds }) }}
                     </p>
                   </div>
                 </div>
