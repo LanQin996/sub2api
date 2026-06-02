@@ -265,7 +265,6 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { keysAPI } from '@/api/keys'
-import { userChannelsAPI } from '@/api/channels'
 import { useAppStore } from '@/stores/app'
 import { maskApiKey } from '@/utils/maskApiKey'
 import type { ApiKey, SelectOption } from '@/types'
@@ -287,11 +286,6 @@ interface GeneratedImage {
   size: string
   format: string
   mode: ImageMode
-}
-
-interface PlaygroundModelOption {
-  name: string
-  groupIds: number[]
 }
 
 const { t } = useI18n()
@@ -322,7 +316,7 @@ const selectedChatModel = ref<string | number | boolean | null>(localStorage.get
 const selectedImageModel = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_SELECTED_IMAGE_MODEL) || 'gpt-image-1')
 const customChatModel = ref(localStorage.getItem(STORAGE_CHAT_MODEL) || 'gpt-4o-mini')
 const customImageModel = ref(localStorage.getItem(STORAGE_IMAGE_MODEL) || 'gpt-image-1')
-const availableModels = ref<PlaygroundModelOption[]>([])
+const availableModelNames = ref<string[]>([])
 const imageSize = ref<string | number | boolean | null>(localStorage.getItem(STORAGE_IMAGE_SIZE) || '1024x1024')
 const customImageWidth = ref(Number(localStorage.getItem(STORAGE_CUSTOM_IMAGE_WIDTH) || 1024))
 const customImageHeight = ref(Number(localStorage.getItem(STORAGE_CUSTOM_IMAGE_HEIGHT) || 1024))
@@ -373,38 +367,8 @@ function uniqueModels(models: string[]): string[] {
   return Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
 }
 
-function mergeModelOptions(models: PlaygroundModelOption[]): PlaygroundModelOption[] {
-  const byName = new Map<string, Set<number>>()
-  for (const model of models) {
-    const name = model.name.trim()
-    if (!name) continue
-    const groupIds = byName.get(name) || new Set<number>()
-    for (const groupId of model.groupIds) {
-      groupIds.add(groupId)
-    }
-    byName.set(name, groupIds)
-  }
-  return Array.from(byName.entries())
-    .map(([name, groupIds]) => ({ name, groupIds: Array.from(groupIds) }))
-    .sort((a, b) => a.name.localeCompare(b.name))
-}
-
-function groupsForAvailableModel(sectionGroupIds: number[], modelGroupIds?: number[]): number[] {
-  if (!modelGroupIds || modelGroupIds.length === 0) return sectionGroupIds
-  const allowed = new Set(modelGroupIds)
-  return sectionGroupIds.filter((groupId) => allowed.has(groupId))
-}
-
 function modelsForSelectedKey(): string[] {
-  const selectedGroupId = selectedKey.value?.group_id ?? selectedKey.value?.group?.id ?? null
-  if (!selectedGroupId) {
-    return availableModels.value
-      .filter((model) => model.groupIds.length === 0)
-      .map((model) => model.name)
-  }
-  return availableModels.value
-    .filter((model) => model.groupIds.length === 0 || model.groupIds.includes(selectedGroupId))
-    .map((model) => model.name)
+  return availableModelNames.value
 }
 
 function isLikelyImageModel(model: string): boolean {
@@ -580,25 +544,28 @@ async function loadKeys() {
 }
 
 async function loadModels() {
+  if (!selectedApiKey.value) {
+    availableModelNames.value = []
+    return
+  }
   loadingModels.value = true
   try {
-    const channels = await userChannelsAPI.getAvailable()
-    const models: PlaygroundModelOption[] = []
-    for (const channel of channels) {
-      for (const platform of channel.platforms || []) {
-        const sectionGroupIds = (platform.groups || []).map((group) => group.id)
-        for (const model of platform.supported_models || []) {
-          if (!model.name) continue
-          models.push({
-            name: model.name,
-            groupIds: groupsForAvailableModel(sectionGroupIds, model.group_ids)
-          })
-        }
+    const response = await fetch(`${normalizeEndpoint(endpointBase.value)}/models`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${selectedApiKey.value}`
       }
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`)
     }
-    availableModels.value = mergeModelOptions(models)
+    const models = Array.isArray(data?.data)
+      ? data.data.map((item: any) => String(item?.id || '').trim())
+      : []
+    availableModelNames.value = uniqueModels(models)
   } catch {
-    availableModels.value = []
+    availableModelNames.value = []
   } finally {
     loadingModels.value = false
   }
@@ -726,6 +693,9 @@ function clearImages() {
 watch(selectedKeyId, (value) => {
   if (value) localStorage.setItem(STORAGE_KEY_ID, String(value))
 })
+watch(selectedApiKey, () => {
+  loadModels()
+})
 watch(
   [selectedKeyId, chatModelOptions, imageModelOptions],
   () => {
@@ -749,6 +719,7 @@ onMounted(async () => {
   if (!appStore.publicSettingsLoaded) {
     await appStore.fetchPublicSettings()
   }
-  await Promise.all([loadKeys(), loadModels()])
+  await loadKeys()
+  await loadModels()
 })
 </script>
