@@ -53,6 +53,11 @@ func (s *openaiOAuthClientRefreshSuccessStub) RefreshTokenWithClientID(ctx conte
 func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccessToken(t *testing.T) {
 	client := &openaiOAuthClientRefreshStub{}
 	svc := NewOpenAIOAuthService(nil, client)
+	var privacyClientCalls int32
+	svc.SetPrivacyClientFactory(func(proxyURL string) (*req.Client, error) {
+		atomic.AddInt32(&privacyClientCalls, 1)
+		return nil, errors.New("stop before request")
+	})
 
 	expiresAt := time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339)
 	account := &Account{
@@ -72,6 +77,7 @@ func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccess
 	require.Equal(t, "existing-access-token", info.AccessToken)
 	require.Equal(t, "client-id-1", info.ClientID)
 	require.Zero(t, atomic.LoadInt32(&client.refreshCalls), "existing access token should be reused without calling refresh")
+	require.Positive(t, atomic.LoadInt32(&privacyClientCalls), "existing access token should still run enrichment")
 }
 
 func TestProvideOpenAIOAuthService_RefreshAccountToken_EnrichesSubscriptionExpiry(t *testing.T) {

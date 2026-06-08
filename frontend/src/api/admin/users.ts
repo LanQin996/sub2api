@@ -117,8 +117,11 @@ export async function getById(id: number, includeDeleted = false): Promise<Admin
 export async function create(userData: {
   email: string
   password: string
+  username?: string
+  notes?: string
   balance?: number
   concurrency?: number
+  rpm_limit?: number
   allowed_groups?: number[] | null
   invitation_enabled?: boolean
 }): Promise<AdminUser> {

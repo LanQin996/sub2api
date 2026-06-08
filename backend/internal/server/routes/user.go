@@ -82,6 +82,8 @@ func RegisterUserRoutes(
 		usage := authenticated.Group("/usage")
 		{
 			usage.GET("", h.Usage.List)
+			usage.GET("/errors", h.Usage.ListErrors)
+			usage.GET("/errors/:id", h.Usage.GetErrorDetail)
 			usage.GET("/stats", h.Usage.Stats)
 			usage.GET("/ranking", h.Usage.Ranking)
 			// User dashboard endpoints

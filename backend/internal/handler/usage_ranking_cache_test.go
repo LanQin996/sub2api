@@ -56,7 +56,7 @@ func resetUsageRankingCacheForTest() {
 func newUserRankingCacheTestRouter(userID int64, repo *userRankingRepoCacheProbe) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	usageSvc := service.NewUsageService(repo, nil, nil, nil)
-	handler := NewUsageHandler(usageSvc, nil)
+	handler := NewUsageHandler(usageSvc, nil, nil, nil)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: userID})
