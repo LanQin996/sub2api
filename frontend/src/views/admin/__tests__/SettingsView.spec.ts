@@ -480,6 +480,16 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openGatewayTab(wrapper: ReturnType<typeof mountView>) {
+  const gatewayTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.gateway"));
+
+  expect(gatewayTabButton).toBeDefined();
+  await gatewayTabButton?.trigger("click");
+  await flushPromises();
+}
+
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
     getSettings.mockReset();
@@ -772,6 +782,7 @@ describe("admin SettingsView payment visible method controls", () => {
     const wrapper = mountView();
 
     await flushPromises();
+    await openGatewayTab(wrapper);
 
     expect(wrapper.text()).toContain("OpenAI 实验调度策略");
     expect(wrapper.text()).toContain(

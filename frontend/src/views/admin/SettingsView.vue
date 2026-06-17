@@ -45,7 +45,11 @@
         </div>
 
         <!-- Tab: Security — Admin API Key -->
-        <div v-show="activeTab === 'security'" class="space-y-6">
+        <div
+          v-if="isTabMounted('security')"
+          v-show="activeTab === 'security'"
+          class="space-y-6"
+        >
           <!-- Admin API Key Settings -->
           <div class="card">
             <div
@@ -202,7 +206,11 @@
         <!-- /Tab: Security — Admin API Key -->
 
         <!-- Tab: Gateway -->
-        <div v-show="activeTab === 'gateway'" class="space-y-6">
+        <div
+          v-if="isTabMounted('gateway')"
+          v-show="activeTab === 'gateway'"
+          class="space-y-6"
+        >
           <!-- Overload Cooldown (529) Settings -->
           <div class="card">
             <div
@@ -215,7 +223,11 @@
                 {{ t("admin.settings.overloadCooldown.description") }}
               </p>
             </div>
-            <div class="space-y-5 p-6">
+            <div v-if="!webSearchConfigLoaded" class="p-6">
+              <div class="h-5 w-40 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+              <div class="mt-3 h-4 w-full max-w-md animate-pulse rounded bg-gray-100 dark:bg-dark-800"></div>
+            </div>
+            <div v-else class="space-y-5 p-6">
               <div
                 v-if="overloadCooldownLoading"
                 class="flex items-center gap-2 text-gray-500"
@@ -1352,7 +1364,11 @@
         <!-- /Tab: Gateway -->
 
         <!-- Tab: Security — Registration, Turnstile, LinuxDo -->
-        <div v-show="activeTab === 'security'" class="space-y-6">
+        <div
+          v-if="isTabMounted('security')"
+          v-show="activeTab === 'security'"
+          class="space-y-6"
+        >
           <!-- Registration Settings -->
           <div class="card">
             <div
@@ -3070,7 +3086,11 @@
         <!-- /Tab: Security — Registration, Turnstile, LinuxDo, OIDC -->
 
         <!-- Tab: Users -->
-        <div v-show="activeTab === 'users'" class="space-y-6">
+        <div
+          v-if="isTabMounted('users')"
+          v-show="activeTab === 'users'"
+          class="space-y-6"
+        >
           <!-- Auto Concurrency Upgrade -->
           <div id="auto-concurrency-upgrade" class="card" data-testid="auto-concurrency-upgrade-card">
             <div
@@ -3764,7 +3784,11 @@
         <!-- /Tab: Users -->
 
         <!-- Tab: Gateway — Claude Code, Scheduling -->
-        <div v-show="activeTab === 'gateway'" class="space-y-6">
+        <div
+          v-if="isTabMounted('gateway')"
+          v-show="activeTab === 'gateway'"
+          class="space-y-6"
+        >
           <!-- Claude Code Settings -->
           <div class="card">
             <div
@@ -4755,7 +4779,11 @@
         <!-- /Tab: Gateway — Claude Code, Scheduling -->
 
         <!-- Tab: General -->
-        <div v-show="activeTab === 'general'" class="space-y-6">
+        <div
+          v-if="isTabMounted('general')"
+          v-show="activeTab === 'general'"
+          class="space-y-6"
+        >
           <!-- Site Settings -->
           <div class="card">
             <div
@@ -5304,7 +5332,11 @@
 	        <!-- /Tab: General -->
 
 	        <!-- Tab: Login Agreement -->
-	        <div v-show="activeTab === 'agreement'" class="space-y-6">
+        <div
+          v-if="isTabMounted('agreement')"
+          v-show="activeTab === 'agreement'"
+          class="space-y-6"
+        >
 	          <div class="card">
 	            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
 	              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -5506,7 +5538,11 @@
         <!-- /Tab: Login Agreement -->
 
 	        <!-- Tab: Features (功能开关) -->
-        <div v-show="activeTab === 'features'" class="space-y-6">
+        <div
+          v-if="isTabMounted('features')"
+          v-show="activeTab === 'features'"
+          class="space-y-6"
+        >
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -6053,7 +6089,11 @@
 
         <!-- Tab: Email -->
         <!-- Tab: Payment -->
-        <div v-show="activeTab === 'payment'" class="space-y-6">
+        <div
+          v-if="isTabMounted('payment')"
+          v-show="activeTab === 'payment'"
+          class="space-y-6"
+        >
           <!-- Payment System Settings -->
           <div class="card">
             <div
@@ -6558,7 +6598,11 @@
           />
         </div>
 
-        <div v-show="activeTab === 'email'" class="space-y-6">
+        <div
+          v-if="isTabMounted('email')"
+          v-show="activeTab === 'email'"
+          class="space-y-6"
+        >
           <!-- Email disabled hint - show when email_verify_enabled is off -->
           <div v-if="!form.email_verify_enabled" class="card">
             <div class="p-6">
@@ -6980,7 +7024,7 @@
         <!-- /Tab: Email -->
 
         <!-- Tab: Backup -->
-        <div v-show="activeTab === 'backup'">
+        <div v-if="isTabMounted('backup')" v-show="activeTab === 'backup'">
           <BackupSettings />
         </div>
 
@@ -7147,6 +7191,28 @@ type SettingsTab =
   | "email"
   | "backup";
 const activeTab = ref<SettingsTab>("general");
+const mountedTabs = reactive<Record<SettingsTab, boolean>>({
+  general: true,
+  agreement: false,
+  features: false,
+  security: false,
+  users: false,
+  gateway: false,
+  payment: false,
+  email: false,
+  backup: false,
+});
+const loadedTabData = reactive<Record<SettingsTab, boolean>>({
+  general: false,
+  agreement: false,
+  features: false,
+  security: false,
+  users: false,
+  gateway: false,
+  payment: false,
+  email: false,
+  backup: false,
+});
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "users" as SettingsTab, icon: "user" as const },
@@ -7170,6 +7236,47 @@ const settingsTabKeyboardActions = {
 
 function selectSettingsTab(tab: SettingsTab): void {
   activeTab.value = tab;
+}
+
+function isTabMounted(tab: SettingsTab): boolean {
+  return mountedTabs[tab];
+}
+
+async function ensureTabDataLoaded(tab: SettingsTab): Promise<void> {
+  if (loadedTabData[tab]) return;
+
+  if (tab === "security") {
+    await loadAdminApiKey();
+    loadedTabData[tab] = true;
+    return;
+  }
+
+  if (tab === "users") {
+    await loadSubscriptionGroups();
+    loadedTabData[tab] = true;
+    return;
+  }
+
+  if (tab === "gateway") {
+    await Promise.all([
+      loadOverloadCooldownSettings(),
+      loadRateLimit429CooldownSettings(),
+      loadStreamTimeoutSettings(),
+      loadRectifierSettings(),
+      loadBetaPolicySettings(),
+      loadWebSearchConfig(),
+    ]);
+    loadedTabData[tab] = true;
+    return;
+  }
+
+  if (tab === "payment") {
+    await loadProviders();
+    loadedTabData[tab] = true;
+    return;
+  }
+
+  loadedTabData[tab] = true;
 }
 
 function focusSettingsTab(tab: SettingsTab): void {
@@ -8030,6 +8137,7 @@ const webSearchConfig = reactive<WebSearchEmulationConfig>({
   enabled: false,
   providers: [],
 });
+const webSearchConfigLoaded = ref(false);
 
 const expandedProviders = reactive<Record<number, boolean>>({});
 const apiKeyVisible = reactive<Record<number, boolean>>({});
@@ -8150,6 +8258,7 @@ async function testWebSearchProvider() {
 }
 
 async function loadWebSearchConfig() {
+  if (webSearchConfigLoaded.value) return;
   try {
     const [resp, proxiesResp] = await Promise.all([
       adminAPI.settings.getWebSearchEmulationConfig(),
@@ -8160,10 +8269,13 @@ async function loadWebSearchConfig() {
       webSearchConfig.providers = resp.providers || [];
     }
     webSearchProxies.value = proxiesResp.items || [];
+    webSearchConfigLoaded.value = true;
   } catch (err: unknown) {
     // 404 is expected when config hasn't been created yet; show error for other failures
     const status = (err as { status?: number })?.status;
-    if (status !== 404 && status !== undefined) {
+    if (status === 404 || status === undefined) {
+      webSearchConfigLoaded.value = true;
+    } else {
       appStore.showError(extractApiErrorMessage(err, t("common.error")));
     }
   }
@@ -8688,8 +8800,6 @@ async function loadSettings() {
       openaiFastPolicyLoaded.value = true;
     }
 
-    // Load web search emulation config separately
-    await loadWebSearchConfig();
   } catch (error: unknown) {
     loadFailed.value = true;
     appStore.showError(
@@ -9272,8 +9382,10 @@ async function saveSettings() {
         }));
       openaiFastPolicyLoaded.value = true;
     }
-    // Save web search emulation config separately (errors handled internally)
-    const wsOk = await saveWebSearchConfig();
+    // Save web search emulation config only after the gateway tab has loaded it.
+    // Otherwise a save from another tab could overwrite the existing config with
+    // the form's empty defaults.
+    const wsOk = loadedTabData.gateway ? await saveWebSearchConfig() : true;
     // Refresh cached settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true);
     await adminSettingsStore.fetch(true);
@@ -10087,15 +10199,18 @@ async function handleDeleteProvider() {
 
 onMounted(() => {
   loadSettings();
-  loadSubscriptionGroups();
-  loadAdminApiKey();
-  loadOverloadCooldownSettings();
-  loadRateLimit429CooldownSettings();
-  loadStreamTimeoutSettings();
-  loadRectifierSettings();
-  loadBetaPolicySettings();
-  loadProviders();
 });
+
+watch(
+  activeTab,
+  (tab) => {
+    mountedTabs[tab] = true;
+    ensureTabDataLoaded(tab).catch((error: unknown) => {
+      console.error("Failed to load settings tab data:", tab, error);
+    });
+  },
+  { immediate: true },
+);
 
 // =========================
 // Affiliate (邀请返利) 专属用户管理
