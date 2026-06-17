@@ -4299,6 +4299,8 @@ export default {
         activeQuery: 'Query'
       },
       openaiQuotaReset: {
+        menu: 'Reset credits',
+        dialogTitle: 'OpenAI reset credits',
         count: 'Credits',
         reset: 'Reset',
         countTooltipLoad: 'Click to load the available reset-credit count',

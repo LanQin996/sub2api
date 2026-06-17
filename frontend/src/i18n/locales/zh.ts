@@ -3584,6 +3584,8 @@ export default {
         activeQuery: '查询'
       },
       openaiQuotaReset: {
+        menu: '重置次数',
+        dialogTitle: 'OpenAI 重置次数',
         count: '次数',
         reset: '重置',
         countTooltipLoad: '点击查询剩余重置次数',
