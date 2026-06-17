@@ -614,42 +614,43 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 
 // GatewayService handles API gateway operations
 type GatewayService struct {
-	accountRepo           AccountRepository
-	groupRepo             GroupRepository
-	usageLogRepo          UsageLogRepository
-	usageBillingRepo      UsageBillingRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	userGroupRateRepo     UserGroupRateRepository
-	cache                 GatewayCache
-	digestStore           *DigestSessionStore
-	cfg                   *config.Config
-	schedulerSnapshot     *SchedulerSnapshotService
-	billingService        *BillingService
-	rateLimitService      *RateLimitService
-	billingCacheService   *BillingCacheService
-	identityService       *IdentityService
-	httpUpstream          HTTPUpstream
-	deferredService       *DeferredService
-	concurrencyService    *ConcurrencyService
-	claudeTokenProvider   *ClaudeTokenProvider
-	sessionLimitCache     SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
-	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
-	userGroupRateResolver *userGroupRateResolver
-	userGroupRateCache    *gocache.Cache
-	userGroupRateSF       singleflight.Group
-	modelsListCache       *gocache.Cache
-	modelsListCacheTTL    time.Duration
-	settingService        *SettingService
-	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
-	debugModelRouting     atomic.Bool
-	debugClaudeMimic      atomic.Bool
-	channelService        *ChannelService
-	resolver              *ModelPricingResolver
-	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
-	tlsFPProfileService   *TLSFingerprintProfileService
-	balanceNotifyService  *BalanceNotifyService
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	accountRepo                   AccountRepository
+	groupRepo                     GroupRepository
+	usageLogRepo                  UsageLogRepository
+	usageBillingRepo              UsageBillingRepository
+	userRepo                      UserRepository
+	userSubRepo                   UserSubscriptionRepository
+	userGroupRateRepo             UserGroupRateRepository
+	cache                         GatewayCache
+	digestStore                   *DigestSessionStore
+	cfg                           *config.Config
+	schedulerSnapshot             *SchedulerSnapshotService
+	billingService                *BillingService
+	rateLimitService              *RateLimitService
+	billingCacheService           *BillingCacheService
+	identityService               *IdentityService
+	httpUpstream                  HTTPUpstream
+	deferredService               *DeferredService
+	concurrencyService            *ConcurrencyService
+	claudeTokenProvider           *ClaudeTokenProvider
+	sessionLimitCache             SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
+	rpmCache                      RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
+	userGroupRateResolver         *userGroupRateResolver
+	userGroupRateCache            *gocache.Cache
+	userGroupRateSF               singleflight.Group
+	modelsListCache               *gocache.Cache
+	modelsListCacheTTL            time.Duration
+	settingService                *SettingService
+	responseHeaderFilter          *responseheaders.CompiledHeaderFilter
+	debugModelRouting             atomic.Bool
+	debugClaudeMimic              atomic.Bool
+	channelService                *ChannelService
+	resolver                      *ModelPricingResolver
+	debugGatewayBodyFile          atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
+	tlsFPProfileService           *TLSFingerprintProfileService
+	balanceNotifyService          *BalanceNotifyService
+	userPlatformQuotaRepo         UserPlatformQuotaRepository
+	autoConcurrencyUpgradeService *AutoConcurrencyUpgradeService
 }
 
 // NewGatewayService creates a new GatewayService
@@ -681,42 +682,44 @@ func NewGatewayService(
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	autoConcurrencyUpgradeService *AutoConcurrencyUpgradeService,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
 
 	svc := &GatewayService{
-		accountRepo:           accountRepo,
-		groupRepo:             groupRepo,
-		usageLogRepo:          usageLogRepo,
-		usageBillingRepo:      usageBillingRepo,
-		userRepo:              userRepo,
-		userSubRepo:           userSubRepo,
-		userGroupRateRepo:     userGroupRateRepo,
-		cache:                 cache,
-		digestStore:           digestStore,
-		cfg:                   cfg,
-		schedulerSnapshot:     schedulerSnapshot,
-		concurrencyService:    concurrencyService,
-		billingService:        billingService,
-		rateLimitService:      rateLimitService,
-		billingCacheService:   billingCacheService,
-		identityService:       identityService,
-		httpUpstream:          httpUpstream,
-		deferredService:       deferredService,
-		claudeTokenProvider:   claudeTokenProvider,
-		sessionLimitCache:     sessionLimitCache,
-		rpmCache:              rpmCache,
-		userGroupRateCache:    gocache.New(userGroupRateTTL, time.Minute),
-		settingService:        settingService,
-		modelsListCache:       gocache.New(modelsListTTL, time.Minute),
-		modelsListCacheTTL:    modelsListTTL,
-		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
-		tlsFPProfileService:   tlsFPProfileService,
-		channelService:        channelService,
-		resolver:              resolver,
-		balanceNotifyService:  balanceNotifyService,
-		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		accountRepo:                   accountRepo,
+		groupRepo:                     groupRepo,
+		usageLogRepo:                  usageLogRepo,
+		usageBillingRepo:              usageBillingRepo,
+		userRepo:                      userRepo,
+		userSubRepo:                   userSubRepo,
+		userGroupRateRepo:             userGroupRateRepo,
+		cache:                         cache,
+		digestStore:                   digestStore,
+		cfg:                           cfg,
+		schedulerSnapshot:             schedulerSnapshot,
+		concurrencyService:            concurrencyService,
+		billingService:                billingService,
+		rateLimitService:              rateLimitService,
+		billingCacheService:           billingCacheService,
+		identityService:               identityService,
+		httpUpstream:                  httpUpstream,
+		deferredService:               deferredService,
+		claudeTokenProvider:           claudeTokenProvider,
+		sessionLimitCache:             sessionLimitCache,
+		rpmCache:                      rpmCache,
+		userGroupRateCache:            gocache.New(userGroupRateTTL, time.Minute),
+		settingService:                settingService,
+		modelsListCache:               gocache.New(modelsListTTL, time.Minute),
+		modelsListCacheTTL:            modelsListTTL,
+		responseHeaderFilter:          compileResponseHeaderFilter(cfg),
+		tlsFPProfileService:           tlsFPProfileService,
+		channelService:                channelService,
+		resolver:                      resolver,
+		balanceNotifyService:          balanceNotifyService,
+		userPlatformQuotaRepo:         userPlatformQuotaRepo,
+		autoConcurrencyUpgradeService: autoConcurrencyUpgradeService,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -9006,6 +9009,10 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
 	}
 
+	if p.Cost.ActualCost > 0 && p.User != nil && deps.autoConcurrencyUpgradeService != nil {
+		go deps.autoConcurrencyUpgradeService.CheckAndUpgradeAfterUsage(ctx, p.User.ID)
+	}
+
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
 
 	// Platform quota 累加：仅在 standard（余额）模式生效；订阅模式豁免；仅对有 limit 的用户写
@@ -9147,26 +9154,28 @@ func detachUpstreamContext(ctx context.Context) (context.Context, context.Cancel
 
 // billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）
 type billingDeps struct {
-	accountRepo           AccountRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	billingCacheService   *BillingCacheService
-	deferredService       *DeferredService
-	balanceNotifyService  *BalanceNotifyService
-	userPlatformQuotaRepo UserPlatformQuotaRepository
-	cfg                   *config.Config
+	accountRepo                   AccountRepository
+	userRepo                      UserRepository
+	userSubRepo                   UserSubscriptionRepository
+	billingCacheService           *BillingCacheService
+	deferredService               *DeferredService
+	balanceNotifyService          *BalanceNotifyService
+	userPlatformQuotaRepo         UserPlatformQuotaRepository
+	autoConcurrencyUpgradeService *AutoConcurrencyUpgradeService
+	cfg                           *config.Config
 }
 
 func (s *GatewayService) billingDeps() *billingDeps {
 	return &billingDeps{
-		accountRepo:           s.accountRepo,
-		userRepo:              s.userRepo,
-		userSubRepo:           s.userSubRepo,
-		billingCacheService:   s.billingCacheService,
-		deferredService:       s.deferredService,
-		balanceNotifyService:  s.balanceNotifyService,
-		userPlatformQuotaRepo: s.userPlatformQuotaRepo,
-		cfg:                   s.cfg,
+		accountRepo:                   s.accountRepo,
+		userRepo:                      s.userRepo,
+		userSubRepo:                   s.userSubRepo,
+		billingCacheService:           s.billingCacheService,
+		deferredService:               s.deferredService,
+		balanceNotifyService:          s.balanceNotifyService,
+		userPlatformQuotaRepo:         s.userPlatformQuotaRepo,
+		autoConcurrencyUpgradeService: s.autoConcurrencyUpgradeService,
+		cfg:                           s.cfg,
 	}
 }
 

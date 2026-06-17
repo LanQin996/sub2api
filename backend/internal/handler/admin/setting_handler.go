@@ -228,6 +228,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
+		AutoConcurrencyUpgradeEnabled:          settings.AutoConcurrencyUpgradeEnabled,
+		AutoConcurrencyUpgradeSpendThreshold:   settings.AutoConcurrencyUpgradeSpendThreshold,
+		AutoConcurrencyUpgradeStep:             settings.AutoConcurrencyUpgradeStep,
+		AutoConcurrencyUpgradeMax:              settings.AutoConcurrencyUpgradeMax,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
 		CyberSessionBlockEnabled:               settings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds:            settings.CyberSessionBlockTTLSeconds,
@@ -518,6 +522,10 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
 	DefaultBalance                            float64                           `json:"default_balance"`
+	AutoConcurrencyUpgradeEnabled             bool                              `json:"auto_concurrency_upgrade_enabled"`
+	AutoConcurrencyUpgradeSpendThreshold      float64                           `json:"auto_concurrency_upgrade_spend_threshold"`
+	AutoConcurrencyUpgradeStep                int                               `json:"auto_concurrency_upgrade_step"`
+	AutoConcurrencyUpgradeMax                 int                               `json:"auto_concurrency_upgrade_max"`
 	AffiliateRebateRate                       *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
@@ -1605,6 +1613,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        customEndpointsJSON,
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
+		AutoConcurrencyUpgradeEnabled:          req.AutoConcurrencyUpgradeEnabled,
+		AutoConcurrencyUpgradeSpendThreshold:   req.AutoConcurrencyUpgradeSpendThreshold,
+		AutoConcurrencyUpgradeStep:             req.AutoConcurrencyUpgradeStep,
+		AutoConcurrencyUpgradeMax:              req.AutoConcurrencyUpgradeMax,
 		AffiliateRebateRate:                    affiliateRebateRate,
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
@@ -2080,6 +2092,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
+		AutoConcurrencyUpgradeEnabled:          updatedSettings.AutoConcurrencyUpgradeEnabled,
+		AutoConcurrencyUpgradeSpendThreshold:   updatedSettings.AutoConcurrencyUpgradeSpendThreshold,
+		AutoConcurrencyUpgradeStep:             updatedSettings.AutoConcurrencyUpgradeStep,
+		AutoConcurrencyUpgradeMax:              updatedSettings.AutoConcurrencyUpgradeMax,
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
@@ -2488,6 +2504,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
+	}
+	if before.AutoConcurrencyUpgradeEnabled != after.AutoConcurrencyUpgradeEnabled {
+		changed = append(changed, "auto_concurrency_upgrade_enabled")
+	}
+	if before.AutoConcurrencyUpgradeSpendThreshold != after.AutoConcurrencyUpgradeSpendThreshold {
+		changed = append(changed, "auto_concurrency_upgrade_spend_threshold")
+	}
+	if before.AutoConcurrencyUpgradeStep != after.AutoConcurrencyUpgradeStep {
+		changed = append(changed, "auto_concurrency_upgrade_step")
+	}
+	if before.AutoConcurrencyUpgradeMax != after.AutoConcurrencyUpgradeMax {
+		changed = append(changed, "auto_concurrency_upgrade_max")
 	}
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")

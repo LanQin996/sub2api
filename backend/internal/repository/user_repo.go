@@ -783,6 +783,32 @@ func (r *userRepository) UpdateConcurrency(ctx context.Context, id int64, amount
 	return nil
 }
 
+func (r *userRepository) SetConcurrencyIfLower(ctx context.Context, id int64, target int) (bool, error) {
+	if target < 0 {
+		target = 0
+	}
+	client := clientFromContext(ctx, r.client)
+	n, err := client.User.Update().
+		Where(dbuser.IDEQ(id), dbuser.ConcurrencyLT(target)).
+		SetConcurrency(target).
+		Save(ctx)
+	if err != nil {
+		return false, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if n > 0 {
+		return true, nil
+	}
+
+	exists, err := client.User.Query().Where(dbuser.IDEQ(id)).Exist(ctx)
+	if err != nil {
+		return false, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if !exists {
+		return false, service.ErrUserNotFound
+	}
+	return false, nil
+}
+
 func (r *userRepository) BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error) {
 	if len(userIDs) == 0 {
 		return 0, nil

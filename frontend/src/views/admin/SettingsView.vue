@@ -3141,6 +3141,87 @@
               </div>
 
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{
+                        t(
+                          "admin.settings.defaults.autoConcurrencyUpgrade",
+                        )
+                      }}
+                    </label>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {{
+                        t(
+                          "admin.settings.defaults.autoConcurrencyUpgradeHint",
+                        )
+                      }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.auto_concurrency_upgrade_enabled" />
+                </div>
+
+                <div
+                  v-if="form.auto_concurrency_upgrade_enabled"
+                  class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{
+                        t(
+                          "admin.settings.defaults.autoConcurrencySpendThreshold",
+                        )
+                      }}
+                    </label>
+                    <input
+                      v-model.number="
+                        form.auto_concurrency_upgrade_spend_threshold
+                      "
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      class="input"
+                      placeholder="10.00"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{
+                        t("admin.settings.defaults.autoConcurrencyStep")
+                      }}
+                    </label>
+                    <input
+                      v-model.number="form.auto_concurrency_upgrade_step"
+                      type="number"
+                      min="1"
+                      step="1"
+                      class="input"
+                      placeholder="1"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.defaults.autoConcurrencyMax") }}
+                    </label>
+                    <input
+                      v-model.number="form.auto_concurrency_upgrade_max"
+                      type="number"
+                      min="1"
+                      step="1"
+                      class="input"
+                      placeholder="10"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                 <div class="mb-3 flex items-center justify-between">
                   <div>
                     <label class="font-medium text-gray-900 dark:text-white">
@@ -7689,6 +7770,10 @@ const form = reactive<SettingsForm>({
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
   default_concurrency: 1,
+  auto_concurrency_upgrade_enabled: false,
+  auto_concurrency_upgrade_spend_threshold: 0,
+  auto_concurrency_upgrade_step: 0,
+  auto_concurrency_upgrade_max: 0,
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
@@ -8760,6 +8845,41 @@ async function saveSettings() {
       form.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
     form.login_agreement_documents = normalizedLoginAgreementDocuments;
 
+    const normalizedAutoConcurrencyThreshold = Math.max(
+      0,
+      Number(form.auto_concurrency_upgrade_spend_threshold) || 0,
+    );
+    const normalizedAutoConcurrencyStep = Math.max(
+      0,
+      Math.floor(Number(form.auto_concurrency_upgrade_step) || 0),
+    );
+    const normalizedAutoConcurrencyMax = Math.max(
+      0,
+      Math.floor(Number(form.auto_concurrency_upgrade_max) || 0),
+    );
+    if (form.auto_concurrency_upgrade_enabled) {
+      if (
+        normalizedAutoConcurrencyThreshold <= 0 ||
+        normalizedAutoConcurrencyStep <= 0 ||
+        normalizedAutoConcurrencyMax <= 0
+      ) {
+        appStore.showError(
+          t("admin.settings.defaults.autoConcurrencyInvalid"),
+        );
+        return;
+      }
+      if (normalizedAutoConcurrencyMax < Number(form.default_concurrency || 1)) {
+        appStore.showError(
+          t("admin.settings.defaults.autoConcurrencyMaxTooLow"),
+        );
+        return;
+      }
+    }
+    form.auto_concurrency_upgrade_spend_threshold =
+      normalizedAutoConcurrencyThreshold;
+    form.auto_concurrency_upgrade_step = normalizedAutoConcurrencyStep;
+    form.auto_concurrency_upgrade_max = normalizedAutoConcurrencyMax;
+
     const normalizedDefaultSubscriptions = normalizeDefaultSubscriptionSettings(
       form.default_subscriptions,
     );
@@ -8857,6 +8977,11 @@ async function saveSettings() {
       affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
       default_concurrency: form.default_concurrency,
+      auto_concurrency_upgrade_enabled: form.auto_concurrency_upgrade_enabled,
+      auto_concurrency_upgrade_spend_threshold:
+        form.auto_concurrency_upgrade_spend_threshold,
+      auto_concurrency_upgrade_step: form.auto_concurrency_upgrade_step,
+      auto_concurrency_upgrade_max: form.auto_concurrency_upgrade_max,
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,

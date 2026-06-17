@@ -342,6 +342,13 @@ const (
 	defaultLoginAgreementDate    = "2026-03-31"
 )
 
+const (
+	SettingKeyAutoConcurrencyUpgradeEnabled        = "auto_concurrency_upgrade_enabled"
+	SettingKeyAutoConcurrencyUpgradeSpendThreshold = "auto_concurrency_upgrade_spend_threshold"
+	SettingKeyAutoConcurrencyUpgradeStep           = "auto_concurrency_upgrade_step"
+	SettingKeyAutoConcurrencyUpgradeMax            = "auto_concurrency_upgrade_max"
+)
+
 func normalizeLoginAgreementMode(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "checkbox":
@@ -1909,6 +1916,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
+	normalizedAutoConcurrency := normalizeAutoConcurrencyUpgradeSettings(settings.AutoConcurrencyUpgradeEnabled, settings.AutoConcurrencyUpgradeSpendThreshold, settings.AutoConcurrencyUpgradeStep, settings.AutoConcurrencyUpgradeMax)
+	settings.AutoConcurrencyUpgradeEnabled = normalizedAutoConcurrency.Enabled
+	settings.AutoConcurrencyUpgradeSpendThreshold = normalizedAutoConcurrency.SpendThreshold
+	settings.AutoConcurrencyUpgradeStep = normalizedAutoConcurrency.Step
+	settings.AutoConcurrencyUpgradeMax = normalizedAutoConcurrency.MaxConcurrency
+	updates[SettingKeyAutoConcurrencyUpgradeEnabled] = strconv.FormatBool(settings.AutoConcurrencyUpgradeEnabled)
+	updates[SettingKeyAutoConcurrencyUpgradeSpendThreshold] = strconv.FormatFloat(settings.AutoConcurrencyUpgradeSpendThreshold, 'f', 8, 64)
+	updates[SettingKeyAutoConcurrencyUpgradeStep] = strconv.Itoa(settings.AutoConcurrencyUpgradeStep)
+	updates[SettingKeyAutoConcurrencyUpgradeMax] = strconv.Itoa(settings.AutoConcurrencyUpgradeMax)
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {
@@ -2947,7 +2963,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAvailableChannelsEnabled: "false",
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
-		SettingKeyAffiliateEnabled: "false",
+		SettingKeyAffiliateEnabled:                     "false",
+		SettingKeyAutoConcurrencyUpgradeEnabled:        "false",
+		SettingKeyAutoConcurrencyUpgradeSpendThreshold: "0",
+		SettingKeyAutoConcurrencyUpgradeStep:           "0",
+		SettingKeyAutoConcurrencyUpgradeMax:            "0",
 
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
@@ -3058,6 +3078,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.DefaultBalance = s.cfg.Default.UserBalance
 	}
+	autoConcurrency := parseAutoConcurrencyUpgradeSettings(settings)
+	result.AutoConcurrencyUpgradeEnabled = autoConcurrency.Enabled
+	result.AutoConcurrencyUpgradeSpendThreshold = autoConcurrency.SpendThreshold
+	result.AutoConcurrencyUpgradeStep = autoConcurrency.Step
+	result.AutoConcurrencyUpgradeMax = autoConcurrency.MaxConcurrency
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)
 	} else {
@@ -3563,6 +3588,64 @@ func clampAffiliateRebateRate(value float64) float64 {
 		return AffiliateRebateRateMax
 	}
 	return value
+}
+
+func parseAutoConcurrencyUpgradeSettings(settings map[string]string) AutoConcurrencyUpgradeSettings {
+	threshold, _ := strconv.ParseFloat(strings.TrimSpace(settings[SettingKeyAutoConcurrencyUpgradeSpendThreshold]), 64)
+	step, _ := strconv.Atoi(strings.TrimSpace(settings[SettingKeyAutoConcurrencyUpgradeStep]))
+	maxConcurrency, _ := strconv.Atoi(strings.TrimSpace(settings[SettingKeyAutoConcurrencyUpgradeMax]))
+	result := normalizeAutoConcurrencyUpgradeSettings(
+		settings[SettingKeyAutoConcurrencyUpgradeEnabled] == "true",
+		threshold,
+		step,
+		maxConcurrency,
+	)
+	if concurrency, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyDefaultConcurrency])); err == nil && concurrency > 0 {
+		result.BaseConcurrency = concurrency
+	}
+	return result
+}
+
+func normalizeAutoConcurrencyUpgradeSettings(enabled bool, threshold float64, step int, maxConcurrency int) AutoConcurrencyUpgradeSettings {
+	if math.IsNaN(threshold) || math.IsInf(threshold, 0) || threshold < 0 {
+		threshold = 0
+	}
+	if step < 0 {
+		step = 0
+	}
+	if maxConcurrency < 0 {
+		maxConcurrency = 0
+	}
+	if threshold <= 0 || step <= 0 || maxConcurrency <= 0 {
+		enabled = false
+	}
+	return AutoConcurrencyUpgradeSettings{
+		Enabled:        enabled,
+		SpendThreshold: threshold,
+		Step:           step,
+		MaxConcurrency: maxConcurrency,
+	}
+}
+
+func (s *SettingService) GetAutoConcurrencyUpgradeSettings(ctx context.Context) (AutoConcurrencyUpgradeSettings, error) {
+	if s == nil || s.settingRepo == nil {
+		return AutoConcurrencyUpgradeSettings{}, nil
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyAutoConcurrencyUpgradeEnabled,
+		SettingKeyAutoConcurrencyUpgradeSpendThreshold,
+		SettingKeyAutoConcurrencyUpgradeStep,
+		SettingKeyAutoConcurrencyUpgradeMax,
+		SettingKeyDefaultConcurrency,
+	})
+	if err != nil {
+		return AutoConcurrencyUpgradeSettings{}, err
+	}
+	settings := parseAutoConcurrencyUpgradeSettings(values)
+	if settings.BaseConcurrency <= 0 {
+		settings.BaseConcurrency = s.GetDefaultConcurrency(ctx)
+	}
+	return settings, nil
 }
 
 func isFalseSettingValue(value string) bool {
