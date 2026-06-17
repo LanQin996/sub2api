@@ -3071,6 +3071,84 @@
 
         <!-- Tab: Users -->
         <div v-show="activeTab === 'users'" class="space-y-6">
+          <!-- Auto Concurrency Upgrade -->
+          <div id="auto-concurrency-upgrade" class="card" data-testid="auto-concurrency-upgrade-card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                    {{ t("admin.settings.defaults.autoConcurrencyUpgrade") }}
+                  </h2>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.autoConcurrencyUpgradeHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.auto_concurrency_upgrade_enabled" />
+              </div>
+            </div>
+            <div
+              v-if="form.auto_concurrency_upgrade_enabled"
+              class="grid grid-cols-1 gap-4 p-6 md:grid-cols-3"
+            >
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.defaults.autoConcurrencySpendThreshold",
+                    )
+                  }}
+                </label>
+                <input
+                  v-model.number="
+                    form.auto_concurrency_upgrade_spend_threshold
+                  "
+                  data-testid="auto-concurrency-upgrade-threshold"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  class="input"
+                  placeholder="10.00"
+                />
+              </div>
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.defaults.autoConcurrencyStep") }}
+                </label>
+                <input
+                  v-model.number="form.auto_concurrency_upgrade_step"
+                  data-testid="auto-concurrency-upgrade-step"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="input"
+                  placeholder="1"
+                />
+              </div>
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.defaults.autoConcurrencyMax") }}
+                </label>
+                <input
+                  v-model.number="form.auto_concurrency_upgrade_max"
+                  data-testid="auto-concurrency-upgrade-max"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="input"
+                  placeholder="10"
+                />
+              </div>
+            </div>
+          </div>
+
           <!-- Default Settings -->
           <div class="card">
             <div
@@ -3137,87 +3215,6 @@
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.defaults.defaultUserRpmLimitHint") }}
                   </p>
-                </div>
-              </div>
-
-              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
-                <div class="flex items-center justify-between gap-4">
-                  <div>
-                    <label class="font-medium text-gray-900 dark:text-white">
-                      {{
-                        t(
-                          "admin.settings.defaults.autoConcurrencyUpgrade",
-                        )
-                      }}
-                    </label>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      {{
-                        t(
-                          "admin.settings.defaults.autoConcurrencyUpgradeHint",
-                        )
-                      }}
-                    </p>
-                  </div>
-                  <Toggle v-model="form.auto_concurrency_upgrade_enabled" />
-                </div>
-
-                <div
-                  v-if="form.auto_concurrency_upgrade_enabled"
-                  class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3"
-                >
-                  <div>
-                    <label
-                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      {{
-                        t(
-                          "admin.settings.defaults.autoConcurrencySpendThreshold",
-                        )
-                      }}
-                    </label>
-                    <input
-                      v-model.number="
-                        form.auto_concurrency_upgrade_spend_threshold
-                      "
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      class="input"
-                      placeholder="10.00"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      {{
-                        t("admin.settings.defaults.autoConcurrencyStep")
-                      }}
-                    </label>
-                    <input
-                      v-model.number="form.auto_concurrency_upgrade_step"
-                      type="number"
-                      min="1"
-                      step="1"
-                      class="input"
-                      placeholder="1"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      {{ t("admin.settings.defaults.autoConcurrencyMax") }}
-                    </label>
-                    <input
-                      v-model.number="form.auto_concurrency_upgrade_max"
-                      type="number"
-                      min="1"
-                      step="1"
-                      class="input"
-                      placeholder="10"
-                    />
-                  </div>
                 </div>
               </div>
 
@@ -7152,10 +7149,10 @@ type SettingsTab =
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
+  { key: "users" as SettingsTab, icon: "user" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },
-  { key: "users" as SettingsTab, icon: "user" as const },
   { key: "gateway" as SettingsTab, icon: "server" as const },
   { key: "payment" as SettingsTab, icon: "creditCard" as const },
   { key: "email" as SettingsTab, icon: "mail" as const },

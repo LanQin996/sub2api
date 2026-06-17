@@ -5784,7 +5784,7 @@ export default {
         agreement: '登录条款',
         features: '功能开关',
         security: '安全与认证',
-        users: '用户默认值',
+        users: '用户与并发',
         gateway: '网关服务',
         email: '邮件设置',
         backup: '数据备份',

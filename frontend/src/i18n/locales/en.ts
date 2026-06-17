@@ -5624,7 +5624,7 @@ export default {
         agreement: 'Agreement',
         features: 'Feature Switches',
         security: 'Security',
-        users: 'Users',
+        users: 'Users & Concurrency',
         gateway: 'Gateway',
         email: 'Email',
         backup: 'Backup',

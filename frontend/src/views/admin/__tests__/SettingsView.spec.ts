@@ -1020,6 +1020,23 @@ describe("admin SettingsView wechat connect controls", () => {
     expect(wrapper.text()).toContain("首次绑定时授权");
   });
 
+  it("surfaces auto concurrency upgrade as a standalone users setting", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    expect(wrapper.find('[data-testid="auto-concurrency-upgrade-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="auto-concurrency-upgrade-threshold"]').exists()).toBe(false);
+
+    const card = wrapper.get('[data-testid="auto-concurrency-upgrade-card"]');
+    await card.get(".toggle-stub").setValue(true);
+
+    expect(wrapper.find('[data-testid="auto-concurrency-upgrade-threshold"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="auto-concurrency-upgrade-step"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="auto-concurrency-upgrade-max"]').exists()).toBe(true);
+  });
+
   it("preserves optional OIDC compatibility flags instead of forcing them on save", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
