@@ -9385,7 +9385,7 @@ async function saveSettings() {
     // Save web search emulation config only after the gateway tab has loaded it.
     // Otherwise a save from another tab could overwrite the existing config with
     // the form's empty defaults.
-    const wsOk = loadedTabData.gateway ? await saveWebSearchConfig() : true;
+    const wsOk = webSearchConfigLoaded.value ? await saveWebSearchConfig() : true;
     // Refresh cached settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true);
     await adminSettingsStore.fetch(true);

@@ -9010,7 +9010,7 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	}
 
 	if p.Cost.ActualCost > 0 && p.User != nil && deps.autoConcurrencyUpgradeService != nil {
-		go deps.autoConcurrencyUpgradeService.CheckAndUpgradeAfterUsage(ctx, p.User.ID)
+		deps.autoConcurrencyUpgradeService.ScheduleCheckAfterUsageForUser(ctx, p.User)
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)

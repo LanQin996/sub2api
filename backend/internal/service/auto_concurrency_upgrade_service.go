@@ -4,10 +4,14 @@ import (
 	"context"
 	"log/slog"
 	"math"
+	"sync"
 	"time"
 )
 
-const autoConcurrencyUpgradeTimeout = 5 * time.Second
+const (
+	autoConcurrencyUpgradeTimeout       = 5 * time.Second
+	autoConcurrencyUpgradeCheckInterval = 10 * time.Minute
+)
 
 type AutoConcurrencyUpgradeSettings struct {
 	Enabled         bool
@@ -26,6 +30,9 @@ type AutoConcurrencyUpgradeService struct {
 	usageRepo            UsageLogRepository
 	settingService       *SettingService
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	mu                   sync.Mutex
+	nextCheckAtByUser    map[int64]time.Time
+	inFlightByUser       map[int64]struct{}
 }
 
 func NewAutoConcurrencyUpgradeService(
@@ -39,13 +46,41 @@ func NewAutoConcurrencyUpgradeService(
 		usageRepo:            usageRepo,
 		settingService:       settingService,
 		authCacheInvalidator: authCacheInvalidator,
+		nextCheckAtByUser:    make(map[int64]time.Time),
+		inFlightByUser:       make(map[int64]struct{}),
 	}
 }
 
+func (s *AutoConcurrencyUpgradeService) ScheduleCheckAfterUsage(ctx context.Context, userID int64) {
+	s.scheduleCheckAfterUsage(ctx, userID, 0)
+}
+
+func (s *AutoConcurrencyUpgradeService) ScheduleCheckAfterUsageForUser(ctx context.Context, user *User) {
+	if user == nil {
+		return
+	}
+	s.scheduleCheckAfterUsage(ctx, user.ID, user.Concurrency)
+}
+
+func (s *AutoConcurrencyUpgradeService) scheduleCheckAfterUsage(ctx context.Context, userID int64, knownConcurrency int) {
+	if !s.shouldSchedule(userID, time.Now()) {
+		return
+	}
+	go s.checkAndUpgradeAfterUsage(ctx, userID, knownConcurrency)
+}
+
 func (s *AutoConcurrencyUpgradeService) CheckAndUpgradeAfterUsage(ctx context.Context, userID int64) {
+	s.checkAndUpgradeAfterUsage(ctx, userID, 0)
+}
+
+func (s *AutoConcurrencyUpgradeService) checkAndUpgradeAfterUsage(ctx context.Context, userID int64, knownConcurrency int) {
 	if s == nil || s.userRepo == nil || s.usageRepo == nil || s.settingService == nil || userID <= 0 {
 		return
 	}
+	if !s.markInFlight(userID) {
+		return
+	}
+	defer s.markDone(userID)
 
 	base := context.Background()
 	if ctx != nil {
@@ -60,6 +95,12 @@ func (s *AutoConcurrencyUpgradeService) CheckAndUpgradeAfterUsage(ctx context.Co
 		return
 	}
 	if !settings.Enabled {
+		return
+	}
+	if knownConcurrency >= settings.MaxConcurrency {
+		return
+	}
+	if knownConcurrency <= 0 && s.userConcurrencyAtOrAbove(workCtx, userID, settings.MaxConcurrency) {
 		return
 	}
 
@@ -81,6 +122,65 @@ func (s *AutoConcurrencyUpgradeService) CheckAndUpgradeAfterUsage(ctx context.Co
 	if updated && s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(workCtx, userID)
 	}
+}
+
+func (s *AutoConcurrencyUpgradeService) userConcurrencyAtOrAbove(ctx context.Context, userID int64, concurrency int) bool {
+	if s == nil || s.userRepo == nil || userID <= 0 || concurrency <= 0 {
+		return false
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		slog.Warn("auto concurrency upgrade: load user failed", "user_id", userID, "error", err)
+		return false
+	}
+	return user != nil && user.Concurrency >= concurrency
+}
+
+func (s *AutoConcurrencyUpgradeService) shouldSchedule(userID int64, now time.Time) bool {
+	if s == nil || userID <= 0 {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.nextCheckAtByUser == nil {
+		s.nextCheckAtByUser = make(map[int64]time.Time)
+	}
+	if s.inFlightByUser == nil {
+		s.inFlightByUser = make(map[int64]struct{})
+	}
+	if _, ok := s.inFlightByUser[userID]; ok {
+		return false
+	}
+	if next, ok := s.nextCheckAtByUser[userID]; ok && now.Before(next) {
+		return false
+	}
+	s.nextCheckAtByUser[userID] = now.Add(autoConcurrencyUpgradeCheckInterval)
+	return true
+}
+
+func (s *AutoConcurrencyUpgradeService) markInFlight(userID int64) bool {
+	if s == nil || userID <= 0 {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.inFlightByUser == nil {
+		s.inFlightByUser = make(map[int64]struct{})
+	}
+	if _, ok := s.inFlightByUser[userID]; ok {
+		return false
+	}
+	s.inFlightByUser[userID] = struct{}{}
+	return true
+}
+
+func (s *AutoConcurrencyUpgradeService) markDone(userID int64) {
+	if s == nil || userID <= 0 {
+		return
+	}
+	s.mu.Lock()
+	delete(s.inFlightByUser, userID)
+	s.mu.Unlock()
 }
 
 func (s *AutoConcurrencyUpgradeService) TargetConcurrency(settings AutoConcurrencyUpgradeSettings, totalSpend float64) (int, bool) {

@@ -145,6 +145,11 @@ type cachedOpenAIQuotaAutoPauseSettings struct {
 	expiresAt int64
 }
 
+type cachedAutoConcurrencyUpgradeSettings struct {
+	settings  AutoConcurrencyUpgradeSettings
+	expiresAt int64
+}
+
 const openAICodexUserAgentCacheTTL = 60 * time.Second
 const openAICodexUserAgentErrorTTL = 5 * time.Second
 const openAICodexUserAgentDBTimeout = 5 * time.Second
@@ -177,6 +182,11 @@ const openAIQuotaAutoPauseSettingsErrorTTL = 5 * time.Second
 const openAIQuotaAutoPauseSettingsDBTimeout = 5 * time.Second
 
 const openAIQuotaAutoPauseSettingsRefreshKey = "openai_quota_auto_pause_settings"
+
+const autoConcurrencyUpgradeSettingsCacheTTL = 60 * time.Second
+const autoConcurrencyUpgradeSettingsErrorTTL = 5 * time.Second
+const autoConcurrencyUpgradeSettingsDBTimeout = 5 * time.Second
+const autoConcurrencyUpgradeSettingsRefreshKey = "auto_concurrency_upgrade_settings"
 
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
@@ -214,6 +224,9 @@ type SettingService struct {
 	// instance owns its own cache, no shared package-level state.
 	openAIQuotaAutoPauseSettingsCache atomic.Value // *cachedOpenAIQuotaAutoPauseSettings
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
+
+	autoConcurrencyUpgradeSettingsCache atomic.Value // *cachedAutoConcurrencyUpgradeSettings
+	autoConcurrencyUpgradeSettingsSF    singleflight.Group
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）
@@ -2136,6 +2149,22 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		value:     settings.BackendModeEnabled,
 		expiresAt: time.Now().Add(backendModeCacheTTL).UnixNano(),
 	})
+	s.autoConcurrencyUpgradeSettingsSF.Forget(autoConcurrencyUpgradeSettingsRefreshKey)
+	autoConcurrency := normalizeAutoConcurrencyUpgradeSettings(
+		settings.AutoConcurrencyUpgradeEnabled,
+		settings.AutoConcurrencyUpgradeSpendThreshold,
+		settings.AutoConcurrencyUpgradeStep,
+		settings.AutoConcurrencyUpgradeMax,
+	)
+	if settings.DefaultConcurrency > 0 {
+		autoConcurrency.BaseConcurrency = settings.DefaultConcurrency
+	} else {
+		autoConcurrency.BaseConcurrency = s.defaultConcurrencyFallback()
+	}
+	s.autoConcurrencyUpgradeSettingsCache.Store(&cachedAutoConcurrencyUpgradeSettings{
+		settings:  autoConcurrency,
+		expiresAt: time.Now().Add(autoConcurrencyUpgradeSettingsCacheTTL).UnixNano(),
+	})
 	gatewayForwardingSF.Forget("gateway_forwarding")
 	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 		fingerprintUnification:           settings.EnableFingerprintUnification,
@@ -2648,14 +2677,24 @@ func (s *SettingService) GetSiteName(ctx context.Context) string {
 
 // GetDefaultConcurrency 获取默认并发量
 func (s *SettingService) GetDefaultConcurrency(ctx context.Context) int {
+	if s == nil || s.settingRepo == nil {
+		return s.defaultConcurrencyFallback()
+	}
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultConcurrency)
 	if err != nil {
-		return s.cfg.Default.UserConcurrency
+		return s.defaultConcurrencyFallback()
 	}
 	if v, err := strconv.Atoi(value); err == nil && v > 0 {
 		return v
 	}
-	return s.cfg.Default.UserConcurrency
+	return s.defaultConcurrencyFallback()
+}
+
+func (s *SettingService) defaultConcurrencyFallback() int {
+	if s != nil && s.cfg != nil {
+		return s.cfg.Default.UserConcurrency
+	}
+	return 0
 }
 
 // GetDefaultBalance 获取默认余额
@@ -3631,6 +3670,48 @@ func (s *SettingService) GetAutoConcurrencyUpgradeSettings(ctx context.Context) 
 	if s == nil || s.settingRepo == nil {
 		return AutoConcurrencyUpgradeSettings{}, nil
 	}
+	if cached, ok := s.autoConcurrencyUpgradeSettingsCache.Load().(*cachedAutoConcurrencyUpgradeSettings); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.settings, nil
+		}
+	}
+	result, err, _ := s.autoConcurrencyUpgradeSettingsSF.Do(autoConcurrencyUpgradeSettingsRefreshKey, func() (any, error) {
+		if cached, ok := s.autoConcurrencyUpgradeSettingsCache.Load().(*cachedAutoConcurrencyUpgradeSettings); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.settings, nil
+			}
+		}
+
+		dbCtx := ctx
+		if dbCtx == nil {
+			dbCtx = context.Background()
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(dbCtx), autoConcurrencyUpgradeSettingsDBTimeout)
+		defer cancel()
+		settings, loadErr := s.loadAutoConcurrencyUpgradeSettings(dbCtx)
+		ttl := autoConcurrencyUpgradeSettingsCacheTTL
+		if loadErr != nil {
+			if cached, _ := s.autoConcurrencyUpgradeSettingsCache.Load().(*cachedAutoConcurrencyUpgradeSettings); cached != nil {
+				settings = cached.settings
+			}
+			ttl = autoConcurrencyUpgradeSettingsErrorTTL
+		}
+		s.autoConcurrencyUpgradeSettingsCache.Store(&cachedAutoConcurrencyUpgradeSettings{
+			settings:  settings,
+			expiresAt: time.Now().Add(ttl).UnixNano(),
+		})
+		return settings, loadErr
+	})
+	if err != nil {
+		return AutoConcurrencyUpgradeSettings{}, err
+	}
+	if settings, ok := result.(AutoConcurrencyUpgradeSettings); ok {
+		return settings, nil
+	}
+	return AutoConcurrencyUpgradeSettings{}, nil
+}
+
+func (s *SettingService) loadAutoConcurrencyUpgradeSettings(ctx context.Context) (AutoConcurrencyUpgradeSettings, error) {
 	values, err := s.settingRepo.GetMultiple(ctx, []string{
 		SettingKeyAutoConcurrencyUpgradeEnabled,
 		SettingKeyAutoConcurrencyUpgradeSpendThreshold,
