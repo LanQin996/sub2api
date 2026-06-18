@@ -1204,7 +1204,13 @@ export interface CodexSessionImportResult {
 
 // ==================== Usage & Redeem Types ====================
 
-export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
+export type RedeemCodeType =
+  | 'balance'
+  | 'concurrency'
+  | 'subscription'
+  | 'invitation'
+  | 'admin_balance'
+  | 'admin_concurrency'
 export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber'
 export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>
@@ -1349,6 +1355,16 @@ export interface RedeemCode {
   validity_days?: number // 订阅类型专用
   user?: User
   group?: Group // 关联的分组
+}
+
+export interface RedeemCodeUsage {
+  id: number
+  redeem_code_id: number
+  user_id: number
+  value: number
+  created_at: string
+  user?: User
+  redeem_code?: RedeemCode
 }
 
 export interface GenerateRedeemCodesRequest {

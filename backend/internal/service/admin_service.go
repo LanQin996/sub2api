@@ -126,6 +126,7 @@ type AdminService interface {
 	DeleteRedeemCode(ctx context.Context, id int64) error
 	BatchDeleteRedeemCodes(ctx context.Context, ids []int64) (int64, error)
 	ExpireRedeemCode(ctx context.Context, id int64) (*RedeemCode, error)
+	ListRedeemCodeUsages(ctx context.Context, codeID int64, page, pageSize int) ([]RedeemCodeUsage, int64, error)
 	ResetAccountQuota(ctx context.Context, id int64) error
 }
 
@@ -835,16 +836,20 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 			return user, nil
 		}
 		adjustmentRecord := &RedeemCode{
-			Code:   code,
-			Type:   AdjustmentTypeAdminConcurrency,
-			Value:  float64(concurrencyDiff),
-			Status: StatusUsed,
-			UsedBy: &user.ID,
+			Code:           code,
+			Type:           AdjustmentTypeAdminConcurrency,
+			Value:          float64(concurrencyDiff),
+			Status:         StatusUsed,
+			MaxRedemptions: 1,
+			RedeemedCount:  1,
+			UsedBy:         &user.ID,
 		}
 		now := time.Now()
 		adjustmentRecord.UsedAt = &now
 		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
 			logger.LegacyPrintf("service.admin", "failed to create concurrency adjustment redeem code: %v", err)
+		} else if err := s.redeemCodeRepo.CreateUsage(ctx, adjustmentRecord.ID, user.ID, float64(concurrencyDiff), now); err != nil {
+			logger.LegacyPrintf("service.admin", "failed to create concurrency adjustment usage record: %v", err)
 		}
 	}
 
@@ -1042,18 +1047,22 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 		}
 
 		adjustmentRecord := &RedeemCode{
-			Code:   code,
-			Type:   AdjustmentTypeAdminBalance,
-			Value:  balanceDiff,
-			Status: StatusUsed,
-			UsedBy: &user.ID,
-			Notes:  notes,
+			Code:           code,
+			Type:           AdjustmentTypeAdminBalance,
+			Value:          balanceDiff,
+			Status:         StatusUsed,
+			MaxRedemptions: 1,
+			RedeemedCount:  1,
+			UsedBy:         &user.ID,
+			Notes:          notes,
 		}
 		now := time.Now()
 		adjustmentRecord.UsedAt = &now
 
 		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
 			logger.LegacyPrintf("service.admin", "failed to create balance adjustment redeem code: %v", err)
+		} else if err := s.redeemCodeRepo.CreateUsage(ctx, adjustmentRecord.ID, user.ID, balanceDiff, now); err != nil {
+			logger.LegacyPrintf("service.admin", "failed to create balance adjustment usage record: %v", err)
 		}
 	}
 
@@ -3345,6 +3354,18 @@ func (s *adminServiceImpl) ExpireRedeemCode(ctx context.Context, id int64) (*Red
 		return nil, err
 	}
 	return code, nil
+}
+
+func (s *adminServiceImpl) ListRedeemCodeUsages(ctx context.Context, codeID int64, page, pageSize int) ([]RedeemCodeUsage, int64, error) {
+	if codeID <= 0 {
+		return nil, 0, ErrRedeemCodeNotFound
+	}
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+	usages, result, err := s.redeemCodeRepo.ListUsagesByCode(ctx, codeID, params)
+	if err != nil {
+		return nil, 0, err
+	}
+	return usages, result.Total, nil
 }
 
 func (s *adminServiceImpl) TestProxy(ctx context.Context, id int64) (*ProxyTestResult, error) {

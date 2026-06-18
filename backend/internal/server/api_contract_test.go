@@ -1955,6 +1955,10 @@ func (stubRedeemCodeRepo) RedeemOnce(ctx context.Context, code *service.RedeemCo
 	return errors.New("not implemented")
 }
 
+func (stubRedeemCodeRepo) CreateUsage(ctx context.Context, codeID, userID int64, value float64, createdAt time.Time) error {
+	return errors.New("not implemented")
+}
+
 func (stubRedeemCodeRepo) List(ctx context.Context, params pagination.PaginationParams) ([]service.RedeemCode, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 }
@@ -1984,6 +1988,10 @@ func (stubRedeemCodeRepo) ListByUserPaginated(ctx context.Context, userID int64,
 
 func (stubRedeemCodeRepo) SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error) {
 	return 0, errors.New("not implemented")
+}
+
+func (stubRedeemCodeRepo) ListUsagesByCode(ctx context.Context, codeID int64, params pagination.PaginationParams) ([]service.RedeemCodeUsage, *pagination.PaginationResult, error) {
+	return nil, nil, errors.New("not implemented")
 }
 
 type stubUserSubscriptionRepo struct {

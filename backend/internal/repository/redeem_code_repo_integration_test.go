@@ -481,6 +481,50 @@ func (s *RedeemCodeRepoSuite) TestListByUser_DefaultLimit() {
 	s.Require().Len(codes, 1)
 }
 
+func (s *RedeemCodeRepoSuite) TestListByUser_UsesUsageRecordsForMultiUseRandomCodes() {
+	userA := s.createUser(uniqueTestValue(s.T(), "usage-a") + "@example.com")
+	userB := s.createUser(uniqueTestValue(s.T(), "usage-b") + "@example.com")
+	base := time.Date(2026, 6, 18, 9, 0, 0, 0, time.UTC)
+
+	code := &service.RedeemCode{
+		Code:                "RANDOM-MULTI",
+		Type:                service.RedeemTypeBalance,
+		Value:               10,
+		Status:              service.StatusUnused,
+		MaxRedemptions:      3,
+		PerUserLimit:        true,
+		RandomAmountEnabled: true,
+		RandomMinValue:      1,
+		RandomMaxValue:      10,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, code))
+	s.Require().NoError(s.repo.CreateUsage(s.ctx, code.ID, userA.ID, 3.21, base))
+	s.Require().NoError(s.repo.CreateUsage(s.ctx, code.ID, userB.ID, 8.88, base.Add(time.Hour)))
+
+	codesA, err := s.repo.ListByUser(s.ctx, userA.ID, 10)
+	s.Require().NoError(err)
+	s.Require().Len(codesA, 1)
+	s.Require().Equal("RANDOM-MULTI", codesA[0].Code)
+	s.Require().Equal(3.21, codesA[0].Value)
+	s.Require().NotNil(codesA[0].UsedBy)
+	s.Require().Equal(userA.ID, *codesA[0].UsedBy)
+	s.Require().NotNil(codesA[0].UsedAt)
+	s.Require().WithinDuration(base, *codesA[0].UsedAt, time.Second)
+	s.Require().NotNil(codesA[0].User)
+	s.Require().Equal(userA.Email, codesA[0].User.Email)
+
+	codesB, page, err := s.repo.ListByUserPaginated(s.ctx, userB.ID, pagination.PaginationParams{Page: 1, PageSize: 10}, service.RedeemTypeBalance)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), page.Total)
+	s.Require().Len(codesB, 1)
+	s.Require().Equal(8.88, codesB[0].Value)
+	s.Require().Equal(userB.ID, *codesB[0].UsedBy)
+
+	total, err := s.repo.SumPositiveBalanceByUser(s.ctx, userB.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(8.88, total)
+}
+
 // --- Combined original test ---
 
 func (s *RedeemCodeRepoSuite) TestCreateBatch_Filters_Use_Idempotency_ListByUser() {

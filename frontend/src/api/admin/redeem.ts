@@ -6,6 +6,7 @@
 import { apiClient } from '../client'
 import type {
   RedeemCode,
+  RedeemCodeUsage,
   GenerateRedeemCodesRequest,
   BatchUpdateRedeemCodeFields,
   RedeemCodeType,
@@ -157,6 +158,18 @@ export async function expire(id: number): Promise<RedeemCode> {
   return data
 }
 
+export async function getUsages(
+  id: number,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedResponse<RedeemCodeUsage>> {
+  const { data } = await apiClient.get<PaginatedResponse<RedeemCodeUsage>>(
+    `/admin/redeem-codes/${id}/usages`,
+    { params: { page, page_size: pageSize } }
+  )
+  return data
+}
+
 /**
  * Get redeem code statistics
  * @returns Statistics about redeem codes
@@ -207,6 +220,7 @@ export const redeemAPI = {
   batchDelete,
   batchUpdate,
   expire,
+  getUsages,
   getStats,
   exportCodes
 }

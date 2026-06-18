@@ -60,6 +60,7 @@ type RedeemCodeRepository interface {
 	Delete(ctx context.Context, id int64) error
 	Use(ctx context.Context, id, userID int64) error
 	RedeemOnce(ctx context.Context, code *RedeemCode, userID int64, value float64) error
+	CreateUsage(ctx context.Context, codeID, userID int64, value float64, createdAt time.Time) error
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error)
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]RedeemCode, *pagination.PaginationResult, error)
@@ -70,6 +71,7 @@ type RedeemCodeRepository interface {
 	ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]RedeemCode, *pagination.PaginationResult, error)
 	// SumPositiveBalanceByUser returns the total recharged amount (sum of positive balance values) for a user.
 	SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error)
+	ListUsagesByCode(ctx context.Context, codeID int64, params pagination.PaginationParams) ([]RedeemCodeUsage, *pagination.PaginationResult, error)
 }
 
 // GenerateCodesRequest 生成兑换码请求

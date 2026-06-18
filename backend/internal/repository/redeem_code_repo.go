@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 type redeemCodeRepository struct {
 	client *dbent.Client
 }
+
+const redeemCodeUsageHistoryIDSalt int64 = 1_000_000_000_000
 
 func NewRedeemCodeRepository(client *dbent.Client) service.RedeemCodeRepository {
 	return &redeemCodeRepository{client: client}
@@ -388,6 +391,32 @@ func (r *redeemCodeRepository) RedeemOnce(ctx context.Context, code *service.Red
 	return tx.Commit()
 }
 
+func (r *redeemCodeRepository) CreateUsage(ctx context.Context, codeID, userID int64, value float64, createdAt time.Time) error {
+	if codeID <= 0 || userID <= 0 {
+		return service.ErrRedeemCodeNotFound
+	}
+	client := r.client
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		client = tx.Client()
+	}
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+	err := client.RedeemCodeUsage.Create().
+		SetRedeemCodeID(codeID).
+		SetUserID(userID).
+		SetValue(value).
+		SetCreatedAt(createdAt).
+		Exec(ctx)
+	if err != nil {
+		if dbent.IsConstraintError(err) {
+			return service.ErrRedeemCodeUsed
+		}
+		return err
+	}
+	return nil
+}
+
 func (r *redeemCodeRepository) redeemOnce(ctx context.Context, client *dbent.Client, code *service.RedeemCode, userID int64, value float64) error {
 	now := time.Now()
 	current, err := client.RedeemCode.Query().
@@ -456,17 +485,30 @@ func (r *redeemCodeRepository) ListByUser(ctx context.Context, userID int64, lim
 		limit = 10
 	}
 
-	codes, err := r.client.RedeemCode.Query().
-		Where(redeemcode.UsedByEQ(userID)).
-		WithGroup().
-		Order(dbent.Desc(redeemcode.FieldUsedAt)).
+	usages, err := r.client.RedeemCodeUsage.Query().
+		Where(redeemcodeusage.UserIDEQ(userID)).
+		WithRedeemCode(func(q *dbent.RedeemCodeQuery) {
+			q.WithGroup()
+		}).
+		WithUser().
+		Order(dbent.Desc(redeemcodeusage.FieldCreatedAt), dbent.Desc(redeemcodeusage.FieldID)).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
 		return nil, err
 	}
+	codes := redeemCodeUsageEntitiesToRedeemCodes(usages)
+	legacyCodes, err := r.listLegacyUsedByCodesWithOffset(ctx, userID, 0, limit, "")
+	if err != nil {
+		return nil, err
+	}
+	codes = append(codes, legacyCodes...)
+	sortRedeemCodesByHistoryTime(codes)
+	if len(codes) > limit {
+		codes = codes[:limit]
+	}
 
-	return redeemCodeEntitiesToService(codes), nil
+	return codes, nil
 }
 
 func (r *redeemCodeRepository) ListByCreator(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.RedeemCode, *pagination.PaginationResult, error) {
@@ -497,30 +539,59 @@ func (r *redeemCodeRepository) ListByCreator(ctx context.Context, userID int64, 
 // ListByUserPaginated returns paginated balance/concurrency history for a user.
 // Supports optional type filter (e.g. "balance", "admin_balance", "concurrency", "admin_concurrency", "subscription").
 func (r *redeemCodeRepository) ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
-	q := r.client.RedeemCode.Query().
-		Where(redeemcode.UsedByEQ(userID))
+	q := r.client.RedeemCodeUsage.Query().
+		Where(redeemcodeusage.UserIDEQ(userID))
 
-	// Optional type filter
 	if codeType != "" {
-		q = q.Where(redeemcode.TypeEQ(codeType))
+		q = q.Where(redeemcodeusage.HasRedeemCodeWith(redeemcode.TypeEQ(codeType)))
 	}
 
-	total, err := q.Count(ctx)
+	usageTotal, err := q.Count(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
+	legacyTotal, err := r.countLegacyUsedByCodes(ctx, userID, codeType)
+	if err != nil {
+		return nil, nil, err
+	}
+	total := int64(usageTotal) + legacyTotal
 
-	codes, err := q.
-		WithGroup().
-		Offset(params.Offset()).
-		Limit(params.Limit()).
-		Order(dbent.Desc(redeemcode.FieldUsedAt)).
+	needed := params.Offset() + params.Limit()
+	if needed < params.Limit() {
+		needed = params.Limit()
+	}
+	usages, err := q.
+		WithRedeemCode(func(q *dbent.RedeemCodeQuery) {
+			q.WithGroup()
+		}).
+		WithUser().
+		Limit(needed).
+		Order(dbent.Desc(redeemcodeusage.FieldCreatedAt), dbent.Desc(redeemcodeusage.FieldID)).
 		All(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
+	codes := redeemCodeUsageEntitiesToRedeemCodes(usages)
+	if legacyTotal > 0 {
+		legacyCodes, err := r.listLegacyUsedByCodesWithOffset(ctx, userID, 0, needed, codeType)
+		if err != nil {
+			return nil, nil, err
+		}
+		codes = append(codes, legacyCodes...)
+	}
+	sortRedeemCodesByHistoryTime(codes)
+	offset := params.Offset()
+	if offset >= len(codes) {
+		codes = []service.RedeemCode{}
+	} else {
+		end := offset + params.Limit()
+		if end > len(codes) {
+			end = len(codes)
+		}
+		codes = codes[offset:end]
+	}
 
-	return redeemCodeEntitiesToService(codes), paginationResultFromTotal(int64(total), params), nil
+	return codes, paginationResultFromTotal(total, params), nil
 }
 
 // SumPositiveBalanceByUser returns total recharged amount (sum of value > 0 where type is balance/admin_balance).
@@ -528,21 +599,119 @@ func (r *redeemCodeRepository) SumPositiveBalanceByUser(ctx context.Context, use
 	var result []struct {
 		Sum float64 `json:"sum"`
 	}
-	err := r.client.RedeemCode.Query().
+	err := r.client.RedeemCodeUsage.Query().
 		Where(
-			redeemcode.UsedByEQ(userID),
-			redeemcode.ValueGT(0),
-			redeemcode.TypeIn("balance", "admin_balance"),
+			redeemcodeusage.UserIDEQ(userID),
+			redeemcodeusage.ValueGT(0),
+			redeemcodeusage.HasRedeemCodeWith(redeemcode.TypeIn("balance", "admin_balance")),
 		).
-		Aggregate(dbent.As(dbent.Sum(redeemcode.FieldValue), "sum")).
+		Aggregate(dbent.As(dbent.Sum(redeemcodeusage.FieldValue), "sum")).
 		Scan(ctx, &result)
 	if err != nil {
 		return 0, err
 	}
-	if len(result) == 0 {
-		return 0, nil
+	total := 0.0
+	if len(result) > 0 {
+		total = result[0].Sum
 	}
-	return result[0].Sum, nil
+
+	var legacyResult []struct {
+		Sum float64 `json:"sum"`
+	}
+	err = r.client.RedeemCode.Query().
+		Where(
+			redeemcode.UsedByEQ(userID),
+			redeemcode.ValueGT(0),
+			redeemcode.TypeIn("balance", "admin_balance"),
+			redeemcode.Not(redeemcode.HasUsages()),
+		).
+		Aggregate(dbent.As(dbent.Sum(redeemcode.FieldValue), "sum")).
+		Scan(ctx, &legacyResult)
+	if err != nil {
+		return 0, err
+	}
+	if len(legacyResult) > 0 {
+		total += legacyResult[0].Sum
+	}
+	return total, nil
+}
+
+func (r *redeemCodeRepository) ListUsagesByCode(ctx context.Context, codeID int64, params pagination.PaginationParams) ([]service.RedeemCodeUsage, *pagination.PaginationResult, error) {
+	q := r.client.RedeemCodeUsage.Query().
+		Where(redeemcodeusage.RedeemCodeIDEQ(codeID))
+
+	total, err := q.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	usages, err := q.
+		WithRedeemCode(func(q *dbent.RedeemCodeQuery) {
+			q.WithGroup()
+		}).
+		WithUser().
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		Order(dbent.Desc(redeemcodeusage.FieldCreatedAt), dbent.Desc(redeemcodeusage.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return redeemCodeUsageEntitiesToService(usages), paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *redeemCodeRepository) countLegacyUsedByCodes(ctx context.Context, userID int64, codeType string) (int64, error) {
+	q := r.client.RedeemCode.Query().
+		Where(
+			redeemcode.UsedByEQ(userID),
+			redeemcode.Not(redeemcode.HasUsages()),
+		)
+	if codeType != "" {
+		q = q.Where(redeemcode.TypeEQ(codeType))
+	}
+	total, err := q.Count(ctx)
+	return int64(total), err
+}
+
+func (r *redeemCodeRepository) listLegacyUsedByCodesWithOffset(ctx context.Context, userID int64, offset, limit int, codeType string) ([]service.RedeemCode, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	q := r.client.RedeemCode.Query().
+		Where(
+			redeemcode.UsedByEQ(userID),
+			redeemcode.Not(redeemcode.HasUsages()),
+		)
+	if codeType != "" {
+		q = q.Where(redeemcode.TypeEQ(codeType))
+	}
+	codes, err := q.
+		WithGroup().
+		WithUser().
+		Offset(offset).
+		Limit(limit).
+		Order(dbent.Desc(redeemcode.FieldUsedAt), dbent.Desc(redeemcode.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return redeemCodeEntitiesToService(codes), nil
+}
+
+func sortRedeemCodesByHistoryTime(codes []service.RedeemCode) {
+	sort.SliceStable(codes, func(i, j int) bool {
+		iTime := codes[i].CreatedAt
+		if codes[i].UsedAt != nil {
+			iTime = *codes[i].UsedAt
+		}
+		jTime := codes[j].CreatedAt
+		if codes[j].UsedAt != nil {
+			jTime = *codes[j].UsedAt
+		}
+		if iTime.Equal(jTime) {
+			return codes[i].ID > codes[j].ID
+		}
+		return iTime.After(jTime)
+	})
 }
 
 func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
@@ -583,6 +752,67 @@ func redeemCodeEntitiesToService(models []*dbent.RedeemCode) []service.RedeemCod
 	out := make([]service.RedeemCode, 0, len(models))
 	for i := range models {
 		if s := redeemCodeEntityToService(models[i]); s != nil {
+			out = append(out, *s)
+		}
+	}
+	return out
+}
+
+func redeemCodeUsageEntityToService(m *dbent.RedeemCodeUsage) *service.RedeemCodeUsage {
+	if m == nil {
+		return nil
+	}
+	out := &service.RedeemCodeUsage{
+		ID:           m.ID,
+		RedeemCodeID: m.RedeemCodeID,
+		UserID:       m.UserID,
+		Value:        m.Value,
+		CreatedAt:    m.CreatedAt,
+	}
+	if m.Edges.RedeemCode != nil {
+		out.RedeemCode = redeemCodeEntityToService(m.Edges.RedeemCode)
+	}
+	if m.Edges.User != nil {
+		out.User = userEntityToService(m.Edges.User)
+	}
+	return out
+}
+
+func redeemCodeUsageEntitiesToService(models []*dbent.RedeemCodeUsage) []service.RedeemCodeUsage {
+	out := make([]service.RedeemCodeUsage, 0, len(models))
+	for i := range models {
+		if s := redeemCodeUsageEntityToService(models[i]); s != nil {
+			out = append(out, *s)
+		}
+	}
+	return out
+}
+
+func redeemCodeUsageEntityToRedeemCode(m *dbent.RedeemCodeUsage) *service.RedeemCode {
+	if m == nil || m.Edges.RedeemCode == nil {
+		return nil
+	}
+	code := redeemCodeEntityToService(m.Edges.RedeemCode)
+	if code == nil {
+		return nil
+	}
+	usedBy := m.UserID
+	usedAt := m.CreatedAt
+	code.ID = -redeemCodeUsageHistoryIDSalt - m.ID
+	code.Value = m.Value
+	code.Status = service.StatusUsed
+	code.UsedBy = &usedBy
+	code.UsedAt = &usedAt
+	if m.Edges.User != nil {
+		code.User = userEntityToService(m.Edges.User)
+	}
+	return code
+}
+
+func redeemCodeUsageEntitiesToRedeemCodes(models []*dbent.RedeemCodeUsage) []service.RedeemCode {
+	out := make([]service.RedeemCode, 0, len(models))
+	for i := range models {
+		if s := redeemCodeUsageEntityToRedeemCode(models[i]); s != nil {
 			out = append(out, *s)
 		}
 	}

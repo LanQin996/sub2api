@@ -4621,6 +4621,9 @@ export default {
       failedToDelete: 'Failed to delete code',
       failedToDeleteUnused: 'Failed to delete unused codes',
       failedToCopy: 'Failed to copy codes',
+      usageRecords: 'Redemption Records',
+      noUsages: 'No redemption records',
+      failedToLoadUsages: 'Failed to load redemption records',
       types: {
         balance: 'Balance',
         concurrency: 'Concurrency',

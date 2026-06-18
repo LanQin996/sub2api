@@ -400,6 +400,10 @@ func (s *redeemRepoStub) RedeemOnce(ctx context.Context, code *RedeemCode, userI
 	panic("unexpected RedeemOnce call")
 }
 
+func (s *redeemRepoStub) CreateUsage(ctx context.Context, codeID, userID int64, value float64, createdAt time.Time) error {
+	panic("unexpected CreateUsage call")
+}
+
 func (s *redeemRepoStub) List(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }
@@ -422,6 +426,10 @@ func (s *redeemRepoStub) ListByUserPaginated(ctx context.Context, userID int64, 
 
 func (s *redeemRepoStub) SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error) {
 	panic("unexpected SumPositiveBalanceByUser call")
+}
+
+func (s *redeemRepoStub) ListUsagesByCode(ctx context.Context, codeID int64, params pagination.PaginationParams) ([]RedeemCodeUsage, *pagination.PaginationResult, error) {
+	panic("unexpected ListUsagesByCode call")
 }
 
 type subscriptionInvalidateCall struct {

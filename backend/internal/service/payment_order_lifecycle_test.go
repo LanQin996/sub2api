@@ -152,6 +152,10 @@ func (r *paymentOrderLifecycleRedeemRepo) RedeemOnce(ctx context.Context, code *
 	return r.Use(ctx, code.ID, userID)
 }
 
+func (r *paymentOrderLifecycleRedeemRepo) CreateUsage(context.Context, int64, int64, float64, time.Time) error {
+	panic("unexpected call")
+}
+
 func (r *paymentOrderLifecycleRedeemRepo) List(context.Context, pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected call")
 }
@@ -173,6 +177,10 @@ func (r *paymentOrderLifecycleRedeemRepo) ListByUserPaginated(context.Context, i
 }
 
 func (r *paymentOrderLifecycleRedeemRepo) SumPositiveBalanceByUser(context.Context, int64) (float64, error) {
+	panic("unexpected call")
+}
+
+func (r *paymentOrderLifecycleRedeemRepo) ListUsagesByCode(context.Context, int64, pagination.PaginationParams) ([]RedeemCodeUsage, *pagination.PaginationResult, error) {
 	panic("unexpected call")
 }
 

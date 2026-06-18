@@ -2804,6 +2804,10 @@ func (r *oauthPendingFlowRedeemCodeRepo) RedeemOnce(ctx context.Context, code *s
 	return r.Use(ctx, code.ID, userID)
 }
 
+func (r *oauthPendingFlowRedeemCodeRepo) CreateUsage(context.Context, int64, int64, float64, time.Time) error {
+	panic("unexpected CreateUsage call")
+}
+
 func (r *oauthPendingFlowRedeemCodeRepo) List(context.Context, pagination.PaginationParams) ([]service.RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }
@@ -2826,6 +2830,10 @@ func (r *oauthPendingFlowRedeemCodeRepo) ListByUserPaginated(context.Context, in
 
 func (r *oauthPendingFlowRedeemCodeRepo) SumPositiveBalanceByUser(context.Context, int64) (float64, error) {
 	panic("unexpected SumPositiveBalanceByUser call")
+}
+
+func (r *oauthPendingFlowRedeemCodeRepo) ListUsagesByCode(context.Context, int64, pagination.PaginationParams) ([]service.RedeemCodeUsage, *pagination.PaginationResult, error) {
+	panic("unexpected ListUsagesByCode call")
 }
 
 func decodeJSONResponseData(t *testing.T, recorder *httptest.ResponseRecorder) map[string]any {

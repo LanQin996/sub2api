@@ -532,6 +532,21 @@ func RedeemCodeFromServiceAdmin(rc *service.RedeemCode) *AdminRedeemCode {
 	}
 }
 
+func RedeemCodeUsageFromService(u *service.RedeemCodeUsage) *RedeemCodeUsage {
+	if u == nil {
+		return nil
+	}
+	return &RedeemCodeUsage{
+		ID:           u.ID,
+		RedeemCodeID: u.RedeemCodeID,
+		UserID:       u.UserID,
+		Value:        u.Value,
+		CreatedAt:    u.CreatedAt,
+		User:         UserFromServiceShallow(u.User),
+		RedeemCode:   RedeemCodeFromService(u.RedeemCode),
+	}
+}
+
 func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 	out := RedeemCode{
 		ID:                  rc.ID,

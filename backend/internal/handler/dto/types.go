@@ -379,6 +379,16 @@ type AdminRedeemCode struct {
 	Notes string `json:"notes"`
 }
 
+type RedeemCodeUsage struct {
+	ID           int64       `json:"id"`
+	RedeemCodeID int64       `json:"redeem_code_id"`
+	UserID       int64       `json:"user_id"`
+	Value        float64     `json:"value"`
+	CreatedAt    time.Time   `json:"created_at"`
+	User         *User       `json:"user,omitempty"`
+	RedeemCode   *RedeemCode `json:"redeem_code,omitempty"`
+}
+
 type NullableTimeField struct {
 	Set   bool
 	Value *time.Time

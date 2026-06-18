@@ -132,6 +132,29 @@ func (h *RedeemHandler) GetByID(c *gin.Context) {
 	response.Success(c, dto.RedeemCodeFromServiceAdmin(code))
 }
 
+// GetUsages handles getting usage records for a redeem code.
+// GET /api/v1/admin/redeem-codes/:id/usages
+func (h *RedeemHandler) GetUsages(c *gin.Context) {
+	codeID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid redeem code ID")
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	usages, total, err := h.adminService.ListRedeemCodeUsages(c.Request.Context(), codeID, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]dto.RedeemCodeUsage, 0, len(usages))
+	for i := range usages {
+		out = append(out, *dto.RedeemCodeUsageFromService(&usages[i]))
+	}
+	response.Paginated(c, out, total, page, pageSize)
+}
+
 // Generate handles generating new redeem codes
 // POST /api/v1/admin/redeem-codes/generate
 func (h *RedeemHandler) Generate(c *gin.Context) {

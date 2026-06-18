@@ -32,6 +32,17 @@ type RedeemCode struct {
 	Group *Group
 }
 
+type RedeemCodeUsage struct {
+	ID           int64
+	RedeemCodeID int64
+	UserID       int64
+	Value        float64
+	CreatedAt    time.Time
+
+	RedeemCode *RedeemCode
+	User       *User
+}
+
 func (r *RedeemCode) IsUsed() bool {
 	return r.Status == StatusUsed
 }

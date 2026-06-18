@@ -93,6 +93,10 @@ func (s *redeemCodeRepoStub) RedeemOnce(ctx context.Context, code *RedeemCode, u
 	return s.Use(ctx, code.ID, userID)
 }
 
+func (s *redeemCodeRepoStub) CreateUsage(context.Context, int64, int64, float64, time.Time) error {
+	panic("unexpected CreateUsage call")
+}
+
 func (s *redeemCodeRepoStub) List(context.Context, pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }
@@ -115,6 +119,10 @@ func (s *redeemCodeRepoStub) ListByUserPaginated(context.Context, int64, paginat
 
 func (s *redeemCodeRepoStub) SumPositiveBalanceByUser(context.Context, int64) (float64, error) {
 	panic("unexpected SumPositiveBalanceByUser call")
+}
+
+func (s *redeemCodeRepoStub) ListUsagesByCode(context.Context, int64, pagination.PaginationParams) ([]RedeemCodeUsage, *pagination.PaginationResult, error) {
+	panic("unexpected ListUsagesByCode call")
 }
 
 func newOAuthEmailFlowAuthService(

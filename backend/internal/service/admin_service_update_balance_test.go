@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -33,6 +34,7 @@ func (s *balanceUserRepoStub) Update(ctx context.Context, user *User) error {
 type balanceRedeemRepoStub struct {
 	*redeemRepoStub
 	created []*RedeemCode
+	usages  []RedeemCodeUsage
 }
 
 func (s *balanceRedeemRepoStub) Create(ctx context.Context, code *RedeemCode) error {
@@ -40,7 +42,22 @@ func (s *balanceRedeemRepoStub) Create(ctx context.Context, code *RedeemCode) er
 		return nil
 	}
 	clone := *code
+	if clone.ID == 0 {
+		clone.ID = int64(len(s.created) + 1)
+		code.ID = clone.ID
+	}
 	s.created = append(s.created, &clone)
+	return nil
+}
+
+func (s *balanceRedeemRepoStub) CreateUsage(ctx context.Context, codeID, userID int64, value float64, createdAt time.Time) error {
+	s.usages = append(s.usages, RedeemCodeUsage{
+		ID:           int64(len(s.usages) + 1),
+		RedeemCodeID: codeID,
+		UserID:       userID,
+		Value:        value,
+		CreatedAt:    createdAt,
+	})
 	return nil
 }
 
@@ -77,6 +94,9 @@ func TestAdminService_UpdateUserBalance_InvalidatesAuthCache(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []int64{7}, invalidator.userIDs)
 	require.Len(t, redeemRepo.created, 1)
+	require.Len(t, redeemRepo.usages, 1)
+	require.Equal(t, int64(7), redeemRepo.usages[0].UserID)
+	require.Equal(t, float64(5), redeemRepo.usages[0].Value)
 }
 
 func TestAdminService_UpdateUserBalance_NoChangeNoInvalidate(t *testing.T) {

@@ -162,13 +162,22 @@
           </template>
 
           <template #cell-used_by="{ value, row }">
-            <span class="text-sm text-gray-500 dark:text-dark-400">
-              {{
-                row.max_redemptions > 1
-                  ? `${row.redeemed_count}/${row.max_redemptions}`
-                  : row.user?.email || (value ? t('admin.redeem.userPrefix', { id: value }) : '-')
-              }}
-            </span>
+            <button
+              v-if="row.redeemed_count > 0"
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
+              @click="openUsagesDialog(row)"
+            >
+              <Icon name="user" size="sm" />
+              <span>
+                {{
+                  row.max_redemptions > 1
+                    ? `${row.redeemed_count}/${row.max_redemptions}`
+                    : row.user?.email || (value ? t('admin.redeem.userPrefix', { id: value }) : '-')
+                }}
+              </span>
+            </button>
+            <span v-else class="text-sm text-gray-500 dark:text-dark-400">-</span>
           </template>
 
           <template #cell-used_at="{ value }">
@@ -592,6 +601,78 @@
       </div>
     </Teleport>
 
+    <BaseDialog
+      :show="showUsagesDialog"
+      :title="t('admin.redeem.usageRecords')"
+      width="wide"
+      @close="closeUsagesDialog"
+    >
+      <div v-if="selectedUsageCode" class="space-y-4">
+        <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-700">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <code class="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+              {{ selectedUsageCode.code }}
+            </code>
+            <span class="text-sm text-gray-500 dark:text-dark-400">
+              {{ selectedUsageCode.redeemed_count }}/{{ selectedUsageCode.max_redemptions }}
+            </span>
+          </div>
+        </div>
+
+        <div v-if="usagesLoading" class="flex items-center justify-center py-8">
+          <Icon name="refresh" size="lg" class="animate-spin text-gray-400" />
+        </div>
+        <div v-else-if="usages.length === 0" class="py-8 text-center text-gray-500 dark:text-gray-400">
+          {{ t('admin.redeem.noUsages') }}
+        </div>
+        <div v-else class="space-y-3">
+          <div
+            v-for="usage in usages"
+            :key="usage.id"
+            class="flex items-center justify-between rounded-lg border border-gray-200 p-3 dark:border-dark-600"
+          >
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
+                <Icon name="user" size="sm" class="text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div class="min-w-0">
+                <p class="truncate text-sm font-medium text-gray-900 dark:text-white">
+                  {{ usage.user?.email || t('admin.redeem.userPrefix', { id: usage.user_id }) }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ formatDateTime(usage.created_at) }}
+                </p>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                {{ formatUsageValue(usage) }}
+              </span>
+              <p class="text-xs text-gray-400 dark:text-dark-500">
+                #{{ usage.user_id }}
+              </p>
+            </div>
+          </div>
+
+          <Pagination
+            v-if="usagesTotal > usagesPageSize"
+            :page="usagesPage"
+            :total="usagesTotal"
+            :page-size="usagesPageSize"
+            @update:page="handleUsagesPageChange"
+            @update:pageSize="handleUsagesPageSizeChange"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end">
+          <button type="button" @click="closeUsagesDialog" class="btn btn-secondary">
+            {{ t('common.close') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- Generated Codes Result Dialog -->
     <Teleport to="body">
       <div v-if="showResultDialog" class="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -694,6 +775,7 @@ import type {
   Group,
   GroupPlatform,
   SubscriptionType,
+  RedeemCodeUsage,
   BatchUpdateRedeemCodeFields
 } from '@/types'
 import type { Column } from '@/components/common/types'
@@ -702,6 +784,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
@@ -861,7 +944,14 @@ let abortController: AbortController | null = null
 const showDeleteDialog = ref(false)
 const showDeleteUnusedDialog = ref(false)
 const showBatchUpdateDialog = ref(false)
+const showUsagesDialog = ref(false)
 const deletingCode = ref<RedeemCode | null>(null)
+const selectedUsageCode = ref<RedeemCode | null>(null)
+const usages = ref<RedeemCodeUsage[]>([])
+const usagesLoading = ref(false)
+const usagesPage = ref(1)
+const usagesPageSize = ref(20)
+const usagesTotal = ref(0)
 const copiedCode = ref<string | null>(null)
 
 const {
@@ -1191,6 +1281,64 @@ const handleExportCodes = async () => {
 const handleDelete = (code: RedeemCode) => {
   deletingCode.value = code
   showDeleteDialog.value = true
+}
+
+const openUsagesDialog = (code: RedeemCode) => {
+  selectedUsageCode.value = code
+  usages.value = []
+  usagesTotal.value = 0
+  usagesPage.value = 1
+  showUsagesDialog.value = true
+  loadUsages()
+}
+
+const closeUsagesDialog = () => {
+  showUsagesDialog.value = false
+  selectedUsageCode.value = null
+  usages.value = []
+}
+
+const loadUsages = async () => {
+  if (!selectedUsageCode.value) return
+  usagesLoading.value = true
+  try {
+    const response = await adminAPI.redeem.getUsages(
+      selectedUsageCode.value.id,
+      usagesPage.value,
+      usagesPageSize.value
+    )
+    usages.value = response.items || []
+    usagesTotal.value = response.total || 0
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToLoadUsages'))
+    console.error('Error loading redeem code usages:', error)
+  } finally {
+    usagesLoading.value = false
+  }
+}
+
+const handleUsagesPageChange = (page: number) => {
+  usagesPage.value = page
+  loadUsages()
+}
+
+const handleUsagesPageSizeChange = (size: number) => {
+  usagesPageSize.value = size
+  usagesPage.value = 1
+  loadUsages()
+}
+
+const formatUsageValue = (usage: RedeemCodeUsage) => {
+  const type = selectedUsageCode.value?.type || usage.redeem_code?.type
+  const sign = usage.value >= 0 ? '+' : ''
+  if (type === 'balance' || type === 'admin_balance') {
+    return `${sign}$${usage.value.toFixed(2)}`
+  }
+  if (type === 'subscription') {
+    const days = selectedUsageCode.value?.validity_days || Math.round(usage.value)
+    return `${days} ${t('admin.redeem.days')}`
+  }
+  return `${sign}${usage.value}`
 }
 
 const confirmDelete = async () => {
