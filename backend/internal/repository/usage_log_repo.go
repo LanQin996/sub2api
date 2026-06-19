@@ -2913,7 +2913,7 @@ func (r *usageLogRepository) getVendorUsageRanking(ctx context.Context, currentS
 				SUM(total_tokens)::bigint AS total_tokens,
 				SUM(requests)::bigint AS requests,
 				COUNT(*)::bigint AS models_count,
-				ARRAY_AGG(model_name ORDER BY total_tokens DESC, model_name ASC)[1] AS top_model,
+				(ARRAY_AGG(model_name ORDER BY total_tokens DESC, model_name ASC))[1] AS top_model,
 				COALESCE(SUM(SUM(total_tokens)) OVER (), 0)::bigint AS all_tokens
 			FROM current_by_model
 			WHERE total_tokens > 0
