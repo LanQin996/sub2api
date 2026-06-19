@@ -393,6 +393,54 @@ func (s *UsageService) GetPublicUserSpendingRanking(ctx context.Context, userID 
 	return ranking, nil
 }
 
+// GetPublicUserTokenRanking returns a privacy-safe token leaderboard for users.
+func (s *UsageService) GetPublicUserTokenRanking(ctx context.Context, userID int64, startTime, endTime time.Time, period string, limit int) (*usagestats.PublicUserTokenRankingResponse, error) {
+	ranking, err := s.usageRepo.GetPublicUserTokenRanking(ctx, startTime, endTime, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get public user token ranking: %w", err)
+	}
+	if ranking == nil {
+		ranking = &usagestats.PublicUserTokenRankingResponse{}
+	}
+
+	visible := make([]usagestats.PublicUserTokenRankingItem, 0, len(ranking.Ranking))
+	var currentUser *usagestats.PublicUserTokenRankingItem
+	for i := range ranking.Ranking {
+		item := ranking.Ranking[i]
+		item.DisplayName = publicRankingDisplayName(item.UserID, item.Username, item.Email)
+		item.IsCurrentUser = item.UserID == userID
+		if ranking.TotalTokens > 0 {
+			item.Share = float64(item.Tokens) / float64(ranking.TotalTokens)
+		}
+		if item.IsCurrentUser {
+			copyItem := item
+			currentUser = &copyItem
+		}
+		if item.Rank <= int64(limit) {
+			visible = append(visible, item)
+		}
+	}
+
+	if currentUser == nil && userID > 0 && s.userRepo != nil {
+		if user, getErr := s.userRepo.GetByID(ctx, userID); getErr == nil && user != nil {
+			currentUser = &usagestats.PublicUserTokenRankingItem{
+				UserID:        user.ID,
+				DisplayName:   publicRankingDisplayName(user.ID, user.Username, user.Email),
+				AvatarURL:     strings.TrimSpace(user.AvatarURL),
+				IsCurrentUser: true,
+			}
+		}
+	}
+
+	ranking.Period = period
+	ranking.Ranking = visible
+	ranking.CurrentUser = currentUser
+	ranking.StartDate = startTime.Format("2006-01-02")
+	ranking.EndDate = endTime.Format("2006-01-02")
+	ranking.StatsUpdatedAt = endTime.Format(time.RFC3339)
+	return ranking, nil
+}
+
 // GetModelUsageRanking returns a model-first public leaderboard without exposing user spend.
 func (s *UsageService) GetModelUsageRanking(ctx context.Context, startTime, endTime, previousStart, previousEnd time.Time, period string, limit int) (*usagestats.ModelUsageRankingResponse, error) {
 	if limit <= 0 {

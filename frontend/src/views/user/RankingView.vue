@@ -35,6 +35,21 @@
         </div>
       </div>
 
+      <div class="inline-flex w-full overflow-x-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-900 sm:w-auto">
+        <button
+          v-for="tab in rankingTabs"
+          :key="tab.value"
+          type="button"
+          class="flex-1 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition-colors sm:flex-none"
+          :class="activeTab === tab.value
+            ? 'bg-gray-900 text-white shadow-sm dark:bg-white dark:text-gray-900'
+            : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-800'"
+          @click="activeTab = tab.value"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+
       <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div class="card p-5">
           <div class="flex items-center gap-3">
@@ -43,7 +58,7 @@
             </div>
             <div class="min-w-0">
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('ranking.totalTokens') }}</p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatCompact(ranking?.total_tokens || 0) }}</p>
+              <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatCompact(activeTotals.totalTokens) }}</p>
             </div>
           </div>
         </div>
@@ -55,7 +70,7 @@
             </div>
             <div class="min-w-0">
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('ranking.totalRequests') }}</p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatNumber(ranking?.total_requests || 0) }}</p>
+              <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatNumber(activeTotals.totalRequests) }}</p>
             </div>
           </div>
         </div>
@@ -63,24 +78,24 @@
         <div class="card p-5">
           <div class="flex items-center gap-3">
             <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
-              <Icon name="cube" size="md" class="text-purple-600 dark:text-purple-400" />
+              <Icon :name="activeTab === 'models' ? 'cube' : 'users'" size="md" class="text-purple-600 dark:text-purple-400" />
             </div>
             <div class="min-w-0">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('ranking.totalModels') }}</p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatNumber(ranking?.total_models || 0) }}</p>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ activeTab === 'models' ? t('ranking.totalModels') : t('ranking.rankedUsers') }}</p>
+              <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatNumber(activeTotals.thirdValue) }}</p>
             </div>
           </div>
         </div>
       </div>
 
-      <section class="card overflow-hidden">
+      <section v-if="activeTab !== 'models'" class="card overflow-hidden">
         <div class="flex flex-col gap-2 border-b border-gray-100 px-6 py-4 dark:border-dark-700 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('ranking.modelRanking') }}</h2>
-            <p class="text-xs text-gray-500 dark:text-dark-400">{{ periodText }}</p>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ activeUserRankingTitle }}</h2>
+            <p class="text-xs text-gray-500 dark:text-dark-400">{{ activeUserRankingDesc }}</p>
           </div>
-          <p v-if="ranking?.stats_updated_at" class="text-xs text-gray-500 dark:text-dark-400">
-            {{ t('ranking.updatedAt', { time: formatDateTime(ranking.stats_updated_at) }) }}
+          <p v-if="activeStatsUpdatedAt" class="text-xs text-gray-500 dark:text-dark-400">
+            {{ t('ranking.updatedAt', { time: formatDateTime(activeStatsUpdatedAt) }) }}
           </p>
         </div>
 
@@ -88,13 +103,81 @@
           <LoadingSpinner />
         </div>
 
-        <div v-else-if="rankingItems.length === 0" class="py-12">
+        <div v-else-if="activeUserItems.length === 0" class="py-12">
           <EmptyState :message="t('ranking.noUsage')" />
         </div>
 
         <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
           <div
-            v-for="item in rankingItems"
+            v-for="item in activeUserItems"
+            :key="`${activeTab}-${item.rank}-${item.user_id}`"
+            class="flex flex-col gap-4 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-dark-800/60 sm:px-6 lg:flex-row lg:items-center"
+          >
+            <div class="flex min-w-0 flex-1 items-center gap-4">
+              <div :class="rankBadgeClass(item.rank)" class="flex h-10 w-10 flex-none items-center justify-center rounded-lg text-sm font-bold">
+                #{{ item.rank }}
+              </div>
+
+              <div class="flex h-10 w-10 flex-none items-center justify-center overflow-hidden rounded-full bg-gray-100 text-sm font-bold text-gray-600 dark:bg-dark-700 dark:text-dark-200">
+                <img v-if="item.avatar_url" :src="item.avatar_url" alt="" class="h-full w-full object-cover" />
+                <span v-else>{{ userInitial(item.display_name) }}</span>
+              </div>
+
+              <div class="min-w-0 flex-1">
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ item.display_name || `User #${item.user_id}` }}</p>
+                  <span v-if="item.is_current_user" class="rounded bg-primary-100 px-1.5 py-0.5 text-[11px] font-medium text-primary-700 dark:bg-primary-500/20 dark:text-primary-300">
+                    {{ t('ranking.currentUser') }}
+                  </span>
+                </div>
+                <div class="mt-2 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-800">
+                  <div
+                    class="h-full rounded-full bg-primary-500 transition-all"
+                    :style="{ width: `${Math.max(userShare(item) * 100, 1)}%` }"
+                  />
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                  {{ formatNumber(item.requests) }} {{ t('ranking.requests') }} · {{ formatPercent(userShare(item)) }} {{ t('ranking.share') }}
+                </p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 lg:w-[260px]">
+              <div class="rounded-lg bg-gray-50 p-3 text-right dark:bg-dark-800">
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ formatCompact(item.tokens) }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('ranking.tokens') }}</p>
+              </div>
+              <div class="rounded-lg bg-gray-50 p-3 text-right dark:bg-dark-800">
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ formatNumber(item.requests) }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('ranking.requests') }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section v-else class="card overflow-hidden">
+        <div class="flex flex-col gap-2 border-b border-gray-100 px-6 py-4 dark:border-dark-700 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('ranking.modelRanking') }}</h2>
+            <p class="text-xs text-gray-500 dark:text-dark-400">{{ periodText }}</p>
+          </div>
+          <p v-if="modelRanking?.stats_updated_at" class="text-xs text-gray-500 dark:text-dark-400">
+            {{ t('ranking.updatedAt', { time: formatDateTime(modelRanking.stats_updated_at) }) }}
+          </p>
+        </div>
+
+        <div v-if="loading" class="flex items-center justify-center py-16">
+          <LoadingSpinner />
+        </div>
+
+        <div v-else-if="modelRankingItems.length === 0" class="py-12">
+          <EmptyState :message="t('ranking.noUsage')" />
+        </div>
+
+        <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
+          <div
+            v-for="item in modelRankingItems"
             :key="`${item.rank}-${item.model_name}`"
             class="flex flex-col gap-4 px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-dark-800/60 sm:px-6 lg:flex-row lg:items-center"
           >
@@ -144,7 +227,7 @@
         </div>
       </section>
 
-      <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div v-if="activeTab === 'models'" class="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <section class="card overflow-hidden xl:col-span-2">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('ranking.vendorShare') }}</h2>
@@ -186,7 +269,7 @@
               <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('ranking.topMovers') }}</h2>
               <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('ranking.topMoversDesc') }}</p>
             </div>
-            <RankingMoverList :items="ranking?.top_movers || []" type="up" />
+            <RankingMoverList :items="modelRanking?.top_movers || []" type="up" />
           </section>
 
           <section class="card overflow-hidden">
@@ -194,7 +277,7 @@
               <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('ranking.topDroppers') }}</h2>
               <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('ranking.topDroppersDesc') }}</p>
             </div>
-            <RankingMoverList :items="ranking?.top_droppers || []" type="down" />
+            <RankingMoverList :items="modelRanking?.top_droppers || []" type="down" />
           </section>
         </aside>
       </div>
@@ -216,14 +299,24 @@ import Icon from '@/components/icons/Icon.vue'
 import type {
   ModelRankingMover,
   ModelUsageRankingResponse,
+  PublicUserSpendingRankingItem,
+  PublicUserSpendingRankingResponse,
+  PublicUserTokenRankingItem,
+  PublicUserTokenRankingResponse,
   RankingPeriod
 } from '@/types'
+
+type RankingTab = 'users' | 'tokens' | 'models'
+type UserRankingRow = PublicUserSpendingRankingItem | PublicUserTokenRankingItem
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
 const activePeriod = ref<RankingPeriod>('weekly')
-const ranking = ref<ModelUsageRankingResponse | null>(null)
+const activeTab = ref<RankingTab>('users')
+const userRanking = ref<PublicUserSpendingRankingResponse | null>(null)
+const tokenRanking = ref<PublicUserTokenRankingResponse | null>(null)
+const modelRanking = ref<ModelUsageRankingResponse | null>(null)
 const loading = ref(false)
 let loadSeq = 0
 
@@ -235,14 +328,48 @@ const periodOptions = computed(() => [
   { value: 'all' as RankingPeriod, label: t('ranking.allTime') }
 ])
 
-const rankingItems = computed(() => ranking.value?.models || [])
-const vendorItems = computed(() => ranking.value?.vendors || [])
+const rankingTabs = computed(() => [
+  { value: 'users' as RankingTab, label: t('ranking.userRankingTab') },
+  { value: 'tokens' as RankingTab, label: t('ranking.tokenRankingTab') },
+  { value: 'models' as RankingTab, label: t('ranking.modelRankingTab') }
+])
+
+const activeUserResponse = computed(() => activeTab.value === 'tokens' ? tokenRanking.value : userRanking.value)
+const activeUserItems = computed<UserRankingRow[]>(() => activeUserResponse.value?.ranking || [])
+const modelRankingItems = computed(() => modelRanking.value?.models || [])
+const vendorItems = computed(() => modelRanking.value?.vendors || [])
+
+const activeTotals = computed(() => {
+  if (activeTab.value === 'models') {
+    return {
+      totalTokens: modelRanking.value?.total_tokens || 0,
+      totalRequests: modelRanking.value?.total_requests || 0,
+      thirdValue: modelRanking.value?.total_models || 0
+    }
+  }
+  return {
+    totalTokens: activeUserResponse.value?.total_tokens || 0,
+    totalRequests: activeUserResponse.value?.total_requests || 0,
+    thirdValue: activeUserItems.value.length
+  }
+})
+
+const activeStatsUpdatedAt = computed(() => activeUserResponse.value?.stats_updated_at || '')
+
+const activeUserRankingTitle = computed(() => activeTab.value === 'tokens'
+  ? t('ranking.tokenRanking')
+  : t('ranking.userRanking'))
+
+const activeUserRankingDesc = computed(() => activeTab.value === 'tokens'
+  ? t('ranking.tokenRankingDesc')
+  : t('ranking.userRankingDesc'))
 
 const periodText = computed(() => {
-  if (!ranking.value?.start_date || !ranking.value?.end_date) return ''
+  const data = activeTab.value === 'models' ? modelRanking.value : activeUserResponse.value
+  if (!data?.start_date || !data?.end_date) return ''
   return t('ranking.periodRange', {
-    start: ranking.value.start_date,
-    end: ranking.value.end_date
+    start: data.start_date,
+    end: data.end_date
   })
 })
 
@@ -250,12 +377,23 @@ const loadRanking = async () => {
   const currentSeq = ++loadSeq
   loading.value = true
   try {
-    const data = await usageAPI.getModelRanking({
+    const params = {
       period: activePeriod.value,
       limit: 20
-    })
-    if (currentSeq !== loadSeq) return
-    ranking.value = data
+    }
+    if (activeTab.value === 'models') {
+      const data = await usageAPI.getModelRanking(params)
+      if (currentSeq !== loadSeq) return
+      modelRanking.value = data
+    } else if (activeTab.value === 'tokens') {
+      const data = await usageAPI.getTokenRanking(params)
+      if (currentSeq !== loadSeq) return
+      tokenRanking.value = data
+    } else {
+      const data = await usageAPI.getRanking(params)
+      if (currentSeq !== loadSeq) return
+      userRanking.value = data
+    }
   } catch (error) {
     if (currentSeq !== loadSeq) return
     console.error('Failed to load ranking:', error)
@@ -296,6 +434,19 @@ const formatRankDelta = (value: number): string => {
 const formatDateTime = (value: string): string => {
   if (!value) return ''
   return new Date(value).toLocaleString()
+}
+
+const userShare = (item: UserRankingRow): number => {
+  if ('share' in item && typeof item.share === 'number') return item.share
+  const totalTokens = activeUserResponse.value?.total_tokens || 0
+  if (totalTokens <= 0) return 0
+  return item.tokens / totalTokens
+}
+
+const userInitial = (name: string): string => {
+  const trimmed = (name || '').trim()
+  if (!trimmed) return '?'
+  return trimmed.slice(0, 1).toUpperCase()
 }
 
 const rankBadgeClass = (rank: number): string => {
@@ -355,7 +506,7 @@ const RankingMoverList = defineComponent({
   }
 })
 
-watch(activePeriod, () => {
+watch([activePeriod, activeTab], () => {
   loadRanking()
 })
 

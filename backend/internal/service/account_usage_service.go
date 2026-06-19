@@ -55,6 +55,7 @@ type UsageLogRepository interface {
 	GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.UserUsageTrendPoint, error)
 	GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*usagestats.UserSpendingRankingResponse, error)
 	GetPublicUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, currentUserID int64, limit int) (*usagestats.PublicUserSpendingRankingResponse, error)
+	GetPublicUserTokenRanking(ctx context.Context, startTime, endTime time.Time, currentUserID int64, limit int) (*usagestats.PublicUserTokenRankingResponse, error)
 	GetModelUsageRanking(ctx context.Context, currentStart, currentEnd, previousStart, previousEnd time.Time, limit int) (*usagestats.ModelUsageRankingResponse, error)
 	GetBatchUserUsageStats(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchUserUsageStats, error)
 	GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchAPIKeyUsageStats, error)

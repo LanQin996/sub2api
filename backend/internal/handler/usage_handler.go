@@ -613,7 +613,7 @@ func (h *UsageHandler) Ranking(c *gin.Context) {
 	}
 
 	limit := parseRankingLimit(c)
-	cacheKey := buildUsageRankingCacheKey(subject.UserID, period, startTime, limit)
+	cacheKey := buildUsageRankingCacheKey("spending", subject.UserID, period, startTime, limit)
 	entry, hit, err := usageRankingCache.GetOrLoad(cacheKey, func() (any, error) {
 		return h.usageService.GetPublicUserSpendingRanking(
 			c.Request.Context(),
@@ -634,6 +634,43 @@ func (h *UsageHandler) Ranking(c *gin.Context) {
 	response.Success(c, clonePublicUserSpendingRankingResponse(ranking))
 }
 
+// TokenRanking handles getting user-facing token usage ranking data.
+// GET /api/v1/usage/ranking/tokens
+func (h *UsageHandler) TokenRanking(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	period, startTime, endTime, _, _, ok := parseRankingTimeRange(c)
+	if !ok {
+		response.BadRequest(c, "Invalid period, use daily, weekly, monthly, yearly, or all")
+		return
+	}
+
+	limit := parseRankingLimit(c)
+	cacheKey := buildUsageRankingCacheKey("tokens", subject.UserID, period, startTime, limit)
+	entry, hit, err := usageRankingCache.GetOrLoad(cacheKey, func() (any, error) {
+		return h.usageService.GetPublicUserTokenRanking(
+			c.Request.Context(),
+			subject.UserID,
+			startTime,
+			endTime,
+			period,
+			limit,
+		)
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	ranking, _ := entry.Payload.(*usagestats.PublicUserTokenRankingResponse)
+	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
+	response.Success(c, clonePublicUserTokenRankingResponse(ranking))
+}
+
 // ModelRanking handles getting public model usage ranking data.
 // GET /api/v1/usage/ranking/models
 func (h *UsageHandler) ModelRanking(c *gin.Context) {
@@ -647,20 +684,26 @@ func (h *UsageHandler) ModelRanking(c *gin.Context) {
 	if limit > 50 {
 		limit = 50
 	}
-	ranking, err := h.usageService.GetModelUsageRanking(
-		c.Request.Context(),
-		startTime,
-		endTime,
-		previousStart,
-		previousEnd,
-		period,
-		limit,
-	)
+	cacheKey := buildUsageModelRankingCacheKey(period, startTime, limit)
+	entry, hit, err := usageModelRankingCache.GetOrLoad(cacheKey, func() (any, error) {
+		return h.usageService.GetModelUsageRanking(
+			c.Request.Context(),
+			startTime,
+			endTime,
+			previousStart,
+			previousEnd,
+			period,
+			limit,
+		)
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, ranking)
+
+	ranking, _ := entry.Payload.(*usagestats.ModelUsageRankingResponse)
+	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
+	response.Success(c, cloneModelUsageRankingResponse(ranking))
 }
 
 // BatchAPIKeysUsageRequest represents the request for batch API keys usage

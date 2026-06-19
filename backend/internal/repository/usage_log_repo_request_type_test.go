@@ -578,6 +578,44 @@ func TestUsageLogRepositoryGetPublicUserSpendingRanking(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryGetPublicUserTokenRanking(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+
+	rows := sqlmock.NewRows([]string{
+		"rank",
+		"user_id",
+		"email",
+		"username",
+		"avatar_url",
+		"requests",
+		"tokens",
+		"total_requests",
+		"total_tokens",
+	}).
+		AddRow(int64(1), int64(2), "beta@example.com", "Beta", "https://cdn.example/beta.png", int64(9), int64(900), int64(30), int64(2600)).
+		AddRow(int64(12), int64(7), "alice@example.com", "", "", int64(1), int64(50), int64(30), int64(2600))
+
+	mock.ExpectQuery("WITH bounds AS \\(").
+		WithArgs(start, end, 3, int64(7)).
+		WillReturnRows(rows)
+
+	got, err := repo.GetPublicUserTokenRanking(context.Background(), start, end, 7, 3)
+	require.NoError(t, err)
+	require.Equal(t, &usagestats.PublicUserTokenRankingResponse{
+		Ranking: []usagestats.PublicUserTokenRankingItem{
+			{Rank: 1, UserID: 2, Email: "beta@example.com", Username: "Beta", AvatarURL: "https://cdn.example/beta.png", Requests: 9, Tokens: 900},
+			{Rank: 12, UserID: 7, Email: "alice@example.com", Requests: 1, Tokens: 50, IsCurrentUser: true},
+		},
+		TotalRequests: 30,
+		TotalTokens:   2600,
+	}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUsageLogRepositoryGetModelUsageRanking(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}

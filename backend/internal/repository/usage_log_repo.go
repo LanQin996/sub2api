@@ -2267,6 +2267,8 @@ type UserSpendingRankingItem = usagestats.UserSpendingRankingItem
 type UserSpendingRankingResponse = usagestats.UserSpendingRankingResponse
 type PublicUserSpendingRankingItem = usagestats.PublicUserSpendingRankingItem
 type PublicUserSpendingRankingResponse = usagestats.PublicUserSpendingRankingResponse
+type PublicUserTokenRankingItem = usagestats.PublicUserTokenRankingItem
+type PublicUserTokenRankingResponse = usagestats.PublicUserTokenRankingResponse
 
 // APIKeyUsageTrendPoint represents API key usage trend data point
 type APIKeyUsageTrendPoint = usagestats.APIKeyUsageTrendPoint
@@ -2657,6 +2659,96 @@ func (r *usageLogRepository) GetPublicUserSpendingRanking(ctx context.Context, s
 		TotalActualCost: totalActualCost,
 		TotalRequests:   totalRequests,
 		TotalTokens:     totalTokens,
+	}, nil
+}
+
+// GetPublicUserTokenRanking returns privacy-safe user token ranking rows plus the current user's row.
+func (r *usageLogRepository) GetPublicUserTokenRanking(ctx context.Context, startTime, endTime time.Time, currentUserID int64, limit int) (result *PublicUserTokenRankingResponse, err error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	query := `
+		WITH ` + userSpendingRollupCTE + `,
+		ranked AS (
+			SELECT
+				ROW_NUMBER() OVER (ORDER BY user_spend.tokens DESC, user_spend.requests DESC, user_spend.user_id ASC) AS rank,
+				user_spend.user_id,
+				COALESCE(users.email, '') AS email,
+				COALESCE(users.username, '') AS username,
+				COALESCE(user_avatars.url, '') AS avatar_url,
+				user_spend.requests,
+				user_spend.tokens
+			FROM user_spend
+			LEFT JOIN users ON user_spend.user_id = users.id
+			LEFT JOIN user_avatars ON user_spend.user_id = user_avatars.user_id
+		),
+		selected AS (
+			SELECT *
+			FROM ranked
+			WHERE rank <= $3 OR user_id = $4
+		),
+		totals AS (
+			SELECT
+				COALESCE(SUM(user_spend.requests), 0)::bigint AS total_requests,
+				COALESCE(SUM(user_spend.tokens), 0)::bigint AS total_tokens
+			FROM user_spend
+		)
+		SELECT
+			selected.rank,
+			selected.user_id,
+			selected.email,
+			selected.username,
+			selected.avatar_url,
+			selected.requests,
+			selected.tokens,
+			totals.total_requests,
+			totals.total_tokens
+		FROM selected
+		CROSS JOIN totals
+		ORDER BY selected.rank ASC
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, currentUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+		}
+	}()
+
+	ranking := make([]PublicUserTokenRankingItem, 0)
+	totalRequests := int64(0)
+	totalTokens := int64(0)
+	for rows.Next() {
+		var row PublicUserTokenRankingItem
+		if err = rows.Scan(
+			&row.Rank,
+			&row.UserID,
+			&row.Email,
+			&row.Username,
+			&row.AvatarURL,
+			&row.Requests,
+			&row.Tokens,
+			&totalRequests,
+			&totalTokens,
+		); err != nil {
+			return nil, err
+		}
+		row.IsCurrentUser = row.UserID == currentUserID
+		ranking = append(ranking, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &PublicUserTokenRankingResponse{
+		Ranking:       ranking,
+		TotalRequests: totalRequests,
+		TotalTokens:   totalTokens,
 	}, nil
 }
 

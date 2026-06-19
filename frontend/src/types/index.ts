@@ -1610,7 +1610,6 @@ export interface PublicUserSpendingRankingItem {
   user_id: number
   display_name: string
   avatar_url?: string | null
-  actual_cost: number
   requests: number
   tokens: number
   is_current_user: boolean
@@ -1620,7 +1619,28 @@ export interface PublicUserSpendingRankingResponse {
   period: RankingPeriod
   ranking: PublicUserSpendingRankingItem[]
   current_user?: PublicUserSpendingRankingItem | null
-  total_actual_cost: number
+  total_requests: number
+  total_tokens: number
+  start_date: string
+  end_date: string
+  stats_updated_at: string
+}
+
+export interface PublicUserTokenRankingItem {
+  rank: number
+  user_id: number
+  display_name: string
+  avatar_url?: string | null
+  requests: number
+  tokens: number
+  share: number
+  is_current_user: boolean
+}
+
+export interface PublicUserTokenRankingResponse {
+  period: RankingPeriod
+  ranking: PublicUserTokenRankingItem[]
+  current_user?: PublicUserTokenRankingItem | null
   total_requests: number
   total_tokens: number
   start_date: string

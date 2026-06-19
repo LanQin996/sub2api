@@ -13,6 +13,7 @@ import type {
   ModelStat,
   ModelUsageRankingResponse,
   PublicUserSpendingRankingResponse,
+  PublicUserTokenRankingResponse,
   RankingPeriod,
   UserErrorRequest,
   UserErrorRequestDetail,
@@ -277,6 +278,16 @@ export async function getRanking(params?: RankingParams): Promise<PublicUserSpen
 }
 
 /**
+ * Get user-facing token usage ranking.
+ * @param params - Ranking period and limit
+ * @returns Token usage ranking for current period
+ */
+export async function getTokenRanking(params?: RankingParams): Promise<PublicUserTokenRankingResponse> {
+  const { data } = await apiClient.get<PublicUserTokenRankingResponse>('/usage/ranking/tokens', { params })
+  return data
+}
+
+/**
  * Get public model usage ranking.
  * @param params - Ranking period and limit
  * @returns Model and vendor ranking for current period
@@ -365,6 +376,7 @@ export const usageAPI = {
   getDashboardTrend,
   getDashboardModels,
   getRanking,
+  getTokenRanking,
   getModelRanking,
   getMyApiKeyDailyUsage,
   getDashboardApiKeysUsage,

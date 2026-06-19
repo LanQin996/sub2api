@@ -170,7 +170,7 @@ type PublicUserSpendingRankingItem struct {
 	UserID        int64   `json:"user_id"`
 	DisplayName   string  `json:"display_name"`
 	AvatarURL     string  `json:"avatar_url,omitempty"`
-	ActualCost    float64 `json:"actual_cost"`
+	ActualCost    float64 `json:"-"`
 	Requests      int64   `json:"requests"`
 	Tokens        int64   `json:"tokens"`
 	IsCurrentUser bool    `json:"is_current_user"`
@@ -184,12 +184,40 @@ type PublicUserSpendingRankingResponse struct {
 	Period          string                          `json:"period"`
 	Ranking         []PublicUserSpendingRankingItem `json:"ranking"`
 	CurrentUser     *PublicUserSpendingRankingItem  `json:"current_user,omitempty"`
-	TotalActualCost float64                         `json:"total_actual_cost"`
+	TotalActualCost float64                         `json:"-"`
 	TotalRequests   int64                           `json:"total_requests"`
 	TotalTokens     int64                           `json:"total_tokens"`
 	StartDate       string                          `json:"start_date"`
 	EndDate         string                          `json:"end_date"`
 	StatsUpdatedAt  string                          `json:"stats_updated_at"`
+}
+
+// PublicUserTokenRankingItem represents a user-facing token usage ranking row.
+type PublicUserTokenRankingItem struct {
+	Rank          int64   `json:"rank"`
+	UserID        int64   `json:"user_id"`
+	DisplayName   string  `json:"display_name"`
+	AvatarURL     string  `json:"avatar_url,omitempty"`
+	Requests      int64   `json:"requests"`
+	Tokens        int64   `json:"tokens"`
+	Share         float64 `json:"share"`
+	IsCurrentUser bool    `json:"is_current_user"`
+
+	// Internal fields used to build privacy-safe display names.
+	Username string `json:"-"`
+	Email    string `json:"-"`
+}
+
+// PublicUserTokenRankingResponse represents privacy-safe token usage ranking data.
+type PublicUserTokenRankingResponse struct {
+	Period         string                       `json:"period"`
+	Ranking        []PublicUserTokenRankingItem `json:"ranking"`
+	CurrentUser    *PublicUserTokenRankingItem  `json:"current_user,omitempty"`
+	TotalRequests  int64                        `json:"total_requests"`
+	TotalTokens    int64                        `json:"total_tokens"`
+	StartDate      string                       `json:"start_date"`
+	EndDate        string                       `json:"end_date"`
+	StatsUpdatedAt string                       `json:"stats_updated_at"`
 }
 
 // ModelUsageRankingItem represents a public model usage ranking row.
