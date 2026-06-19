@@ -419,7 +419,7 @@ func parseUserTimeRange(c *gin.Context) (time.Time, time.Time) {
 	return startTime, endTime
 }
 
-func parseRankingTimeRange(c *gin.Context) (string, time.Time, time.Time, bool) {
+func parseRankingTimeRange(c *gin.Context) (string, time.Time, time.Time, time.Time, time.Time, bool) {
 	userTZ := c.Query("timezone")
 	now := timezone.NowInUserLocation(userTZ)
 	period := strings.ToLower(strings.TrimSpace(c.DefaultQuery("period", "daily")))
@@ -435,11 +435,19 @@ func parseRankingTimeRange(c *gin.Context) (string, time.Time, time.Time, bool) 
 	case "monthly", "month":
 		period = "monthly"
 		startTime = startOfMonthInLocation(now)
+	case "yearly", "year":
+		period = "yearly"
+		startTime = startOfYearInLocation(now)
+	case "all", "all_time", "all-time":
+		period = "all"
+		startTime = time.Time{}
 	default:
-		return "", time.Time{}, time.Time{}, false
+		return "", time.Time{}, time.Time{}, time.Time{}, time.Time{}, false
 	}
 
-	return period, startTime, now, true
+	previousEnd := startTime
+	previousStart := previousStartForRankingPeriod(period, startTime, now)
+	return period, startTime, now, previousStart, previousEnd, true
 }
 
 func startOfWeekInLocation(t time.Time) time.Time {
@@ -456,6 +464,33 @@ func startOfMonthInLocation(t time.Time) time.Time {
 	loc := t.Location()
 	t = t.In(loc)
 	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, loc)
+}
+
+func startOfYearInLocation(t time.Time) time.Time {
+	loc := t.Location()
+	t = t.In(loc)
+	return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, loc)
+}
+
+func previousStartForRankingPeriod(period string, startTime, endTime time.Time) time.Time {
+	switch period {
+	case "daily":
+		return startTime.AddDate(0, 0, -1)
+	case "weekly":
+		return startTime.AddDate(0, 0, -7)
+	case "monthly":
+		return startTime.AddDate(0, -1, 0)
+	case "yearly":
+		return startTime.AddDate(-1, 0, 0)
+	case "all":
+		return time.Time{}
+	default:
+		duration := endTime.Sub(startTime)
+		if duration <= 0 {
+			return startTime
+		}
+		return startTime.Add(-duration)
+	}
 }
 
 func parseRankingLimit(c *gin.Context) int {
@@ -571,9 +606,9 @@ func (h *UsageHandler) Ranking(c *gin.Context) {
 		return
 	}
 
-	period, startTime, endTime, ok := parseRankingTimeRange(c)
+	period, startTime, endTime, _, _, ok := parseRankingTimeRange(c)
 	if !ok {
-		response.BadRequest(c, "Invalid period, use daily, weekly, or monthly")
+		response.BadRequest(c, "Invalid period, use daily, weekly, monthly, yearly, or all")
 		return
 	}
 
@@ -597,6 +632,35 @@ func (h *UsageHandler) Ranking(c *gin.Context) {
 	ranking, _ := entry.Payload.(*usagestats.PublicUserSpendingRankingResponse)
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
 	response.Success(c, clonePublicUserSpendingRankingResponse(ranking))
+}
+
+// ModelRanking handles getting public model usage ranking data.
+// GET /api/v1/usage/ranking/models
+func (h *UsageHandler) ModelRanking(c *gin.Context) {
+	period, startTime, endTime, previousStart, previousEnd, ok := parseRankingTimeRange(c)
+	if !ok {
+		response.BadRequest(c, "Invalid period, use daily, weekly, monthly, yearly, or all")
+		return
+	}
+
+	limit := parseRankingLimit(c)
+	if limit > 50 {
+		limit = 50
+	}
+	ranking, err := h.usageService.GetModelUsageRanking(
+		c.Request.Context(),
+		startTime,
+		endTime,
+		previousStart,
+		previousEnd,
+		period,
+		limit,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, ranking)
 }
 
 // BatchAPIKeysUsageRequest represents the request for batch API keys usage

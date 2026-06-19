@@ -11,6 +11,7 @@ import type {
   PaginatedResponse,
   TrendDataPoint,
   ModelStat,
+  ModelUsageRankingResponse,
   PublicUserSpendingRankingResponse,
   RankingPeriod,
   UserErrorRequest,
@@ -276,6 +277,16 @@ export async function getRanking(params?: RankingParams): Promise<PublicUserSpen
 }
 
 /**
+ * Get public model usage ranking.
+ * @param params - Ranking period and limit
+ * @returns Model and vendor ranking for current period
+ */
+export async function getModelRanking(params?: RankingParams): Promise<ModelUsageRankingResponse> {
+  const { data } = await apiClient.get<ModelUsageRankingResponse>('/usage/ranking/models', { params })
+  return data
+}
+
+/**
  * Get daily usage details for one API key owned by the current user.
  * @param apiKeyId - API key ID
  * @param days - Number of days to include (1-90)
@@ -354,6 +365,7 @@ export const usageAPI = {
   getDashboardTrend,
   getDashboardModels,
   getRanking,
+  getModelRanking,
   getMyApiKeyDailyUsage,
   getDashboardApiKeysUsage,
   // Error requests

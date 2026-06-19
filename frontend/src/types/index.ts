@@ -1551,7 +1551,59 @@ export interface UserSpendingRankingResponse {
   end_date: string
 }
 
-export type RankingPeriod = 'daily' | 'weekly' | 'monthly'
+export type RankingPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'all'
+
+
+export interface ModelUsageRankingItem {
+  rank: number
+  previous_rank?: number | null
+  rank_delta: number
+  model_name: string
+  vendor: string
+  vendor_icon?: string | null
+  category?: string
+  total_tokens: number
+  requests: number
+  share: number
+  growth_pct: number
+}
+
+export interface VendorUsageRankingItem {
+  rank: number
+  vendor: string
+  vendor_icon?: string | null
+  total_tokens: number
+  requests: number
+  share: number
+  growth_pct: number
+  models_count: number
+  top_model?: string
+}
+
+export interface ModelRankingMover {
+  model_name: string
+  vendor: string
+  vendor_icon?: string | null
+  rank_delta: number
+  current_rank: number
+  growth_pct: number
+  total_tokens: number
+}
+
+export interface ModelUsageRankingResponse {
+  period: RankingPeriod
+  models: ModelUsageRankingItem[]
+  vendors: VendorUsageRankingItem[]
+  top_movers: ModelRankingMover[]
+  top_droppers: ModelRankingMover[]
+  total_tokens: number
+  total_requests: number
+  total_models: number
+  total_vendors: number
+  start_date: string
+  end_date: string
+  stats_updated_at: string
+}
 
 export interface PublicUserSpendingRankingItem {
   rank: number

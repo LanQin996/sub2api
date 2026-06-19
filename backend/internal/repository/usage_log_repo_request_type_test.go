@@ -578,6 +578,88 @@ func TestUsageLogRepositoryGetPublicUserSpendingRanking(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryGetModelUsageRanking(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	currentStart := time.Date(2025, 1, 8, 0, 0, 0, 0, time.UTC)
+	currentEnd := currentStart.Add(24 * time.Hour)
+	previousStart := currentStart.Add(-24 * time.Hour)
+	previousEnd := currentStart
+	limit := 5
+
+	modelRows := sqlmock.NewRows([]string{
+		"rank",
+		"model_name",
+		"vendor",
+		"vendor_icon",
+		"model_tokens",
+		"requests",
+		"previous_tokens",
+		"previous_rank",
+		"all_tokens",
+		"total_requests",
+		"total_models",
+	}).
+		AddRow(int64(1), "gpt-5.4", "OpenAI", "OpenAI", int64(900), int64(9), int64(300), int64(2), int64(1000), int64(12), int64(2)).
+		AddRow(int64(2), "claude-sonnet", "Anthropic", "Claude", int64(100), int64(3), int64(0), nil, int64(1000), int64(12), int64(2))
+
+	mock.ExpectQuery("WITH").
+		WithArgs(currentStart, currentEnd, previousStart, previousEnd, limit).
+		WillReturnRows(modelRows)
+
+	vendorRows := sqlmock.NewRows([]string{
+		"rank",
+		"vendor",
+		"vendor_icon",
+		"total_tokens",
+		"requests",
+		"models_count",
+		"top_model",
+		"previous_tokens",
+		"all_tokens",
+	}).
+		AddRow(int64(1), "OpenAI", "OpenAI", int64(900), int64(9), int64(1), "gpt-5.4", int64(300), int64(1000)).
+		AddRow(int64(2), "Anthropic", "Claude", int64(100), int64(3), int64(1), "claude-sonnet", int64(0), int64(1000))
+
+	mock.ExpectQuery("WITH").
+		WithArgs(currentStart, currentEnd, previousStart, previousEnd, limit).
+		WillReturnRows(vendorRows)
+
+	got, err := repo.GetModelUsageRanking(context.Background(), currentStart, currentEnd, previousStart, previousEnd, limit)
+	require.NoError(t, err)
+	require.Len(t, got.Models, 2)
+	require.Equal(t, int64(1000), got.TotalTokens)
+	require.Equal(t, int64(12), got.TotalRequests)
+	require.Equal(t, int64(2), got.TotalModels)
+	require.Equal(t, usagestats.ModelUsageRankingItem{
+		Rank:         1,
+		PreviousRank: ptrInt64(2),
+		RankDelta:    1,
+		ModelName:    "gpt-5.4",
+		Vendor:       "OpenAI",
+		VendorIcon:   "OpenAI",
+		Category:     "all",
+		TotalTokens:  900,
+		Requests:     9,
+		Share:        0.9,
+		GrowthPct:    200,
+	}, got.Models[0])
+	require.Nil(t, got.Models[1].PreviousRank)
+	require.Equal(t, 100.0, got.Models[1].GrowthPct)
+	require.Len(t, got.Vendors, 2)
+	require.Equal(t, 0.9, got.Vendors[0].Share)
+	require.Equal(t, 200.0, got.Vendors[0].GrowthPct)
+	require.Len(t, got.TopMovers, 1)
+	require.Equal(t, "gpt-5.4", got.TopMovers[0].ModelName)
+	require.Empty(t, got.TopDroppers)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func ptrInt64(v int64) *int64 {
+	return &v
+}
+
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
 	tests := []struct {
 		name      string

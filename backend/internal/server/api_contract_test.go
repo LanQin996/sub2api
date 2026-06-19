@@ -2444,6 +2444,10 @@ func (r *stubUsageLogRepo) GetPublicUserSpendingRanking(ctx context.Context, sta
 	return nil, errors.New("not implemented")
 }
 
+func (r *stubUsageLogRepo) GetModelUsageRanking(ctx context.Context, currentStart, currentEnd, previousStart, previousEnd time.Time, limit int) (*usagestats.ModelUsageRankingResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
 	logs := r.userLogs[userID]
 	if len(logs) == 0 {

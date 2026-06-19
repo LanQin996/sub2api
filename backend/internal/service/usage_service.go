@@ -393,6 +393,25 @@ func (s *UsageService) GetPublicUserSpendingRanking(ctx context.Context, userID 
 	return ranking, nil
 }
 
+// GetModelUsageRanking returns a model-first public leaderboard without exposing user spend.
+func (s *UsageService) GetModelUsageRanking(ctx context.Context, startTime, endTime, previousStart, previousEnd time.Time, period string, limit int) (*usagestats.ModelUsageRankingResponse, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	ranking, err := s.usageRepo.GetModelUsageRanking(ctx, startTime, endTime, previousStart, previousEnd, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get model usage ranking: %w", err)
+	}
+	if ranking == nil {
+		ranking = &usagestats.ModelUsageRankingResponse{}
+	}
+	ranking.Period = period
+	ranking.StartDate = startTime.Format("2006-01-02")
+	ranking.EndDate = endTime.Format("2006-01-02")
+	ranking.StatsUpdatedAt = endTime.Format(time.RFC3339)
+	return ranking, nil
+}
+
 func publicRankingDisplayName(userID int64, username, email string) string {
 	if name := strings.TrimSpace(username); name != "" {
 		return name

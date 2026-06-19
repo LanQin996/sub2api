@@ -86,6 +86,7 @@ func RegisterUserRoutes(
 			usage.GET("/errors/:id", h.Usage.GetErrorDetail)
 			usage.GET("/stats", h.Usage.Stats)
 			usage.GET("/ranking", h.Usage.Ranking)
+			usage.GET("/ranking/models", h.Usage.ModelRanking)
 			// User dashboard endpoints
 			usage.GET("/dashboard/stats", h.Usage.DashboardStats)
 			usage.GET("/dashboard/trend", h.Usage.DashboardTrend)

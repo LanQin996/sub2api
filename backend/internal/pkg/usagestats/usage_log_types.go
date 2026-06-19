@@ -192,6 +192,61 @@ type PublicUserSpendingRankingResponse struct {
 	StatsUpdatedAt  string                          `json:"stats_updated_at"`
 }
 
+// ModelUsageRankingItem represents a public model usage ranking row.
+type ModelUsageRankingItem struct {
+	Rank         int64   `json:"rank"`
+	PreviousRank *int64  `json:"previous_rank,omitempty"`
+	RankDelta    int64   `json:"rank_delta"`
+	ModelName    string  `json:"model_name"`
+	Vendor       string  `json:"vendor"`
+	VendorIcon   string  `json:"vendor_icon,omitempty"`
+	Category     string  `json:"category,omitempty"`
+	TotalTokens  int64   `json:"total_tokens"`
+	Requests     int64   `json:"requests"`
+	Share        float64 `json:"share"`
+	GrowthPct    float64 `json:"growth_pct"`
+}
+
+// VendorUsageRankingItem represents aggregated public usage by model vendor.
+type VendorUsageRankingItem struct {
+	Rank        int64   `json:"rank"`
+	Vendor      string  `json:"vendor"`
+	VendorIcon  string  `json:"vendor_icon,omitempty"`
+	TotalTokens int64   `json:"total_tokens"`
+	Requests    int64   `json:"requests"`
+	Share       float64 `json:"share"`
+	GrowthPct   float64 `json:"growth_pct"`
+	ModelsCount int64   `json:"models_count"`
+	TopModel    string  `json:"top_model,omitempty"`
+}
+
+// ModelRankingMover represents a model whose rank changed between periods.
+type ModelRankingMover struct {
+	ModelName   string  `json:"model_name"`
+	Vendor      string  `json:"vendor"`
+	VendorIcon  string  `json:"vendor_icon,omitempty"`
+	RankDelta   int64   `json:"rank_delta"`
+	CurrentRank int64   `json:"current_rank"`
+	GrowthPct   float64 `json:"growth_pct"`
+	TotalTokens int64   `json:"total_tokens"`
+}
+
+// ModelUsageRankingResponse represents a public model-first leaderboard.
+type ModelUsageRankingResponse struct {
+	Period         string                   `json:"period"`
+	Models         []ModelUsageRankingItem  `json:"models"`
+	Vendors        []VendorUsageRankingItem `json:"vendors"`
+	TopMovers      []ModelRankingMover      `json:"top_movers"`
+	TopDroppers    []ModelRankingMover      `json:"top_droppers"`
+	TotalTokens    int64                    `json:"total_tokens"`
+	TotalRequests  int64                    `json:"total_requests"`
+	TotalModels    int64                    `json:"total_models"`
+	TotalVendors   int64                    `json:"total_vendors"`
+	StartDate      string                   `json:"start_date"`
+	EndDate        string                   `json:"end_date"`
+	StatsUpdatedAt string                   `json:"stats_updated_at"`
+}
+
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
 	UserID      int64   `json:"user_id"`
