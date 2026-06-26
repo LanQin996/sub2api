@@ -148,6 +148,12 @@
                   ${{ (usageStats[row.id]?.total_actual_cost ?? 0).toFixed(4) }}
                 </span>
               </div>
+              <div class="mt-0.5 flex items-center gap-1.5">
+                <span class="text-gray-500 dark:text-gray-400">{{ t('keys.allTimeTotal') }}:</span>
+                <span class="font-medium text-gray-900 dark:text-white">
+                  ${{ (usageStats[row.id]?.all_time_actual_cost ?? 0).toFixed(4) }}
+                </span>
+              </div>
               <!-- Quota progress (if quota is set) -->
               <div v-if="row.quota > 0" class="mt-1.5">
                 <div class="flex items-center gap-1.5">

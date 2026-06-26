@@ -3651,7 +3651,7 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 // BatchAPIKeyUsageStats represents usage stats for a single API key
 type BatchAPIKeyUsageStats = usagestats.BatchAPIKeyUsageStats
 
-// GetBatchAPIKeyUsageStats gets today and total actual_cost for multiple API keys within a time range.
+// GetBatchAPIKeyUsageStats gets today, ranged total and all-time actual_cost for multiple API keys.
 // If startTime is zero, defaults to 30 days ago.
 func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64, startTime, endTime time.Time) (map[int64]*BatchAPIKeyUsageStats, error) {
 	result := make(map[int64]*BatchAPIKeyUsageStats)
@@ -3676,10 +3676,10 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 		SELECT
 			api_key_id,
 			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $2 AND created_at < $3), 0) as total_cost,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $4), 0) as today_cost
+			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $4), 0) as today_cost,
+			COALESCE(SUM(actual_cost), 0) as all_time_cost
 		FROM usage_logs
 		WHERE api_key_id = ANY($1)
-		  AND created_at >= LEAST($2, $4)
 		GROUP BY api_key_id
 	`
 	today := timezone.Today()
@@ -3691,13 +3691,15 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 		var apiKeyID int64
 		var total float64
 		var todayTotal float64
-		if err := rows.Scan(&apiKeyID, &total, &todayTotal); err != nil {
+		var allTimeTotal float64
+		if err := rows.Scan(&apiKeyID, &total, &todayTotal, &allTimeTotal); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
 		if stats, ok := result[apiKeyID]; ok {
 			stats.TotalActualCost = total
 			stats.TodayActualCost = todayTotal
+			stats.AllTimeActualCost = allTimeTotal
 		}
 	}
 	if err := rows.Close(); err != nil {

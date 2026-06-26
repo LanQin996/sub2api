@@ -1095,11 +1095,16 @@ func (s *UsageLogRepoSuite) TestGetBatchApiKeyUsageStats() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-batchkey"})
 
 	s.createUsageLog(user, apiKey1, account, 10, 20, 0.5, time.Now())
+	s.createUsageLog(user, apiKey1, account, 20, 30, 1.2, time.Now().AddDate(0, 0, -45))
 	s.createUsageLog(user, apiKey2, account, 15, 25, 0.6, time.Now())
 
 	stats, err := s.repo.GetBatchAPIKeyUsageStats(s.ctx, []int64{apiKey1.ID, apiKey2.ID}, time.Time{}, time.Time{})
 	s.Require().NoError(err, "GetBatchAPIKeyUsageStats")
 	s.Require().Len(stats, 2)
+	s.Require().InDelta(0.5, stats[apiKey1.ID].TodayActualCost, 0.000001)
+	s.Require().InDelta(0.5, stats[apiKey1.ID].TotalActualCost, 0.000001)
+	s.Require().InDelta(1.7, stats[apiKey1.ID].AllTimeActualCost, 0.000001)
+	s.Require().InDelta(0.6, stats[apiKey2.ID].AllTimeActualCost, 0.000001)
 }
 
 func (s *UsageLogRepoSuite) TestGetBatchApiKeyUsageStats_Empty() {

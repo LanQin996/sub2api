@@ -846,6 +846,7 @@ export default {
     usage: 'Usage',
     today: 'Today',
     total: 'Last 30d',
+    allTimeTotal: 'Total',
     quota: 'Quota',
     lastUsedAt: 'Last Used',
     useKey: 'Use Key',

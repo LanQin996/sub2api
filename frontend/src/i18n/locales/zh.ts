@@ -844,6 +844,7 @@ export default {
     usage: '用量',
     today: '今日',
     total: '近30天',
+    allTimeTotal: '总消耗',
     quota: '额度',
     lastUsedAt: '上次使用时间',
     useKey: '使用密钥',
