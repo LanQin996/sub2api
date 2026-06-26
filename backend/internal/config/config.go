@@ -705,6 +705,9 @@ type GatewayConfig struct {
 	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
 	// 用于网关未透传/改写 User-Agent 时的兼容兜底（默认关闭，避免影响其他客户端）。
 	ForceCodexCLI bool `mapstructure:"force_codex_cli"`
+	// OpenAICodexFingerprint: OpenAI OAuth/Codex 发往 ChatGPT internal API 的客户端指纹覆盖项。
+	// 留空字段使用内置 Codex CLI 指纹；建议 User-Agent / originator / version 成套覆盖。
+	OpenAICodexFingerprint OpenAICodexFingerprintConfig `mapstructure:"openai_codex_fingerprint"`
 	// CodexImageGenerationBridgeEnabled: 是否为 Codex `/v1/responses` 自动注入 image_generation 工具和桥接指令。
 	// 默认关闭，避免纯文本 Codex 请求被意外改写；显式携带 image_generation 工具的请求仍按分组能力转发。
 	CodexImageGenerationBridgeEnabled bool `mapstructure:"codex_image_generation_bridge_enabled"`
@@ -799,6 +802,12 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+}
+
+type OpenAICodexFingerprintConfig struct {
+	UserAgent  string `mapstructure:"user_agent"`
+	Originator string `mapstructure:"originator"`
+	Version    string `mapstructure:"version"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -1819,6 +1828,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_account_switches", 10)
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.force_codex_cli", false)
+	viper.SetDefault("gateway.openai_codex_fingerprint.user_agent", "")
+	viper.SetDefault("gateway.openai_codex_fingerprint.originator", "")
+	viper.SetDefault("gateway.openai_codex_fingerprint.version", "")
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）

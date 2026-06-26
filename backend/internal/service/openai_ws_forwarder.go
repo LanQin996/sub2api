@@ -1155,7 +1155,15 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
 			headers.Set("chatgpt-account-id", chatgptAccountID)
 		}
-		headers.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
+		codexFP := OpenAICodexFingerprintFromConfig(s.cfg)
+		originator := resolveOpenAIUpstreamOriginator(c, isCodexCLI)
+		if originator == defaultOpenAICodexOriginator {
+			originator = codexFP.Originator
+		}
+		headers.Set("originator", originator)
+		if headers.Get("version") == "" {
+			headers.Set("version", codexFP.Version)
+		}
 	}
 
 	betaValue := openAIWSBetaV2Value
@@ -1176,10 +1184,10 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		}
 	}
 	if s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
-		headers.Set("user-agent", codexCLIUserAgent)
+		headers.Set("user-agent", OpenAICodexFingerprintFromConfig(s.cfg).UserAgent)
 	}
 	if account != nil && account.Type == AccountTypeOAuth && !openai.IsCodexCLIRequest(headers.Get("user-agent")) {
-		headers.Set("user-agent", codexCLIUserAgent)
+		headers.Set("user-agent", OpenAICodexFingerprintFromConfig(s.cfg).UserAgent)
 	}
 
 	return headers, sessionResolution

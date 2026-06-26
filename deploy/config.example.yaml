@@ -205,6 +205,17 @@ gateway:
   #
   # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
   force_codex_cli: false
+  # OpenAI OAuth/Codex upstream fingerprint override for ChatGPT internal API.
+  # OpenAI OAuth/Codex 转发到 ChatGPT internal API 时的客户端指纹覆盖。
+  #
+  # Empty fields use the built-in Codex CLI profile. Override User-Agent,
+  # originator and version as a coherent set to avoid mixed fingerprints.
+  # 留空使用内置 Codex CLI 指纹。建议 User-Agent、originator、version 成套覆盖，
+  # 避免混用不同客户端版本特征。
+  openai_codex_fingerprint:
+    user_agent: ""
+    originator: ""
+    version: ""
   # Enable Codex image-generation bridge injection for /openai/v1/responses.
   # 是否为 Codex /responses 请求自动注入 image_generation 工具与桥接指令。
   #
