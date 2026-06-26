@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComponent, h } from "vue";
+import { defineComponent, h, watch } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 
 import SettingsView from "../SettingsView.vue";
@@ -839,7 +839,13 @@ describe("admin SettingsView payment visible method controls", () => {
         },
       },
       setup(props) {
-        receivedProviders = props.providers as Array<Record<string, unknown>>;
+        watch(
+          () => props.providers,
+          (providers) => {
+            receivedProviders = providers as Array<Record<string, unknown>>;
+          },
+          { immediate: true },
+        );
         return () => h("div", { class: "provider-list-capture" });
       },
     });
