@@ -1,7 +1,6 @@
 package service
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -39,19 +38,4 @@ func OpenAICodexFingerprintFromConfig(cfg *config.Config) OpenAICodexFingerprint
 		fp.Version = v
 	}
 	return fp
-}
-
-func applyOpenAICodexFingerprintHeaders(h http.Header, fp OpenAICodexFingerprint, setUserAgent bool) {
-	if h == nil {
-		return
-	}
-	if setUserAgent && fp.UserAgent != "" {
-		h.Set("user-agent", fp.UserAgent)
-	}
-	if fp.Originator != "" {
-		h.Set("originator", fp.Originator)
-	}
-	if fp.Version != "" && h.Get("version") == "" {
-		h.Set("version", fp.Version)
-	}
 }

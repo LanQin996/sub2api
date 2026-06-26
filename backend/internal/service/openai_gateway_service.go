@@ -4440,7 +4440,11 @@ func (s *OpenAIGatewayService) overrideBrowserUserAgent(ctx context.Context, acc
 	if !openai.IsBrowserUserAgent(currentUA) {
 		return
 	}
-	codexUA := OpenAICodexFingerprintFromConfig(s.cfg).UserAgent
+	var cfg *config.Config
+	if s != nil {
+		cfg = s.cfg
+	}
+	codexUA := OpenAICodexFingerprintFromConfig(cfg).UserAgent
 	if s != nil && s.settingService != nil {
 		if v := strings.TrimSpace(s.settingService.GetOpenAICodexUserAgent(ctx)); v != "" {
 			codexUA = v
