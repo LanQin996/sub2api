@@ -513,7 +513,6 @@ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
 	}
 }
 
-
 func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
 	ch := &Channel{
 		ModelMapping: map[string]map[string]string{
@@ -550,6 +549,32 @@ func TestSupportedModels_DedupAndSort(t *testing.T) {
 	require.Equal(t, "claude-sonnet-4-6", got[1].Name)
 	require.Equal(t, "openai", got[2].Platform)
 	require.Equal(t, "gpt-4o", got[2].Name)
+}
+
+func TestSupportedModels_PreservesSameModelWithDifferentPricingModes(t *testing.T) {
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{
+				ID:          1,
+				Platform:    "openai",
+				Models:      []string{"gpt-5.1"},
+				BillingMode: BillingModeToken,
+				InputPrice:  testPtrFloat64(1e-6),
+			},
+			{
+				ID:              2,
+				Platform:        "openai",
+				Models:          []string{"gpt-5.1"},
+				BillingMode:     BillingModePerRequest,
+				PerRequestPrice: testPtrFloat64(0.02),
+			},
+		},
+	}
+
+	got := ch.SupportedModels()
+	require.Len(t, got, 2)
+	ids := []int64{got[0].Pricing.ID, got[1].Pricing.ID}
+	require.ElementsMatch(t, []int64{int64(1), int64(2)}, ids)
 }
 
 func TestSupportedModels_NilChannelAndEmpty(t *testing.T) {

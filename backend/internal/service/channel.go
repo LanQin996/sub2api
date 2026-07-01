@@ -438,9 +438,16 @@ func (c *Channel) GetModelPricingByPlatform(platform, model string) *ChannelMode
 // byLower 与 names/originalCase 共享同一套去重规则：以 lower-case 模型名为 key，
 // 首个命中保留其原始大小写。names 维持按定价行扫描顺序的稳定迭代。
 type platformPricingIndex struct {
-	byLower      map[string]*ChannelModelPricing // lowercased model name → pricing (Clone'd)
-	originalCase map[string]string               // lowercased model name → original-case model name
-	names        []string                        // priced model names in their ORIGINAL case, insertion-ordered, deduped case-insensitively (first wins)
+	byLower      map[string][]pricedModelEntry // lowercased model name → pricing variants (Clone'd)
+	originalCase map[string]string             // lowercased model name → first original-case model name
+	names        []pricedModelEntry            // priced model entries in original order, deduped by lowercase name + pricing signature
+}
+
+type pricedModelEntry struct {
+	name      string
+	lower     string
+	signature string
+	pricing   *ChannelModelPricing
 }
 
 // buildPricingIndex 对渠道的定价列表做一次扫描，按 platform 聚合为查找索引。
@@ -454,9 +461,9 @@ func buildPricingIndex(pricings []ChannelModelPricing) map[string]*platformPrici
 		pidx, ok := idx[p.Platform]
 		if !ok {
 			pidx = &platformPricingIndex{
-				byLower:      make(map[string]*ChannelModelPricing),
+				byLower:      make(map[string][]pricedModelEntry),
 				originalCase: make(map[string]string),
-				names:        make([]string, 0),
+				names:        make([]pricedModelEntry, 0),
 			}
 			idx[p.Platform] = pidx
 		}
@@ -465,16 +472,77 @@ func buildPricingIndex(pricings []ChannelModelPricing) map[string]*platformPrici
 				continue
 			}
 			lower := strings.ToLower(m)
-			if _, exists := pidx.byLower[lower]; exists {
-				continue // 首个命中胜出（case-insensitive 去重后第一个定价 / 第一个原始大小写）
-			}
 			cp := pricings[i].Clone()
-			pidx.byLower[lower] = &cp
-			pidx.originalCase[lower] = m
-			pidx.names = append(pidx.names, m)
+			signature := channelModelPricingDisplaySignature(&cp)
+			duplicate := false
+			for _, existing := range pidx.byLower[lower] {
+				if existing.signature == signature {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
+			if _, exists := pidx.originalCase[lower]; !exists {
+				pidx.originalCase[lower] = m
+			}
+			entry := pricedModelEntry{
+				name:      m,
+				lower:     lower,
+				signature: signature,
+				pricing:   &cp,
+			}
+			pidx.byLower[lower] = append(pidx.byLower[lower], entry)
+			pidx.names = append(pidx.names, entry)
 		}
 	}
 	return idx
+}
+
+func channelModelPricingDisplaySignature(p *ChannelModelPricing) string {
+	if p == nil {
+		return "<nil>"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "mode=%s;", p.BillingMode)
+	appendFloatPtrSignature(&b, "in", p.InputPrice)
+	appendFloatPtrSignature(&b, "out", p.OutputPrice)
+	appendFloatPtrSignature(&b, "cw", p.CacheWritePrice)
+	appendFloatPtrSignature(&b, "cr", p.CacheReadPrice)
+	appendFloatPtrSignature(&b, "img", p.ImageOutputPrice)
+	appendFloatPtrSignature(&b, "req", p.PerRequestPrice)
+	b.WriteString("excluded=")
+	excluded := append([]int64(nil), p.ExcludedGroupIDs...)
+	sort.Slice(excluded, func(i, j int) bool { return excluded[i] < excluded[j] })
+	for _, id := range excluded {
+		fmt.Fprintf(&b, "%d,", id)
+	}
+	b.WriteString(";intervals=")
+	for _, iv := range p.Intervals {
+		fmt.Fprintf(&b, "(%d,", iv.MinTokens)
+		if iv.MaxTokens == nil {
+			b.WriteString("<nil>,")
+		} else {
+			fmt.Fprintf(&b, "%d,", *iv.MaxTokens)
+		}
+		fmt.Fprintf(&b, "%s,", iv.TierLabel)
+		appendFloatPtrSignature(&b, "in", iv.InputPrice)
+		appendFloatPtrSignature(&b, "out", iv.OutputPrice)
+		appendFloatPtrSignature(&b, "cw", iv.CacheWritePrice)
+		appendFloatPtrSignature(&b, "cr", iv.CacheReadPrice)
+		appendFloatPtrSignature(&b, "req", iv.PerRequestPrice)
+		b.WriteString(")")
+	}
+	return b.String()
+}
+
+func appendFloatPtrSignature(b *strings.Builder, label string, v *float64) {
+	if v == nil {
+		fmt.Fprintf(b, "%s=<nil>;", label)
+		return
+	}
+	fmt.Fprintf(b, "%s=%.17g;", label, *v)
 }
 
 // SupportedModels 计算渠道的支持模型列表，结果保证不含通配符。
@@ -508,26 +576,35 @@ func (c *Channel) SupportedModels() []SupportedModel {
 	idx := buildPricingIndex(c.ModelPricing)
 
 	type dedupKey struct {
-		platform string
-		name     string
+		platform  string
+		name      string
+		signature string
 	}
 	seen := make(map[dedupKey]struct{})
+	mappedSources := make(map[struct {
+		platform string
+		name     string
+	}]struct{})
 	result := make([]SupportedModel, 0)
 
 	// lookup 在 platform pricing index 中按精确名查定价，命中时返回定价大小写。
-	lookup := func(pidx *platformPricingIndex, name string) (display string, pricing *ChannelModelPricing) {
+	lookup := func(pidx *platformPricingIndex, name string) (display string, entries []pricedModelEntry) {
 		if pidx == nil || name == "" {
 			return name, nil
 		}
 		lower := strings.ToLower(name)
-		if p, ok := pidx.byLower[lower]; ok {
-			return pidx.originalCase[lower], p
+		if entries, ok := pidx.byLower[lower]; ok {
+			return pidx.originalCase[lower], entries
 		}
 		return name, nil
 	}
 
 	add := func(platform, displayName string, pricing *ChannelModelPricing) {
-		key := dedupKey{platform: platform, name: strings.ToLower(displayName)}
+		key := dedupKey{
+			platform:  platform,
+			name:      strings.ToLower(displayName),
+			signature: channelModelPricingDisplaySignature(pricing),
+		}
 		if _, ok := seen[key]; ok {
 			return
 		}
@@ -553,9 +630,8 @@ func (c *Channel) SupportedModels() []SupportedModel {
 				}
 				prefixLower := strings.ToLower(prefix)
 				for _, candidate := range pidx.names {
-					if strings.HasPrefix(strings.ToLower(candidate), prefixLower) {
-						display, pricing := lookup(pidx, candidate)
-						add(platform, display, pricing)
+					if strings.HasPrefix(candidate.lower, prefixLower) {
+						add(platform, candidate.name, candidate.pricing)
 					}
 				}
 				continue
@@ -568,20 +644,39 @@ func (c *Channel) SupportedModels() []SupportedModel {
 			if _, targetWild := splitWildcardSuffix(pricingKey); targetWild {
 				pricingKey = src
 			}
-			_, pricing := lookup(pidx, pricingKey)
-			// 显示名优先用 src 在定价里的原始大小写（若 src 本身是个定价模型名）
+			if !strings.EqualFold(pricingKey, src) {
+				mappedSources[struct {
+					platform string
+					name     string
+				}{platform: platform, name: strings.ToLower(src)}] = struct{}{}
+			}
+			_, pricingEntries := lookup(pidx, pricingKey)
+			// 显示名沿用 src；如果 src 本身有定价，则使用定价行里的大小写。
 			displayName, _ := lookup(pidx, src)
-			add(platform, displayName, pricing)
+			if len(pricingEntries) == 0 {
+				add(platform, displayName, nil)
+				continue
+			}
+			for _, entry := range pricingEntries {
+				add(platform, displayName, entry.pricing)
+			}
 		}
 	}
 
 	// Pass B：从 pricing 补齐 mapping 未覆盖的具体模型（修复"定价存在但没配映射 → 不显示"）
 	for platform, pidx := range idx {
-		for _, name := range pidx.names {
-			display, pricing := lookup(pidx, name)
-			add(platform, display, pricing)
+		for _, entry := range pidx.names {
+			if _, mapped := mappedSources[struct {
+				platform string
+				name     string
+			}{platform: platform, name: entry.lower}]; mapped {
+				continue
+			}
+			add(platform, entry.name, entry.pricing)
 		}
 	}
+
+	result = dropUnpricedSupportedModelDuplicates(result)
 
 	sort.SliceStable(result, func(i, j int) bool {
 		if result[i].Platform != result[j].Platform {
@@ -590,4 +685,30 @@ func (c *Channel) SupportedModels() []SupportedModel {
 		return result[i].Name < result[j].Name
 	})
 	return result
+}
+
+func dropUnpricedSupportedModelDuplicates(models []SupportedModel) []SupportedModel {
+	type modelKey struct {
+		platform string
+		name     string
+	}
+	hasPricing := make(map[modelKey]bool, len(models))
+	for _, model := range models {
+		if model.Pricing == nil {
+			continue
+		}
+		hasPricing[modelKey{platform: model.Platform, name: strings.ToLower(model.Name)}] = true
+	}
+	if len(hasPricing) == 0 {
+		return models
+	}
+	filtered := models[:0]
+	for _, model := range models {
+		key := modelKey{platform: model.Platform, name: strings.ToLower(model.Name)}
+		if model.Pricing == nil && hasPricing[key] {
+			continue
+		}
+		filtered = append(filtered, model)
+	}
+	return filtered
 }

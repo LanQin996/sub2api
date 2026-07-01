@@ -309,7 +309,7 @@ const marketplaceModels = computed<MarketplaceModel[]>(() => {
         const modelGroups = groupsForSupportedModel(section.groups, supportedModel)
         if (modelGroups.length === 0) continue
         const platform = supportedModel.platform || section.platform
-        const key = `${platform}::${modelName}`.toLowerCase()
+        const key = modelMarketplaceKey(platform, modelName, supportedModel.pricing)
         let entry = modelMap.get(key)
         if (!entry) {
           entry = {
@@ -379,6 +379,55 @@ const platformOptions = computed(() => {
     ...options,
   ]
 })
+
+
+function modelMarketplaceKey(
+  platform: string,
+  modelName: string,
+  pricing: UserSupportedModelPricing | null,
+): string {
+  return `${platform}::${modelName}::${pricingSignature(pricing)}`.toLowerCase()
+}
+
+function pricingSignature(pricing: UserSupportedModelPricing | null): string {
+  if (!pricing) return 'no-pricing'
+  const intervals = [...(pricing.intervals || [])]
+    .sort((a, b) => {
+      const minResult = a.min_tokens - b.min_tokens
+      if (minResult !== 0) return minResult
+      const aMax = a.max_tokens ?? Number.POSITIVE_INFINITY
+      const bMax = b.max_tokens ?? Number.POSITIVE_INFINITY
+      const maxResult = aMax - bMax
+      if (maxResult !== 0) return maxResult
+      return (a.tier_label || '').localeCompare(b.tier_label || '')
+    })
+    .map((iv) => [
+      iv.min_tokens,
+      iv.max_tokens ?? '∞',
+      iv.tier_label || '',
+      pricePart(iv.input_price),
+      pricePart(iv.output_price),
+      pricePart(iv.cache_write_price),
+      pricePart(iv.cache_read_price),
+      pricePart(iv.per_request_price),
+    ].join(':'))
+    .join('|')
+
+  return [
+    pricing.billing_mode || BILLING_MODE_TOKEN,
+    pricePart(pricing.input_price),
+    pricePart(pricing.output_price),
+    pricePart(pricing.cache_write_price),
+    pricePart(pricing.cache_read_price),
+    pricePart(pricing.image_output_price),
+    pricePart(pricing.per_request_price),
+    intervals,
+  ].join(';')
+}
+
+function pricePart(value: number | null | undefined): string {
+  return value == null ? 'null' : String(value)
+}
 
 const filteredModels = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
