@@ -512,17 +512,17 @@ func channelModelPricingDisplaySignature(p *ChannelModelPricing) string {
 	appendFloatPtrSignature(&b, "cr", p.CacheReadPrice)
 	appendFloatPtrSignature(&b, "img", p.ImageOutputPrice)
 	appendFloatPtrSignature(&b, "req", p.PerRequestPrice)
-	b.WriteString("excluded=")
+	_, _ = b.WriteString("excluded=")
 	excluded := append([]int64(nil), p.ExcludedGroupIDs...)
 	sort.Slice(excluded, func(i, j int) bool { return excluded[i] < excluded[j] })
 	for _, id := range excluded {
 		fmt.Fprintf(&b, "%d,", id)
 	}
-	b.WriteString(";intervals=")
+	_, _ = b.WriteString(";intervals=")
 	for _, iv := range p.Intervals {
 		fmt.Fprintf(&b, "(%d,", iv.MinTokens)
 		if iv.MaxTokens == nil {
-			b.WriteString("<nil>,")
+			_, _ = b.WriteString("<nil>,")
 		} else {
 			fmt.Fprintf(&b, "%d,", *iv.MaxTokens)
 		}
@@ -532,7 +532,7 @@ func channelModelPricingDisplaySignature(p *ChannelModelPricing) string {
 		appendFloatPtrSignature(&b, "cw", iv.CacheWritePrice)
 		appendFloatPtrSignature(&b, "cr", iv.CacheReadPrice)
 		appendFloatPtrSignature(&b, "req", iv.PerRequestPrice)
-		b.WriteString(")")
+		_, _ = b.WriteString(")")
 	}
 	return b.String()
 }
