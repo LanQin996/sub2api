@@ -1383,6 +1383,12 @@ export default {
       title: '贡献 OpenAI OAuth 账号',
       description: '授权后账号先进入待审核状态，管理员通过后才会进入共享调度池。'
     },
+    proxy: {
+      url: '专属代理 URL（可选）',
+      placeholder: '例如：http://user:pass@1.2.3.4:8080 或 socks5://1.2.3.4:1080',
+      hint: '填写后会为这个贡献账号创建专属代理；账号撤回/取消共享时会一并删除。',
+      importHint: '填写后会给本次导入的每个贡献账号分别创建专属代理；对应账号撤回时自动删除。'
+    },
     oauthDialog: {
       title: '授权 OpenAI 账号',
       warning: 'OpenAI/Codex OAuth 客户端通常只接受 http://localhost:1455/auth/callback。不要直接拿当前站点地址硬怼，不然就会出现“授权请求无效”，纯给自己添堵。',

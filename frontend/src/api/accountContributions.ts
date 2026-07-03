@@ -17,6 +17,7 @@ export interface SubmitOpenAIContributionRequest {
   state: string
   redirect_uri?: string
   proxy_id?: number | null
+  proxy_url?: string
   name?: string
 }
 
@@ -24,6 +25,7 @@ export interface SubmitOpenAIJSONContributionRequest {
   data?: Pick<AdminDataPayload, 'type' | 'version' | 'proxies' | 'accounts'>
   accounts?: AdminDataAccount[]
   proxy_id?: number | null
+  proxy_url?: string
 }
 
 export interface ContributionImportItem {

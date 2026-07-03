@@ -1379,6 +1379,12 @@ export default {
       title: 'Contribute OpenAI OAuth Account',
       description: 'After authorization, the account is pending review and only enters scheduling after admin approval.'
     },
+    proxy: {
+      url: 'Dedicated proxy URL (optional)',
+      placeholder: 'Example: http://user:pass@1.2.3.4:8080 or socks5://1.2.3.4:1080',
+      hint: 'If provided, a dedicated proxy is created for this contributed account and deleted when the account is revoked.',
+      importHint: 'If provided, each imported contribution gets its own dedicated proxy; it is deleted when that account is revoked.'
+    },
     oauthDialog: {
       title: 'Authorize OpenAI Account',
       warning: 'The OpenAI/Codex OAuth client usually only accepts http://localhost:1455/auth/callback. Do not force the current site URL unless it is registered, or OpenAI will reject the request.',

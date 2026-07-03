@@ -30,6 +30,7 @@ type submitOpenAIContributionRequest struct {
 	State       string `json:"state" binding:"required"`
 	RedirectURI string `json:"redirect_uri"`
 	ProxyID     *int64 `json:"proxy_id"`
+	ProxyURL    string `json:"proxy_url"`
 	Name        string `json:"name"`
 }
 
@@ -37,6 +38,7 @@ type submitOpenAIJSONContributionRequest struct {
 	Data     contributionDataPayload   `json:"data"`
 	Accounts []contributionDataAccount `json:"accounts"`
 	ProxyID  *int64                    `json:"proxy_id"`
+	ProxyURL string                    `json:"proxy_url"`
 }
 
 type contributionDataPayload struct {
@@ -119,7 +121,7 @@ func (h *AccountContributionHandler) SubmitOpenAI(c *gin.Context) {
 		return
 	}
 	account, err := h.service.SubmitOpenAI(c.Request.Context(), subject.UserID, service.SubmitOpenAIContributionInput{
-		SessionID: req.SessionID, Code: req.Code, State: req.State, RedirectURI: req.RedirectURI, ProxyID: req.ProxyID, Name: req.Name,
+		SessionID: req.SessionID, Code: req.Code, State: req.State, RedirectURI: req.RedirectURI, ProxyID: req.ProxyID, ProxyURL: req.ProxyURL, Name: req.Name,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -146,6 +148,7 @@ func (h *AccountContributionHandler) SubmitOpenAIJSON(c *gin.Context) {
 	result, err := h.service.SubmitOpenAIJSON(c.Request.Context(), subject.UserID, service.SubmitOpenAIJSONContributionInput{
 		Accounts: contributionAccountsFromRequest(req),
 		ProxyID:  req.ProxyID,
+		ProxyURL: req.ProxyURL,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -172,6 +175,7 @@ func (h *AccountContributionHandler) PreviewOpenAIJSON(c *gin.Context) {
 	preview, err := h.service.PreviewOpenAIJSON(c.Request.Context(), subject.UserID, service.SubmitOpenAIJSONContributionInput{
 		Accounts: contributionAccountsFromRequest(req),
 		ProxyID:  req.ProxyID,
+		ProxyURL: req.ProxyURL,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

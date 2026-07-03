@@ -215,6 +215,18 @@
           </p>
         </div>
 
+        <div>
+          <label class="input-label">{{ t('accountContributions.proxy.url') }}</label>
+          <input
+            v-model.trim="oauthProxyURL"
+            class="input font-mono text-sm"
+            :placeholder="t('accountContributions.proxy.placeholder')"
+          />
+          <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+            {{ t('accountContributions.proxy.hint') }}
+          </p>
+        </div>
+
         <div class="flex flex-wrap gap-2">
           <button class="btn btn-primary" :disabled="startingOAuth" @click="generateOAuthLink">
             <Icon v-if="startingOAuth" name="refresh" size="sm" class="animate-spin" />
@@ -290,6 +302,19 @@
         </div>
         <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
           {{ t('accountContributions.importJson.warning') }}
+        </div>
+
+        <div>
+          <label class="input-label">{{ t('accountContributions.proxy.url') }}</label>
+          <input
+            v-model.trim="importProxyURL"
+            class="input font-mono text-sm"
+            :placeholder="t('accountContributions.proxy.placeholder')"
+            @change="refreshImportPreview"
+          />
+          <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+            {{ t('accountContributions.proxy.importHint') }}
+          </p>
         </div>
 
         <div>
@@ -427,7 +452,9 @@ const importFiles = ref<File[]>([])
 const importResult = ref<ContributionImportResult | null>(null)
 const importPreview = ref<ContributionImportPreview | null>(null)
 const importFileInput = ref<HTMLInputElement | null>(null)
+const importProxyURL = ref('')
 const oauthRedirectURI = ref(OPENAI_DEFAULT_REDIRECT_URI)
+const oauthProxyURL = ref('')
 const oauthAuthURL = ref('')
 const oauthCallbackText = ref('')
 const submittingOAuthCallback = ref(false)
@@ -518,6 +545,10 @@ function openImportFilePicker(): void {
 function handleImportFileChange(event: Event): void {
   const target = event.target as HTMLInputElement
   importFiles.value = Array.from(target.files || [])
+  refreshImportPreview()
+}
+
+function refreshImportPreview(): void {
   importResult.value = null
   importPreview.value = null
   void previewImportJSON()
@@ -574,7 +605,7 @@ async function previewImportJSON(): Promise<void> {
   try {
     const payloads = await Promise.all(importFiles.value.map(parseContributionPayloadFile))
     const payload = mergeContributionPayloads(payloads)
-    importPreview.value = await accountContributionsAPI.previewOpenAIJSON({ data: payload })
+    importPreview.value = await accountContributionsAPI.previewOpenAIJSON({ data: payload, proxy_url: importProxyURL.value || undefined })
   } catch (error) {
     importPreview.value = null
     if (error instanceof SyntaxError) {
@@ -596,7 +627,7 @@ async function importJSON(): Promise<void> {
   try {
     const payloads = await Promise.all(importFiles.value.map(parseContributionPayloadFile))
     const payload = mergeContributionPayloads(payloads)
-    const result = await accountContributionsAPI.submitOpenAIJSON({ data: payload })
+    const result = await accountContributionsAPI.submitOpenAIJSON({ data: payload, proxy_url: importProxyURL.value || undefined })
     importResult.value = result
     const resultParams: Record<string, unknown> = {
       total: result.total,
@@ -693,7 +724,8 @@ async function submitOAuthCallback(): Promise<void> {
       session_id: sessionID,
       code,
       state,
-      redirect_uri: redirectURI
+      redirect_uri: redirectURI,
+      proxy_url: oauthProxyURL.value || undefined
     })
 
     sessionStorage.removeItem(SESSION_ID_KEY)

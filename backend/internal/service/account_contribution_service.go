@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +23,7 @@ var ErrContributionOwnership = infraerrors.NotFound("CONTRIBUTION_NOT_FOUND", "a
 type AccountContributionService struct {
 	accountRepo        AccountRepository
 	groupRepo          GroupRepository
+	proxyRepo          ProxyRepository
 	rewardRepo         ContributorRewardRepository
 	oauth              *OpenAIOAuthService
 	schedulerRefresher SchedulerAccountRefresher
@@ -33,8 +37,9 @@ func NewAccountContributionService(accountRepo AccountRepository, groupRepo Grou
 	return &AccountContributionService{accountRepo: accountRepo, groupRepo: groupRepo, rewardRepo: rewardRepo, oauth: oauth}
 }
 
-func ProvideAccountContributionService(accountRepo AccountRepository, groupRepo GroupRepository, rewardRepo ContributorRewardRepository, oauth *OpenAIOAuthService, schedulerSnapshot *SchedulerSnapshotService) *AccountContributionService {
+func ProvideAccountContributionService(accountRepo AccountRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, rewardRepo ContributorRewardRepository, oauth *OpenAIOAuthService, schedulerSnapshot *SchedulerSnapshotService) *AccountContributionService {
 	svc := NewAccountContributionService(accountRepo, groupRepo, rewardRepo, oauth)
+	svc.proxyRepo = proxyRepo
 	svc.SetSchedulerRefresher(schedulerSnapshot)
 	return svc
 }
@@ -52,12 +57,14 @@ type SubmitOpenAIContributionInput struct {
 	State       string
 	RedirectURI string
 	ProxyID     *int64
+	ProxyURL    string
 	Name        string
 }
 
 type SubmitOpenAIJSONContributionInput struct {
 	Accounts []OpenAIJSONContributionAccount
 	ProxyID  *int64
+	ProxyURL string
 }
 
 type OpenAIJSONContributionAccount struct {
@@ -129,12 +136,25 @@ func (s *AccountContributionService) SubmitOpenAI(ctx context.Context, userID in
 	if userID <= 0 {
 		return nil, ErrUserNotFound
 	}
+	proxyID := input.ProxyID
+	ownedProxyID, err := s.createContributionOwnedProxy(ctx, userID, "OpenAI OAuth Contribution", input.ProxyURL)
+	if err != nil {
+		return nil, err
+	}
+	if ownedProxyID != nil {
+		proxyID = ownedProxyID
+		defer func() {
+			if err != nil {
+				_ = s.deleteContributionOwnedProxy(ctx, ownedProxyID)
+			}
+		}()
+	}
 	tokenInfo, err := s.oauth.ExchangeCode(ctx, &OpenAIExchangeCodeInput{
 		SessionID:   input.SessionID,
 		Code:        input.Code,
 		State:       input.State,
 		RedirectURI: input.RedirectURI,
-		ProxyID:     input.ProxyID,
+		ProxyID:     proxyID,
 	})
 	if err != nil {
 		return nil, err
@@ -148,6 +168,7 @@ func (s *AccountContributionService) SubmitOpenAI(ctx context.Context, userID in
 		"contribution_identity_key": identityKey,
 		"contribution_source":       "user_openai_oauth",
 	}
+	markContributionOwnedProxyExtra(extra, ownedProxyID)
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		for _, candidate := range []string{tokenInfo.Email, tokenInfo.ChatGPTAccountID, tokenInfo.ChatGPTUserID} {
@@ -160,18 +181,22 @@ func (s *AccountContributionService) SubmitOpenAI(ctx context.Context, userID in
 	if name == "" {
 		name = "OpenAI OAuth Contribution"
 	}
-	return s.createPendingOpenAIContribution(ctx, userID, pendingOpenAIContributionInput{
+	account, err := s.createPendingOpenAIContribution(ctx, userID, pendingOpenAIContributionInput{
 		Name:                    name,
 		Platform:                PlatformOpenAI,
 		Type:                    AccountTypeOAuth,
 		Credentials:             credentials,
 		Extra:                   extra,
-		ProxyID:                 input.ProxyID,
+		ProxyID:                 proxyID,
 		Concurrency:             1,
 		Priority:                100,
 		AutoPauseOnExpired:      true,
 		ContributionIdentityKey: identityKey,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return account, nil
 }
 
 func (s *AccountContributionService) PreviewOpenAIJSON(ctx context.Context, userID int64, input SubmitOpenAIJSONContributionInput) (ContributionImportPreview, error) {
@@ -184,6 +209,11 @@ func (s *AccountContributionService) PreviewOpenAIJSON(ctx context.Context, user
 	}
 	if len(input.Accounts) > 100 {
 		return preview, infraerrors.BadRequest("CONTRIBUTION_IMPORT_TOO_MANY", "too many accounts in one import")
+	}
+	if strings.TrimSpace(input.ProxyURL) != "" {
+		if _, err := parseContributionProxyURL(input.ProxyURL); err != nil {
+			return preview, err
+		}
 	}
 
 	seenInPayload := make(map[string]int, len(input.Accounts))
@@ -283,6 +313,18 @@ func (s *AccountContributionService) SubmitOpenAIJSON(ctx context.Context, userI
 		extra := sanitizedContributionExtra(item.Extra)
 		extra["contribution_identity_key"] = identityKey
 		extra["contribution_source"] = "user_openai_json"
+		proxyID := input.ProxyID
+		ownedProxyID, err := s.createContributionOwnedProxy(ctx, userID, name, input.ProxyURL)
+		if err != nil {
+			result.Failed++
+			result.Items = append(result.Items, ContributionImportItem{Index: i, Name: name, Action: "failed", Message: err.Error()})
+			result.Errors = append(result.Errors, ContributionImportError{Index: i, Name: name, Message: err.Error()})
+			continue
+		}
+		if ownedProxyID != nil {
+			proxyID = ownedProxyID
+		}
+		markContributionOwnedProxyExtra(extra, ownedProxyID)
 
 		if name == "" {
 			for _, candidate := range []string{
@@ -324,7 +366,7 @@ func (s *AccountContributionService) SubmitOpenAIJSON(ctx context.Context, userI
 			Type:                    AccountTypeOAuth,
 			Credentials:             item.Credentials,
 			Extra:                   extra,
-			ProxyID:                 input.ProxyID,
+			ProxyID:                 proxyID,
 			Concurrency:             concurrency,
 			Priority:                priority,
 			ExpiresAt:               expiresAt,
@@ -332,6 +374,7 @@ func (s *AccountContributionService) SubmitOpenAIJSON(ctx context.Context, userI
 			ContributionIdentityKey: identityKey,
 		})
 		if err != nil {
+			_ = s.deleteContributionOwnedProxy(ctx, ownedProxyID)
 			result.Failed++
 			result.Items = append(result.Items, ContributionImportItem{Index: i, Name: name, Action: "failed", Message: err.Error()})
 			result.Errors = append(result.Errors, ContributionImportError{Index: i, Name: name, Message: err.Error()})
@@ -496,13 +539,20 @@ func (s *AccountContributionService) Revoke(ctx context.Context, userID, account
 		return nil, ErrContributionOwnership
 	}
 	if account.ContributionStatus == ContributionStatusRevoked {
+		if err := s.deleteContributionOwnedProxy(ctx, contributionOwnedProxyIDFromExtra(account)); err != nil {
+			return nil, err
+		}
 		return account, nil
 	}
 	now := time.Now()
+	ownedProxyID := contributionOwnedProxyID(account)
 	account.ContributionStatus = ContributionStatusRevoked
 	account.ContributionRevokedAt = &now
 	account.Status = StatusDisabled
 	account.Schedulable = false
+	if ownedProxyID != nil {
+		account.ProxyID = nil
+	}
 	previousGroupIDs := append([]int64(nil), account.GroupIDs...)
 	if err := s.accountRepo.Update(ctx, account); err != nil {
 		return nil, err
@@ -515,6 +565,9 @@ func (s *AccountContributionService) Revoke(ctx context.Context, userID, account
 		if err := s.schedulerRefresher.RefreshAccount(ctx, updated, previousGroupIDs, "contribution_revoke"); err != nil {
 			return nil, err
 		}
+	}
+	if err := s.deleteContributionOwnedProxy(ctx, ownedProxyID); err != nil {
+		return nil, err
 	}
 	return updated, nil
 }
@@ -596,13 +649,162 @@ func (s *AccountContributionService) Reject(ctx context.Context, accountID int64
 	if account.OwnerUserID == nil || account.ContributionStatus != ContributionStatusPending {
 		return nil, ErrContributionInvalidStatus
 	}
+	ownedProxyID := contributionOwnedProxyID(account)
 	account.ContributionStatus = ContributionStatusRejected
 	account.Status = StatusDisabled
 	account.Schedulable = false
+	if ownedProxyID != nil {
+		account.ProxyID = nil
+	}
 	if err := s.accountRepo.Update(ctx, account); err != nil {
 		return nil, err
 	}
-	return s.accountRepo.GetByID(ctx, account.ID)
+	updated, err := s.accountRepo.GetByID(ctx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.deleteContributionOwnedProxy(ctx, ownedProxyID); err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+func (s *AccountContributionService) createContributionOwnedProxy(ctx context.Context, userID int64, accountName, rawProxyURL string) (*int64, error) {
+	trimmed := strings.TrimSpace(rawProxyURL)
+	if trimmed == "" {
+		return nil, nil
+	}
+	if s.proxyRepo == nil {
+		return nil, infraerrors.BadRequest("CONTRIBUTION_PROXY_UNAVAILABLE", "contribution proxy is not available")
+	}
+	proxy, err := parseContributionProxyURL(trimmed)
+	if err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(accountName)
+	if name == "" {
+		name = "OpenAI Contribution"
+	}
+	if len(name) > 40 {
+		name = name[:40]
+	}
+	proxy.Name = fmt.Sprintf("User Contribution #%d %s", userID, name)
+	if len(proxy.Name) > 100 {
+		proxy.Name = proxy.Name[:100]
+	}
+	proxy.Status = StatusActive
+	proxy.FallbackMode = FallbackModeNone
+	proxy.ExpiryWarnDays = 7
+	if err := s.proxyRepo.Create(ctx, proxy); err != nil {
+		return nil, err
+	}
+	return &proxy.ID, nil
+}
+
+func parseContributionProxyURL(raw string) (*Proxy, error) {
+	candidate := strings.TrimSpace(raw)
+	if candidate == "" {
+		return nil, infraerrors.BadRequest("CONTRIBUTION_PROXY_INVALID", "proxy url is required")
+	}
+	if !strings.Contains(candidate, "://") {
+		candidate = "http://" + candidate
+	}
+	parsed, err := url.Parse(candidate)
+	if err != nil || parsed == nil || parsed.Hostname() == "" {
+		return nil, infraerrors.BadRequest("CONTRIBUTION_PROXY_INVALID", "invalid proxy url")
+	}
+	protocol := strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	switch protocol {
+	case "http", "https", "socks5", "socks5h":
+	default:
+		return nil, infraerrors.BadRequest("CONTRIBUTION_PROXY_PROTOCOL_UNSUPPORTED", "proxy protocol must be http, https, socks5 or socks5h")
+	}
+	portRaw := parsed.Port()
+	if portRaw == "" {
+		return nil, infraerrors.BadRequest("CONTRIBUTION_PROXY_PORT_REQUIRED", "proxy port is required")
+	}
+	port, err := strconv.Atoi(portRaw)
+	if err != nil || port <= 0 || port > 65535 {
+		return nil, infraerrors.BadRequest("CONTRIBUTION_PROXY_PORT_INVALID", "proxy port is invalid")
+	}
+	username := parsed.User.Username()
+	password, _ := parsed.User.Password()
+	if len(username) > 100 || len(password) > 100 {
+		return nil, infraerrors.BadRequest("CONTRIBUTION_PROXY_AUTH_TOO_LONG", "proxy username/password is too long")
+	}
+	return &Proxy{
+		Protocol: protocol,
+		Host:     parsed.Hostname(),
+		Port:     port,
+		Username: username,
+		Password: password,
+	}, nil
+}
+
+func markContributionOwnedProxyExtra(extra map[string]any, proxyID *int64) {
+	if extra == nil || proxyID == nil || *proxyID <= 0 {
+		return
+	}
+	extra["contribution_owned_proxy_id"] = *proxyID
+	extra["contribution_owned_proxy"] = true
+}
+
+func contributionOwnedProxyID(account *Account) *int64 {
+	if account == nil || account.ProxyID == nil {
+		return nil
+	}
+	id := contributionOwnedProxyIDFromExtra(account)
+	if id == nil || *id != *account.ProxyID {
+		return nil
+	}
+	return id
+}
+
+func contributionOwnedProxyIDFromExtra(account *Account) *int64 {
+	if account == nil || account.Extra == nil {
+		return nil
+	}
+	if owned, ok := account.Extra["contribution_owned_proxy"].(bool); !ok || !owned {
+		return nil
+	}
+	raw, ok := account.Extra["contribution_owned_proxy_id"]
+	if !ok {
+		return nil
+	}
+	var id int64
+	switch v := raw.(type) {
+	case int64:
+		id = v
+	case int:
+		id = int64(v)
+	case float64:
+		id = int64(v)
+	case json.Number:
+		parsed, err := v.Int64()
+		if err != nil {
+			return nil
+		}
+		id = parsed
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		if err != nil {
+			return nil
+		}
+		id = parsed
+	default:
+		return nil
+	}
+	if id <= 0 {
+		return nil
+	}
+	return &id
+}
+
+func (s *AccountContributionService) deleteContributionOwnedProxy(ctx context.Context, proxyID *int64) error {
+	if s == nil || s.proxyRepo == nil || proxyID == nil || *proxyID <= 0 {
+		return nil
+	}
+	return s.proxyRepo.Delete(ctx, *proxyID)
 }
 
 func contributionIdentityKey(credentials map[string]any) string {
