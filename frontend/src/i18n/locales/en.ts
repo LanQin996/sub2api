@@ -482,6 +482,8 @@ export default {
     ranking: 'Ranking',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
+    accountContributions: 'Account Contributions',
+    accountContributionReview: 'Contribution Review',
     affiliateManagement: 'Affiliate Rebates',
     affiliateInviteRecords: 'Invite Records',
     affiliateRebateRecords: 'Rebate Records',
@@ -1361,6 +1363,106 @@ export default {
       line2: 'When invitees recharge, you receive {rate} of the recharge as rebate quota.',
       line3: 'Transfer rebate quota to balance at any time.',
       line4: 'Newly earned rebates may have a waiting period before they can be transferred.'
+    }
+  },
+
+  accountContributions: {
+    title: 'Account Contributions',
+    callbackTitle: 'Account Contribution Callback',
+    description: 'Contribute your OpenAI OAuth account to the shared pool and earn balance rewards after approval',
+    startOAuth: 'Authorize OpenAI Account',
+    startingOAuth: 'Redirecting...',
+    revoke: 'Revoke',
+    revoked: 'Contribution revoked',
+    backToList: 'Back to Contributions',
+    contributeOpenAI: {
+      title: 'Contribute OpenAI OAuth Account',
+      description: 'After authorization, the account is pending review and only enters scheduling after admin approval.'
+    },
+    importJson: {
+      title: 'Import OpenAI Account JSON',
+      button: 'Import JSON',
+      hint: 'Supports JSON files exported from account management. Only OpenAI OAuth accounts are accepted and imported accounts become pending contributions.',
+      warning: 'User-side import does not import proxies and never schedules accounts directly. Remove proxy references from admin backups before importing.',
+      file: 'JSON File',
+      selectFile: 'Select JSON file',
+      selectedFiles: '{count} files selected',
+      fileHint: 'Supports one or more sub2api-data / sub2api-bundle JSON files',
+      submit: 'Import as Contributions',
+      importing: 'Importing...',
+      result: 'Import Result',
+      resultSummary: 'Total {total}, created {created}, failed {failed}',
+      errors: 'Errors',
+      invalidFile: '{file} is not a valid account import JSON',
+      proxyNotSupported: '{file} contains proxy data; user contribution import does not support proxy import',
+      parseFailed: 'Failed to parse JSON',
+      failed: 'Failed to import contributed accounts',
+      success: '{created} contributed accounts submitted for review',
+      completedWithErrors: 'Import finished: {created} created, {failed} failed'
+    },
+    rules: {
+      title: 'Read this before clicking like a maniac',
+      line1: '1. Pending, rejected, and revoked accounts are never scheduled.',
+      line2: '2. The same OpenAI / ChatGPT account can only be contributed once.',
+      line3: '3. Approved accounts earn balance rewards in real time based on the group reward multiplier.'
+    },
+    stats: {
+      totalAccounts: 'Contributed Accounts',
+      pageRewards: 'Rewards on This Page'
+    },
+    status: {
+      pending: 'Pending',
+      approved: 'Approved',
+      rejected: 'Rejected',
+      revoked: 'Revoked'
+    },
+    accounts: {
+      title: 'My Contributed Accounts',
+      description: 'Check review status. Pending or approved accounts can be revoked at any time.',
+      submitted: 'Submitted',
+      approved: 'Approved',
+      revoked: 'Revoked',
+      columns: {
+        id: 'ID',
+        account: 'Account',
+        status: 'Status',
+        timeline: 'Timeline'
+      }
+    },
+    rewards: {
+      title: 'Reward Logs',
+      description: 'Idempotent reward ledger written after successful usage billing.',
+      columns: {
+        createdAt: 'Time',
+        account: 'Account',
+        group: 'Group',
+        totalCost: 'User Cost',
+        actualCost: 'Actual Cost',
+        multiplier: 'Multiplier',
+        reward: 'Reward',
+        request: 'Request ID'
+      }
+    },
+    callback: {
+      processingTitle: 'Submitting Contribution',
+      processingMessage: 'Processing OAuth callback. Hold tight and do not refresh.',
+      successTitle: 'Submitted',
+      successMessage: 'The account is now pending review and will only be scheduled after approval.',
+      failedTitle: 'Submission Failed',
+      failedMessage: 'OAuth callback did not complete. Details are shown below.',
+      retry: 'Retry',
+      submitted: 'Contribution submitted',
+      submitFailed: 'Failed to submit contribution',
+      missingCode: 'OAuth callback is missing code',
+      missingState: 'OAuth callback is missing state',
+      missingSession: 'Authorization session not found. Please start again.',
+      stateMismatch: 'OAuth state mismatch. Please start again.'
+    },
+    errors: {
+      startOAuthFailed: 'Failed to generate OpenAI authorization URL',
+      loadAccountsFailed: 'Failed to load contributed accounts',
+      loadRewardsFailed: 'Failed to load reward logs',
+      revokeFailed: 'Failed to revoke contribution'
     }
   },
 
@@ -3318,6 +3420,41 @@ export default {
           revokeDesc: 'Immediately terminate the subscription (irreversible)'
         },
         tip: 'Tip: Only groups with billing type "Subscription" and status "Active" appear in the group dropdown. If no options are available, create one in Group Management first.'
+      }
+    },
+
+    accountContributions: {
+      title: 'Contribution Review',
+      description: 'Review user-submitted OpenAI OAuth accounts and bind approved accounts to shared groups.',
+      pendingTitle: 'Pending Contributions',
+      pendingDescription: 'Only pending accounts are shown. Approved accounts enter the selected groups and become schedulable.',
+      approve: 'Approve',
+      reject: 'Reject',
+      rejectConfirm: 'Reject this contributed account? Rejected accounts will not be scheduled.',
+      approved: 'Contribution approved',
+      rejected: 'Contribution rejected',
+      schedulable: 'Schedulable',
+      notSchedulable: 'Not schedulable',
+      columns: {
+        id: 'ID',
+        account: 'Account',
+        owner: 'Owner',
+        status: 'Status',
+        groups: 'Groups',
+        submittedAt: 'Submitted At'
+      },
+      approveDialog: {
+        title: 'Approve Contribution',
+        groups: 'Bind Groups',
+        noGroups: 'No OpenAI groups are available. Create one in group management first.',
+        concurrency: 'Concurrency',
+        priority: 'Priority'
+      },
+      errors: {
+        loadFailed: 'Failed to load pending contributions',
+        loadGroupsFailed: 'Failed to load OpenAI groups',
+        approveFailed: 'Failed to approve contribution',
+        rejectFailed: 'Failed to reject contribution'
       }
     },
 

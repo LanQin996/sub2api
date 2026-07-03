@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { Account, ContributorRewardLog, PaginatedResponse } from '@/types'
+import type { Account, AdminDataAccount, AdminDataPayload, ContributorRewardLog, PaginatedResponse } from '@/types'
 
 export interface ContributionAuthURLRequest {
   proxy_id?: number | null
@@ -20,6 +20,34 @@ export interface SubmitOpenAIContributionRequest {
   name?: string
 }
 
+export interface SubmitOpenAIJSONContributionRequest {
+  data?: Pick<AdminDataPayload, 'type' | 'version' | 'proxies' | 'accounts'>
+  accounts?: AdminDataAccount[]
+  proxy_id?: number | null
+}
+
+export interface ContributionImportItem {
+  index: number
+  name?: string
+  account_id?: number
+  action: 'created' | 'failed' | string
+  message?: string
+}
+
+export interface ContributionImportError {
+  index: number
+  name?: string
+  message: string
+}
+
+export interface ContributionImportResult {
+  total: number
+  created: number
+  failed: number
+  items?: ContributionImportItem[]
+  errors?: ContributionImportError[]
+}
+
 export async function generateOpenAIContributionAuthURL(
   payload: ContributionAuthURLRequest = {}
 ): Promise<ContributionAuthURLResult> {
@@ -35,6 +63,16 @@ export async function submitOpenAIContribution(
 ): Promise<Account> {
   const { data } = await apiClient.post<Account>(
     '/account-contributions/openai/exchange-code',
+    payload
+  )
+  return data
+}
+
+export async function submitOpenAIJSONContribution(
+  payload: SubmitOpenAIJSONContributionRequest
+): Promise<ContributionImportResult> {
+  const { data } = await apiClient.post<ContributionImportResult>(
+    '/account-contributions/openai/import-json',
     payload
   )
   return data
@@ -69,6 +107,7 @@ export async function listContributionRewards(
 export const accountContributionsAPI = {
   generateOpenAIAuthURL: generateOpenAIContributionAuthURL,
   submitOpenAI: submitOpenAIContribution,
+  submitOpenAIJSON: submitOpenAIJSONContribution,
   listMine: listMyContributions,
   revoke: revokeContribution,
   listRewards: listContributionRewards

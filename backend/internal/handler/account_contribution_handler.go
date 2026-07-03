@@ -33,6 +33,32 @@ type submitOpenAIContributionRequest struct {
 	Name        string `json:"name"`
 }
 
+type submitOpenAIJSONContributionRequest struct {
+	Data     contributionDataPayload   `json:"data"`
+	Accounts []contributionDataAccount `json:"accounts"`
+	ProxyID  *int64                    `json:"proxy_id"`
+}
+
+type contributionDataPayload struct {
+	Type     string                    `json:"type,omitempty"`
+	Version  int                       `json:"version,omitempty"`
+	Proxies  []map[string]any          `json:"proxies"`
+	Accounts []contributionDataAccount `json:"accounts"`
+}
+
+type contributionDataAccount struct {
+	Name               string         `json:"name"`
+	Notes              *string        `json:"notes"`
+	Platform           string         `json:"platform"`
+	Type               string         `json:"type"`
+	Credentials        map[string]any `json:"credentials"`
+	Extra              map[string]any `json:"extra"`
+	Concurrency        int            `json:"concurrency"`
+	Priority           int            `json:"priority"`
+	ExpiresAt          *int64         `json:"expires_at"`
+	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
+}
+
 type approveContributionRequest struct {
 	GroupIDs    []int64 `json:"group_ids" binding:"required"`
 	Concurrency *int    `json:"concurrency"`
@@ -77,6 +103,51 @@ func (h *AccountContributionHandler) SubmitOpenAI(c *gin.Context) {
 		return
 	}
 	response.Success(c, dto.AccountFromService(account))
+}
+
+func (h *AccountContributionHandler) SubmitOpenAIJSON(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req submitOpenAIJSONContributionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.Data.Proxies) > 0 {
+		response.BadRequest(c, "JSON contribution import does not support proxy import; choose an existing proxy in the request instead")
+		return
+	}
+	accounts := req.Accounts
+	if len(accounts) == 0 {
+		accounts = req.Data.Accounts
+	}
+	inputAccounts := make([]service.OpenAIJSONContributionAccount, 0, len(accounts))
+	for i := range accounts {
+		inputAccounts = append(inputAccounts, service.OpenAIJSONContributionAccount{
+			Name:               accounts[i].Name,
+			Notes:              accounts[i].Notes,
+			Platform:           accounts[i].Platform,
+			Type:               accounts[i].Type,
+			Credentials:        accounts[i].Credentials,
+			Extra:              accounts[i].Extra,
+			Concurrency:        accounts[i].Concurrency,
+			Priority:           accounts[i].Priority,
+			ExpiresAt:          accounts[i].ExpiresAt,
+			AutoPauseOnExpired: accounts[i].AutoPauseOnExpired,
+		})
+	}
+	result, err := h.service.SubmitOpenAIJSON(c.Request.Context(), subject.UserID, service.SubmitOpenAIJSONContributionInput{
+		Accounts: inputAccounts,
+		ProxyID:  req.ProxyID,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 func (h *AccountContributionHandler) ListMine(c *gin.Context) {

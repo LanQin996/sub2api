@@ -265,6 +265,29 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/account-contributions',
+    name: 'AccountContributions',
+    component: () => import('@/views/user/AccountContributionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Account Contributions',
+      titleKey: 'accountContributions.title',
+      descriptionKey: 'accountContributions.description'
+    }
+  },
+  {
+    path: '/account-contributions/callback',
+    name: 'AccountContributionCallback',
+    component: () => import('@/views/user/AccountContributionCallbackView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Account Contribution Callback',
+      titleKey: 'accountContributions.callbackTitle'
+    }
+  },
+  {
     path: '/available-channels',
     name: 'UserAvailableChannels',
     redirect: '/models',
@@ -522,6 +545,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Account Management',
       titleKey: 'admin.accounts.title',
       descriptionKey: 'admin.accounts.description'
+    }
+  },
+  {
+    path: '/admin/account-contributions',
+    name: 'AdminAccountContributions',
+    component: () => import('@/views/admin/AccountContributionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Account Contribution Review',
+      titleKey: 'admin.accountContributions.title',
+      descriptionKey: 'admin.accountContributions.description'
     }
   },
   {
@@ -871,6 +906,8 @@ router.beforeEach(async (to, _from, next) => {
       '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
+      '/admin/account-contributions',
+      '/account-contributions',
       '/subscriptions',
       '/redeem'
     ]

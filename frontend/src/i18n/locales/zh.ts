@@ -481,6 +481,8 @@ export default {
     ranking: '排行榜',
     redeem: '兑换',
     affiliate: '邀请返利',
+    accountContributions: '共享号池贡献',
+    accountContributionReview: '贡献审核',
     affiliateManagement: '邀请返利',
     affiliateInviteRecords: '邀请记录',
     affiliateRebateRecords: '返利记录',
@@ -1365,6 +1367,106 @@ export default {
       line2: '被邀请用户充值后，你可获得 {rate} 的返利额度。',
       line3: '返利额度可随时转入账户余额。',
       line4: '新产生的返利需要经过冻结期后才能提现。'
+    }
+  },
+
+  accountContributions: {
+    title: '共享号池贡献',
+    callbackTitle: '贡献账号授权回调',
+    description: '贡献自己的 OpenAI OAuth 账号到共享号池，审核通过后按分组倍率获得余额奖励',
+    startOAuth: '授权 OpenAI 账号',
+    startingOAuth: '正在跳转...',
+    revoke: '撤回',
+    revoked: '贡献账号已撤回',
+    backToList: '返回贡献列表',
+    contributeOpenAI: {
+      title: '贡献 OpenAI OAuth 账号',
+      description: '授权后账号先进入待审核状态，管理员通过后才会进入共享调度池。'
+    },
+    importJson: {
+      title: '导入 OpenAI 账号 JSON',
+      button: '导入 JSON',
+      hint: '支持账号管理导出的 JSON 文件；只接受 OpenAI OAuth 账号，导入后统一进入待审核。',
+      warning: '用户侧导入不会导入代理，也不会直接进入调度池。带 proxy 的备份请先去掉代理引用，别拿管理员备份生怼。',
+      file: 'JSON 文件',
+      selectFile: '请选择 JSON 文件',
+      selectedFiles: '已选择 {count} 个文件',
+      fileHint: '支持一个或多个 sub2api-data / sub2api-bundle JSON 文件',
+      submit: '导入为贡献账号',
+      importing: '导入中...',
+      result: '导入结果',
+      resultSummary: '总计 {total} 个，成功 {created} 个，失败 {failed} 个',
+      errors: '失败明细',
+      invalidFile: '{file} 不是有效的账号导入 JSON',
+      proxyNotSupported: '{file} 包含代理数据；用户贡献导入暂不支持导入代理',
+      parseFailed: 'JSON 解析失败',
+      failed: '导入贡献账号失败',
+      success: '已提交 {created} 个贡献账号，等待管理员审核',
+      completedWithErrors: '导入完成：成功 {created} 个，失败 {failed} 个'
+    },
+    rules: {
+      title: '别急着猛点，规矩先看明白',
+      line1: '1. 待审核、拒绝、撤回的账号不会参与调度。',
+      line2: '2. 同一个 OpenAI / ChatGPT 账号只能贡献一次。',
+      line3: '3. 审核通过后按分组贡献结算倍率实时发放余额奖励。'
+    },
+    stats: {
+      totalAccounts: '贡献账号数',
+      pageRewards: '本页收益'
+    },
+    status: {
+      pending: '待审核',
+      approved: '已通过',
+      rejected: '已拒绝',
+      revoked: '已撤回'
+    },
+    accounts: {
+      title: '我的贡献账号',
+      description: '查看审核状态；待审核或已通过的账号可随时撤回。',
+      submitted: '提交',
+      approved: '通过',
+      revoked: '撤回',
+      columns: {
+        id: 'ID',
+        account: '账号',
+        status: '状态',
+        timeline: '时间线'
+      }
+    },
+    rewards: {
+      title: '贡献收益明细',
+      description: '每次成功 usage 计费后的幂等奖励流水。',
+      columns: {
+        createdAt: '时间',
+        account: '账号',
+        group: '分组',
+        totalCost: '用户计费',
+        actualCost: '实际扣费',
+        multiplier: '奖励倍率',
+        reward: '奖励',
+        request: '请求 ID'
+      }
+    },
+    callback: {
+      processingTitle: '正在提交贡献账号',
+      processingMessage: 'OAuth 回调处理中，稍等一下，别刷新。',
+      successTitle: '提交成功',
+      successMessage: '账号已进入待审核状态，管理员通过后才会参与调度。',
+      failedTitle: '提交失败',
+      failedMessage: '授权回调没走通，下面是具体错误。',
+      retry: '重试提交',
+      submitted: '贡献账号提交成功',
+      submitFailed: '提交贡献账号失败',
+      missingCode: 'OAuth 回调缺少 code',
+      missingState: 'OAuth 回调缺少 state',
+      missingSession: '找不到授权会话，请重新发起授权',
+      stateMismatch: 'OAuth state 不匹配，请重新发起授权'
+    },
+    errors: {
+      startOAuthFailed: '生成 OpenAI 授权链接失败',
+      loadAccountsFailed: '加载贡献账号失败',
+      loadRewardsFailed: '加载收益明细失败',
+      revokeFailed: '撤回贡献账号失败'
     }
   },
 
@@ -3393,6 +3495,41 @@ export default {
           revokeDesc: '立即终止该用户的订阅，不可恢复'
         },
         tip: '提示：订阅分组下拉列表中只会显示计费类型为「订阅」且状态为「正常」的分组。如果没有可选项，请先到分组管理中创建。'
+      }
+    },
+
+    accountContributions: {
+      title: '贡献账号审核',
+      description: '审核用户自助提交的 OpenAI OAuth 贡献账号，并绑定到共享分组。',
+      pendingTitle: '待审核贡献账号',
+      pendingDescription: '只展示待审核账号；通过后账号会进入指定分组并允许调度。',
+      approve: '通过',
+      reject: '拒绝',
+      rejectConfirm: '确认拒绝这个贡献账号？拒绝后不会参与调度。',
+      approved: '贡献账号已审核通过',
+      rejected: '贡献账号已拒绝',
+      schedulable: '可调度',
+      notSchedulable: '不可调度',
+      columns: {
+        id: 'ID',
+        account: '账号',
+        owner: '贡献用户',
+        status: '状态',
+        groups: '分组',
+        submittedAt: '提交时间'
+      },
+      approveDialog: {
+        title: '审核通过贡献账号',
+        groups: '绑定分组',
+        noGroups: '暂无可用 OpenAI 分组，先去分组管理建一个，别硬审。',
+        concurrency: '并发',
+        priority: '优先级'
+      },
+      errors: {
+        loadFailed: '加载待审核贡献账号失败',
+        loadGroupsFailed: '加载 OpenAI 分组失败',
+        approveFailed: '审核通过失败',
+        rejectFailed: '拒绝贡献账号失败'
       }
     },
 
