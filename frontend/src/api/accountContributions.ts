@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { Account, AdminDataAccount, AdminDataPayload, ContributorRewardLog, PaginatedResponse } from '@/types'
+import type { Account, AdminDataAccount, AdminDataPayload, ContributorRewardLog, ContributorRewardSummary, PaginatedResponse } from '@/types'
 
 export interface ContributionAuthURLRequest {
   proxy_id?: number | null
@@ -48,6 +48,26 @@ export interface ContributionImportResult {
   errors?: ContributionImportError[]
 }
 
+export interface ContributionImportPreviewItem {
+  index: number
+  name?: string
+  valid: boolean
+  duplicate: boolean
+  unsupported: boolean
+  invalid: boolean
+  identity_present: boolean
+  message?: string
+}
+
+export interface ContributionImportPreview {
+  total: number
+  valid: number
+  duplicate: number
+  unsupported: number
+  invalid: number
+  items?: ContributionImportPreviewItem[]
+}
+
 export async function generateOpenAIContributionAuthURL(
   payload: ContributionAuthURLRequest = {}
 ): Promise<ContributionAuthURLResult> {
@@ -63,6 +83,17 @@ export async function submitOpenAIContribution(
 ): Promise<Account> {
   const { data } = await apiClient.post<Account>(
     '/account-contributions/openai/exchange-code',
+    payload
+  )
+  return data
+}
+
+
+export async function previewOpenAIJSONContribution(
+  payload: SubmitOpenAIJSONContributionRequest
+): Promise<ContributionImportPreview> {
+  const { data } = await apiClient.post<ContributionImportPreview>(
+    '/account-contributions/openai/import-json/preview',
     payload
   )
   return data
@@ -93,6 +124,14 @@ export async function revokeContribution(id: number): Promise<Account> {
   return data
 }
 
+
+export async function getContributionRewardSummary(): Promise<ContributorRewardSummary> {
+  const { data } = await apiClient.get<ContributorRewardSummary>(
+    '/account-contributions/rewards/summary'
+  )
+  return data
+}
+
 export async function listContributionRewards(
   page = 1,
   pageSize = 20
@@ -107,9 +146,11 @@ export async function listContributionRewards(
 export const accountContributionsAPI = {
   generateOpenAIAuthURL: generateOpenAIContributionAuthURL,
   submitOpenAI: submitOpenAIContribution,
+  previewOpenAIJSON: previewOpenAIJSONContribution,
   submitOpenAIJSON: submitOpenAIJSONContribution,
   listMine: listMyContributions,
   revoke: revokeContribution,
+  getRewardSummary: getContributionRewardSummary,
   listRewards: listContributionRewards
 }
 

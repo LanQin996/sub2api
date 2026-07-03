@@ -1402,17 +1402,29 @@ export default {
       parseFailed: 'JSON 解析失败',
       failed: '导入贡献账号失败',
       success: '已提交 {created} 个贡献账号，等待管理员审核',
-      completedWithErrors: '导入完成：成功 {created} 个，失败 {failed} 个'
+      completedWithErrors: '导入完成：成功 {created} 个，失败 {failed} 个',
+      preview: '导入预览',
+      previewTotal: '总账号数',
+      previewValid: '有效可导入',
+      previewDuplicate: '重复',
+      previewUnsupported: '不支持/无效',
+      previewFailed: '预览导入 JSON 失败',
+      previewDuplicateMessage: '重复贡献或本次文件内重复',
+      previewUnsupportedMessage: '仅支持 OpenAI OAuth 账号',
+      previewInvalidMessage: '账号数据不完整'
     },
     rules: {
       title: '别急着猛点，规矩先看明白',
       line1: '1. 待审核、拒绝、撤回的账号不会参与调度。',
-      line2: '2. 同一个 OpenAI / ChatGPT 账号只能贡献一次。',
+      line2: '2. 同一个 OpenAI / ChatGPT 账号提交后会占用身份；撤回/拒绝后如需重新贡献请联系管理员。',
       line3: '3. 审核通过后按分组贡献结算倍率实时发放余额奖励。'
     },
     stats: {
       totalAccounts: '贡献账号数',
-      pageRewards: '本页收益'
+      pageRewards: '本页收益',
+      totalRewards: '累计收益',
+      todayRewards: '今日收益',
+      last7dRewards: '近 7 日收益'
     },
     status: {
       pending: '待审核',
@@ -1466,6 +1478,7 @@ export default {
       startOAuthFailed: '生成 OpenAI 授权链接失败',
       loadAccountsFailed: '加载贡献账号失败',
       loadRewardsFailed: '加载收益明细失败',
+      loadRewardSummaryFailed: '加载收益统计失败',
       revokeFailed: '撤回贡献账号失败'
     }
   },
@@ -3501,8 +3514,9 @@ export default {
     accountContributions: {
       title: '贡献账号审核',
       description: '审核用户自助提交的 OpenAI OAuth 贡献账号，并绑定到共享分组。',
-      pendingTitle: '待审核贡献账号',
-      pendingDescription: '只展示待审核账号；通过后账号会进入指定分组并允许调度。',
+      pendingTitle: '贡献账号审核列表',
+      pendingDescription: '可按状态筛选贡献账号；待审核账号通过后会进入指定分组并允许调度。',
+      statusAll: '全部状态',
       approve: '通过',
       reject: '拒绝',
       rejectConfirm: '确认拒绝这个贡献账号？拒绝后不会参与调度。',
@@ -3526,7 +3540,7 @@ export default {
         priority: '优先级'
       },
       errors: {
-        loadFailed: '加载待审核贡献账号失败',
+        loadFailed: '加载贡献账号失败',
         loadGroupsFailed: '加载 OpenAI 分组失败',
         approveFailed: '审核通过失败',
         rejectFailed: '拒绝贡献账号失败'

@@ -22,6 +22,13 @@ type ContributorRewardLog struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
+type ContributorRewardSummary struct {
+	TotalReward  float64 `json:"total_reward"`
+	TodayReward  float64 `json:"today_reward"`
+	Last7dReward float64 `json:"last_7d_reward"`
+}
+
 type ContributorRewardRepository interface {
 	ListByOwner(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]ContributorRewardLog, *pagination.PaginationResult, error)
+	SummaryByOwner(ctx context.Context, ownerUserID int64, now time.Time) (ContributorRewardSummary, error)
 }

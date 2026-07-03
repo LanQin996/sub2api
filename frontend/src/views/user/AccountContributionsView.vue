@@ -48,10 +48,26 @@
           </div>
           <div class="card p-5">
             <p class="text-sm text-gray-500 dark:text-dark-400">
-              {{ t('accountContributions.stats.pageRewards') }}
+              {{ t('accountContributions.stats.totalRewards') }}
             </p>
             <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
-              {{ formatCurrency(pageRewardTotal) }}
+              {{ formatCurrency(rewardSummary.total_reward) }}
+            </p>
+          </div>
+          <div class="card p-5">
+            <p class="text-sm text-gray-500 dark:text-dark-400">
+              {{ t('accountContributions.stats.todayRewards') }}
+            </p>
+            <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+              {{ formatCurrency(rewardSummary.today_reward) }}
+            </p>
+          </div>
+          <div class="card p-5">
+            <p class="text-sm text-gray-500 dark:text-dark-400">
+              {{ t('accountContributions.stats.last7dRewards') }}
+            </p>
+            <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+              {{ formatCurrency(rewardSummary.last_7d_reward) }}
             </p>
           </div>
         </div>
@@ -135,7 +151,7 @@
               {{ t('accountContributions.rewards.description') }}
             </p>
           </div>
-          <button class="btn btn-secondary" :disabled="rewardsLoading" @click="loadRewards">
+          <button class="btn btn-secondary" :disabled="rewardsLoading" @click="loadRewardData">
             <Icon name="refresh" size="sm" :class="rewardsLoading ? 'animate-spin' : ''" />
             <span>{{ t('common.refresh') }}</span>
           </button>
@@ -219,6 +235,38 @@
           />
         </div>
 
+        <div v-if="importPreview" class="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/40 dark:bg-blue-900/20">
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-sm font-medium text-blue-900 dark:text-blue-100">
+              {{ t('accountContributions.importJson.preview') }}
+            </div>
+            <Icon v-if="previewingJSON" name="refresh" size="sm" class="animate-spin text-blue-600" />
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div>
+              <p class="text-blue-700 dark:text-blue-300">{{ t('accountContributions.importJson.previewTotal') }}</p>
+              <p class="font-semibold text-blue-950 dark:text-blue-100">{{ importPreview.total }}</p>
+            </div>
+            <div>
+              <p class="text-blue-700 dark:text-blue-300">{{ t('accountContributions.importJson.previewValid') }}</p>
+              <p class="font-semibold text-blue-950 dark:text-blue-100">{{ importPreview.valid }}</p>
+            </div>
+            <div>
+              <p class="text-blue-700 dark:text-blue-300">{{ t('accountContributions.importJson.previewDuplicate') }}</p>
+              <p class="font-semibold text-blue-950 dark:text-blue-100">{{ importPreview.duplicate }}</p>
+            </div>
+            <div>
+              <p class="text-blue-700 dark:text-blue-300">{{ t('accountContributions.importJson.previewUnsupported') }}</p>
+              <p class="font-semibold text-blue-950 dark:text-blue-100">{{ importPreview.unsupported + importPreview.invalid }}</p>
+            </div>
+          </div>
+          <div v-if="importPreviewProblemItems.length" class="max-h-40 overflow-auto rounded-lg bg-white/70 p-3 font-mono text-xs text-blue-900 dark:bg-dark-900/70 dark:text-blue-100">
+            <div v-for="item in importPreviewProblemItems" :key="`${item.index}-${item.name || ''}`" class="whitespace-pre-wrap">
+              #{{ item.index + 1 }} {{ item.name || '-' }} — {{ item.message || previewItemFallbackMessage(item) }}
+            </div>
+          </div>
+        </div>
+
         <div v-if="importResult" class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700">
           <div class="text-sm font-medium text-gray-900 dark:text-white">
             {{ t('accountContributions.importJson.result') }}
@@ -248,7 +296,7 @@
             type="submit"
             form="contribution-import-json-form"
             class="btn btn-primary"
-            :disabled="importingJSON"
+            :disabled="importingJSON || previewingJSON"
           >
             {{ importingJSON ? t('accountContributions.importJson.importing') : t('accountContributions.importJson.submit') }}
           </button>
@@ -267,8 +315,8 @@ import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { Column } from '@/components/common/types'
-import accountContributionsAPI, { type ContributionImportResult } from '@/api/accountContributions'
-import type { Account, AdminDataPayload, ContributorRewardLog } from '@/types'
+import accountContributionsAPI, { type ContributionImportPreview, type ContributionImportPreviewItem, type ContributionImportResult } from '@/api/accountContributions'
+import type { Account, AdminDataPayload, ContributorRewardLog, ContributorRewardSummary } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -281,16 +329,20 @@ const accounts = ref<Account[]>([])
 const rewards = ref<ContributorRewardLog[]>([])
 const accountsLoading = ref(false)
 const rewardsLoading = ref(false)
+const rewardSummaryLoading = ref(false)
 const startingOAuth = ref(false)
 const revokingId = ref<number | null>(null)
 const showImportDialog = ref(false)
 const importingJSON = ref(false)
+const previewingJSON = ref(false)
 const importFiles = ref<File[]>([])
 const importResult = ref<ContributionImportResult | null>(null)
+const importPreview = ref<ContributionImportPreview | null>(null)
 const importFileInput = ref<HTMLInputElement | null>(null)
 
 const accountsPagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const rewardsPagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
+const rewardSummary = reactive<ContributorRewardSummary>({ total_reward: 0, today_reward: 0, last_7d_reward: 0 })
 
 const accountColumns = computed<Column[]>(() => [
   { key: 'id', label: t('accountContributions.accounts.columns.id') },
@@ -311,10 +363,10 @@ const rewardColumns = computed<Column[]>(() => [
   { key: 'request_id', label: t('accountContributions.rewards.columns.request') }
 ])
 
-const pageRewardTotal = computed(() =>
-  rewards.value.reduce((sum, item) => sum + (item.reward_amount || 0), 0)
-)
 const importErrors = computed(() => importResult.value?.errors || [])
+const importPreviewProblemItems = computed(() =>
+  (importPreview.value?.items || []).filter(item => !item.valid)
+)
 const importFileName = computed(() => {
   if (importFiles.value.length === 0) return ''
   if (importFiles.value.length === 1) return importFiles.value[0].name
@@ -369,6 +421,9 @@ function openImportFilePicker(): void {
 function handleImportFileChange(event: Event): void {
   const target = event.target as HTMLInputElement
   importFiles.value = Array.from(target.files || [])
+  importResult.value = null
+  importPreview.value = null
+  void previewImportJSON()
 }
 
 function closeImportDialog(): void {
@@ -405,6 +460,33 @@ function mergeContributionPayloads(payloads: AdminDataPayload[]): AdminDataPaylo
     exported_at: new Date().toISOString(),
     proxies: [],
     accounts: payloads.flatMap(payload => payload.accounts)
+  }
+}
+
+
+function previewItemFallbackMessage(item: ContributionImportPreviewItem): string {
+  if (item.duplicate) return t('accountContributions.importJson.previewDuplicateMessage')
+  if (item.unsupported) return t('accountContributions.importJson.previewUnsupportedMessage')
+  if (item.invalid) return t('accountContributions.importJson.previewInvalidMessage')
+  return '-'
+}
+
+async function previewImportJSON(): Promise<void> {
+  if (importFiles.value.length === 0) return
+  previewingJSON.value = true
+  try {
+    const payloads = await Promise.all(importFiles.value.map(parseContributionPayloadFile))
+    const payload = mergeContributionPayloads(payloads)
+    importPreview.value = await accountContributionsAPI.previewOpenAIJSON({ data: payload })
+  } catch (error) {
+    importPreview.value = null
+    if (error instanceof SyntaxError) {
+      appStore.showError(t('accountContributions.importJson.parseFailed'))
+    } else {
+      appStore.showError(extractApiErrorMessage(error, t('accountContributions.importJson.previewFailed')))
+    }
+  } finally {
+    previewingJSON.value = false
   }
 }
 
@@ -492,6 +574,24 @@ async function loadRewards(): Promise<void> {
   }
 }
 
+async function loadRewardSummary(): Promise<void> {
+  rewardSummaryLoading.value = true
+  try {
+    const summary = await accountContributionsAPI.getRewardSummary()
+    rewardSummary.total_reward = summary.total_reward
+    rewardSummary.today_reward = summary.today_reward
+    rewardSummary.last_7d_reward = summary.last_7d_reward
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('accountContributions.errors.loadRewardSummaryFailed')))
+  } finally {
+    rewardSummaryLoading.value = false
+  }
+}
+
+async function loadRewardData(): Promise<void> {
+  await Promise.all([loadRewards(), loadRewardSummary()])
+}
+
 async function revoke(id: number): Promise<void> {
   if (revokingId.value !== null) return
   revokingId.value = id
@@ -529,6 +629,6 @@ function handleRewardsPageSizeChange(pageSize: number): void {
 }
 
 onMounted(() => {
-  void Promise.all([loadAccounts(), loadRewards()])
+  void Promise.all([loadAccounts(), loadRewardData()])
 })
 </script>

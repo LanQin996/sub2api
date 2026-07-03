@@ -1935,6 +1935,12 @@ export interface ContributorRewardLog {
   created_at: string
 }
 
+export interface ContributorRewardSummary {
+  total_reward: number
+  today_reward: number
+  last_7d_reward: number
+}
+
 // ==================== User Attribute Types ====================
 
 export type UserAttributeType = 'text' | 'textarea' | 'number' | 'email' | 'url' | 'date' | 'select' | 'multi_select'

@@ -179,6 +179,21 @@ func (s *SchedulerSnapshotService) UpdateAccountInCache(ctx context.Context, acc
 	return s.cache.SetAccount(ctx, account)
 }
 
+// RefreshAccount 立即刷新单账号快照，并同步重建该账号相关分组的调度桶。
+// 用于撤回贡献账号等必须“立刻不再调度”的路径，避免只等 outbox 轮询产生脏窗口。
+func (s *SchedulerSnapshotService) RefreshAccount(ctx context.Context, account *Account, groupIDs []int64, reason string) error {
+	if s == nil || s.cache == nil || account == nil {
+		return nil
+	}
+	if err := s.cache.SetAccount(ctx, account); err != nil {
+		return err
+	}
+	if len(groupIDs) == 0 {
+		groupIDs = account.GroupIDs
+	}
+	return s.rebuildByAccount(ctx, account, groupIDs, reason, nil)
+}
+
 func (s *SchedulerSnapshotService) runInitialRebuild() {
 	if s.cache == nil {
 		return

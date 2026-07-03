@@ -11,10 +11,17 @@
               {{ t('admin.accountContributions.pendingDescription') }}
             </p>
           </div>
-          <button class="btn btn-secondary" :disabled="loading" @click="loadAll">
-            <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
-            <span>{{ t('common.refresh') }}</span>
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <select v-model="selectedStatus" class="input w-44" @change="handleStatusChange">
+              <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+            <button class="btn btn-secondary" :disabled="loading" @click="loadAll">
+              <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
+              <span>{{ t('common.refresh') }}</span>
+            </button>
+          </div>
         </div>
       </template>
 
@@ -40,7 +47,7 @@
               <span :class="['badge', row.schedulable ? 'badge-success' : 'badge-gray']">
                 {{ row.schedulable ? t('admin.accountContributions.schedulable') : t('admin.accountContributions.notSchedulable') }}
               </span>
-              <span class="badge badge-warning">
+              <span :class="['badge', contributionStatusClass(row.contribution_status)]">
                 {{ contributionStatusLabel(row.contribution_status) }}
               </span>
             </div>
@@ -54,7 +61,7 @@
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) || '-' }}</span>
           </template>
           <template #cell-actions="{ row }">
-            <div class="flex items-center gap-2">
+            <div v-if="row.contribution_status === 'pending'" class="flex items-center gap-2">
               <button class="btn btn-primary btn-sm" @click="openApproveDialog(row)">
                 <Icon name="check" size="sm" />
                 <span>{{ t('admin.accountContributions.approve') }}</span>
@@ -69,6 +76,7 @@
                 <span>{{ t('admin.accountContributions.reject') }}</span>
               </button>
             </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
         </DataTable>
       </template>
@@ -168,6 +176,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { Column } from '@/components/common/types'
 import { adminAPI } from '@/api/admin'
+import type { ContributionListStatus } from '@/api/admin/accountContributions'
 import type { Account, AdminGroup } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -185,6 +194,7 @@ const approving = ref(false)
 const rejectingId = ref<number | null>(null)
 const showApproveDialog = ref(false)
 const approvingAccount = ref<Account | null>(null)
+const selectedStatus = ref<ContributionListStatus>('pending')
 
 const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const approveForm = reactive({
@@ -194,6 +204,13 @@ const approveForm = reactive({
 })
 
 const openAIGroups = computed(() => groups.value.filter(group => group.platform === 'openai'))
+const statusOptions = computed(() => [
+  { value: 'pending' as const, label: t('accountContributions.status.pending') },
+  { value: 'approved' as const, label: t('accountContributions.status.approved') },
+  { value: 'rejected' as const, label: t('accountContributions.status.rejected') },
+  { value: 'revoked' as const, label: t('accountContributions.status.revoked') },
+  { value: 'all' as const, label: t('admin.accountContributions.statusAll') }
+])
 
 const columns = computed<Column[]>(() => [
   { key: 'id', label: t('admin.accountContributions.columns.id') },
@@ -211,6 +228,14 @@ function contributionStatusLabel(status: Account['contribution_status']): string
   if (status === 'rejected') return t('accountContributions.status.rejected')
   if (status === 'revoked') return t('accountContributions.status.revoked')
   return '-'
+}
+
+function contributionStatusClass(status: Account['contribution_status']): string {
+  if (status === 'approved') return 'badge-success'
+  if (status === 'pending') return 'badge-warning'
+  if (status === 'rejected') return 'badge-danger'
+  if (status === 'revoked') return 'badge-gray'
+  return 'badge-gray'
 }
 
 function formatMultiplier(value: number): string {
@@ -234,9 +259,10 @@ function toggleGroup(id: number): void {
 async function loadPending(): Promise<void> {
   loading.value = true
   try {
-    const response = await adminAPI.accountContributions.listPending(
+    const response = await adminAPI.accountContributions.list(
       pagination.page,
-      pagination.page_size
+      pagination.page_size,
+      selectedStatus.value
     )
     accounts.value = response.items
     pagination.total = response.total
@@ -310,6 +336,11 @@ async function reject(id: number): Promise<void> {
   } finally {
     rejectingId.value = null
   }
+}
+
+function handleStatusChange(): void {
+  pagination.page = 1
+  void loadPending()
 }
 
 function handlePageChange(page: number): void {

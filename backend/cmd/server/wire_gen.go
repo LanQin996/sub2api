@@ -169,7 +169,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor)
 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
 	contributorRewardRepository := repository.NewContributorRewardRepository(client, db)
-	accountContributionService := service.NewAccountContributionService(accountRepository, groupRepository, contributorRewardRepository, openAIOAuthService)
+	accountContributionService := service.ProvideAccountContributionService(accountRepository, groupRepository, contributorRewardRepository, openAIOAuthService, schedulerSnapshotService)
 	accountContributionHandler := handler.NewAccountContributionHandler(accountContributionService)
 	dashboardAggregationRepository := repository.NewDashboardAggregationRepository(db)
 	dashboardStatsCache := repository.NewDashboardCache(redisClient, configConfig)

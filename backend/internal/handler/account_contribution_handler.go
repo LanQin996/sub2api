@@ -65,6 +65,29 @@ type approveContributionRequest struct {
 	Priority    *int    `json:"priority"`
 }
 
+func contributionAccountsFromRequest(req submitOpenAIJSONContributionRequest) []service.OpenAIJSONContributionAccount {
+	accounts := req.Accounts
+	if len(accounts) == 0 {
+		accounts = req.Data.Accounts
+	}
+	inputAccounts := make([]service.OpenAIJSONContributionAccount, 0, len(accounts))
+	for i := range accounts {
+		inputAccounts = append(inputAccounts, service.OpenAIJSONContributionAccount{
+			Name:               accounts[i].Name,
+			Notes:              accounts[i].Notes,
+			Platform:           accounts[i].Platform,
+			Type:               accounts[i].Type,
+			Credentials:        accounts[i].Credentials,
+			Extra:              accounts[i].Extra,
+			Concurrency:        accounts[i].Concurrency,
+			Priority:           accounts[i].Priority,
+			ExpiresAt:          accounts[i].ExpiresAt,
+			AutoPauseOnExpired: accounts[i].AutoPauseOnExpired,
+		})
+	}
+	return inputAccounts
+}
+
 func (h *AccountContributionHandler) GenerateOpenAIAuthURL(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
@@ -120,27 +143,8 @@ func (h *AccountContributionHandler) SubmitOpenAIJSON(c *gin.Context) {
 		response.BadRequest(c, "JSON contribution import does not support proxy import; choose an existing proxy in the request instead")
 		return
 	}
-	accounts := req.Accounts
-	if len(accounts) == 0 {
-		accounts = req.Data.Accounts
-	}
-	inputAccounts := make([]service.OpenAIJSONContributionAccount, 0, len(accounts))
-	for i := range accounts {
-		inputAccounts = append(inputAccounts, service.OpenAIJSONContributionAccount{
-			Name:               accounts[i].Name,
-			Notes:              accounts[i].Notes,
-			Platform:           accounts[i].Platform,
-			Type:               accounts[i].Type,
-			Credentials:        accounts[i].Credentials,
-			Extra:              accounts[i].Extra,
-			Concurrency:        accounts[i].Concurrency,
-			Priority:           accounts[i].Priority,
-			ExpiresAt:          accounts[i].ExpiresAt,
-			AutoPauseOnExpired: accounts[i].AutoPauseOnExpired,
-		})
-	}
 	result, err := h.service.SubmitOpenAIJSON(c.Request.Context(), subject.UserID, service.SubmitOpenAIJSONContributionInput{
-		Accounts: inputAccounts,
+		Accounts: contributionAccountsFromRequest(req),
 		ProxyID:  req.ProxyID,
 	})
 	if err != nil {
@@ -148,6 +152,32 @@ func (h *AccountContributionHandler) SubmitOpenAIJSON(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+func (h *AccountContributionHandler) PreviewOpenAIJSON(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req submitOpenAIJSONContributionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.Data.Proxies) > 0 {
+		response.BadRequest(c, "JSON contribution import does not support proxy import; choose an existing proxy in the request instead")
+		return
+	}
+	preview, err := h.service.PreviewOpenAIJSON(c.Request.Context(), subject.UserID, service.SubmitOpenAIJSONContributionInput{
+		Accounts: contributionAccountsFromRequest(req),
+		ProxyID:  req.ProxyID,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, preview)
 }
 
 func (h *AccountContributionHandler) ListMine(c *gin.Context) {
@@ -203,9 +233,24 @@ func (h *AccountContributionHandler) ListRewards(c *gin.Context) {
 	response.Paginated(c, items, result.Total, page, pageSize)
 }
 
+func (h *AccountContributionHandler) GetRewardSummary(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	summary, err := h.service.GetRewardSummary(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, summary)
+}
+
 func (h *AccountContributionHandler) ListPending(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
-	items, result, err := h.service.ListPending(c.Request.Context(), pagination.PaginationParams{Page: page, PageSize: pageSize})
+	status := c.DefaultQuery("status", service.ContributionStatusPending)
+	items, result, err := h.service.ListByStatus(c.Request.Context(), status, pagination.PaginationParams{Page: page, PageSize: pageSize})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

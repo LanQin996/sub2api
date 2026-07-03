@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -63,4 +64,29 @@ func (r *contributorRewardRepository) ListByOwner(ctx context.Context, ownerUser
 		return nil, nil, err
 	}
 	return items, paginationResultFromTotal(total, params), nil
+}
+
+func (r *contributorRewardRepository) SummaryByOwner(ctx context.Context, ownerUserID int64, now time.Time) (service.ContributorRewardSummary, error) {
+	if r == nil || r.db == nil {
+		return service.ContributorRewardSummary{}, sql.ErrConnDone
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	localNow := now.In(time.Local)
+	todayStart := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, localNow.Location())
+	last7dStart := localNow.AddDate(0, 0, -7)
+
+	var summary service.ContributorRewardSummary
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(reward_amount), 0),
+			COALESCE(SUM(CASE WHEN created_at >= $2 THEN reward_amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN created_at >= $3 THEN reward_amount ELSE 0 END), 0)
+		FROM contributor_reward_logs
+		WHERE owner_user_id = $1
+	`, ownerUserID, todayStart, last7dStart).Scan(&summary.TotalReward, &summary.TodayReward, &summary.Last7dReward); err != nil {
+		return service.ContributorRewardSummary{}, err
+	}
+	return summary, nil
 }

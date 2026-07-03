@@ -2108,10 +2108,14 @@ func (r *accountRepository) ListContributionsByOwner(ctx context.Context, ownerU
 }
 
 func (r *accountRepository) ListContributionsByStatus(ctx context.Context, status string, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
-	q := r.client.Account.Query().Where(
+	predicates := []dbpredicate.Account{
 		dbaccount.OwnerUserIDNotNil(),
-		dbaccount.ContributionStatusEQ(status),
-	)
+		dbaccount.ContributionStatusNEQ(""),
+	}
+	if strings.ToLower(strings.TrimSpace(status)) != "all" {
+		predicates = append(predicates, dbaccount.ContributionStatusEQ(status))
+	}
+	q := r.client.Account.Query().Where(predicates...)
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, nil, err

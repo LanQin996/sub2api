@@ -1398,17 +1398,29 @@ export default {
       parseFailed: 'Failed to parse JSON',
       failed: 'Failed to import contributed accounts',
       success: '{created} contributed accounts submitted for review',
-      completedWithErrors: 'Import finished: {created} created, {failed} failed'
+      completedWithErrors: 'Import finished: {created} created, {failed} failed',
+      preview: 'Import preview',
+      previewTotal: 'Total accounts',
+      previewValid: 'Valid importable',
+      previewDuplicate: 'Duplicate',
+      previewUnsupported: 'Unsupported/invalid',
+      previewFailed: 'Failed to preview JSON import',
+      previewDuplicateMessage: 'Duplicate contribution or duplicate in this file',
+      previewUnsupportedMessage: 'Only OpenAI OAuth accounts are supported',
+      previewInvalidMessage: 'Account data is incomplete'
     },
     rules: {
       title: 'Read this before clicking like a maniac',
       line1: '1. Pending, rejected, and revoked accounts are never scheduled.',
-      line2: '2. The same OpenAI / ChatGPT account can only be contributed once.',
+      line2: '2. The same OpenAI / ChatGPT identity is reserved once submitted; contact an admin if you need to contribute it again after rejection or revocation.',
       line3: '3. Approved accounts earn balance rewards in real time based on the group reward multiplier.'
     },
     stats: {
       totalAccounts: 'Contributed Accounts',
-      pageRewards: 'Rewards on This Page'
+      pageRewards: 'Rewards on This Page',
+      totalRewards: 'Total rewards',
+      todayRewards: 'Today rewards',
+      last7dRewards: 'Last 7 days rewards'
     },
     status: {
       pending: 'Pending',
@@ -1462,6 +1474,7 @@ export default {
       startOAuthFailed: 'Failed to generate OpenAI authorization URL',
       loadAccountsFailed: 'Failed to load contributed accounts',
       loadRewardsFailed: 'Failed to load reward logs',
+      loadRewardSummaryFailed: 'Failed to load reward summary',
       revokeFailed: 'Failed to revoke contribution'
     }
   },
@@ -3426,8 +3439,9 @@ export default {
     accountContributions: {
       title: 'Contribution Review',
       description: 'Review user-submitted OpenAI OAuth accounts and bind approved accounts to shared groups.',
-      pendingTitle: 'Pending Contributions',
-      pendingDescription: 'Only pending accounts are shown. Approved accounts enter the selected groups and become schedulable.',
+      pendingTitle: 'Contribution Review List',
+      pendingDescription: 'Filter contributed accounts by status; approved pending accounts enter selected groups and become schedulable.',
+      statusAll: 'All statuses',
       approve: 'Approve',
       reject: 'Reject',
       rejectConfirm: 'Reject this contributed account? Rejected accounts will not be scheduled.',
@@ -3451,7 +3465,7 @@ export default {
         priority: 'Priority'
       },
       errors: {
-        loadFailed: 'Failed to load pending contributions',
+        loadFailed: 'Failed to load contribution accounts',
         loadGroupsFailed: 'Failed to load OpenAI groups',
         approveFailed: 'Failed to approve contribution',
         rejectFailed: 'Failed to reject contribution'

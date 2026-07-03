@@ -118,10 +118,12 @@ func RegisterUserRoutes(
 		{
 			contributions.POST("/openai/auth-url", h.AccountContribution.GenerateOpenAIAuthURL)
 			contributions.POST("/openai/exchange-code", h.AccountContribution.SubmitOpenAI)
+			contributions.POST("/openai/import-json/preview", h.AccountContribution.PreviewOpenAIJSON)
 			contributions.POST("/openai/import-json", h.AccountContribution.SubmitOpenAIJSON)
 			contributions.GET("", h.AccountContribution.ListMine)
-			contributions.DELETE("/:id", h.AccountContribution.Revoke)
+			contributions.GET("/rewards/summary", h.AccountContribution.GetRewardSummary)
 			contributions.GET("/rewards", h.AccountContribution.ListRewards)
+			contributions.DELETE("/:id", h.AccountContribution.Revoke)
 		}
 
 		// 用户订阅

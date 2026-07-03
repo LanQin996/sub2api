@@ -18,14 +18,32 @@ var ErrContributionInvalidStatus = infraerrors.Conflict("CONTRIBUTION_INVALID_ST
 var ErrContributionOwnership = infraerrors.NotFound("CONTRIBUTION_NOT_FOUND", "account contribution not found")
 
 type AccountContributionService struct {
-	accountRepo AccountRepository
-	groupRepo   GroupRepository
-	rewardRepo  ContributorRewardRepository
-	oauth       *OpenAIOAuthService
+	accountRepo        AccountRepository
+	groupRepo          GroupRepository
+	rewardRepo         ContributorRewardRepository
+	oauth              *OpenAIOAuthService
+	schedulerRefresher SchedulerAccountRefresher
+}
+
+type SchedulerAccountRefresher interface {
+	RefreshAccount(ctx context.Context, account *Account, groupIDs []int64, reason string) error
 }
 
 func NewAccountContributionService(accountRepo AccountRepository, groupRepo GroupRepository, rewardRepo ContributorRewardRepository, oauth *OpenAIOAuthService) *AccountContributionService {
 	return &AccountContributionService{accountRepo: accountRepo, groupRepo: groupRepo, rewardRepo: rewardRepo, oauth: oauth}
+}
+
+func ProvideAccountContributionService(accountRepo AccountRepository, groupRepo GroupRepository, rewardRepo ContributorRewardRepository, oauth *OpenAIOAuthService, schedulerSnapshot *SchedulerSnapshotService) *AccountContributionService {
+	svc := NewAccountContributionService(accountRepo, groupRepo, rewardRepo, oauth)
+	svc.SetSchedulerRefresher(schedulerSnapshot)
+	return svc
+}
+
+func (s *AccountContributionService) SetSchedulerRefresher(refresher SchedulerAccountRefresher) {
+	if s == nil {
+		return
+	}
+	s.schedulerRefresher = refresher
 }
 
 type SubmitOpenAIContributionInput struct {
@@ -61,6 +79,26 @@ type ContributionImportResult struct {
 	Failed  int                       `json:"failed"`
 	Items   []ContributionImportItem  `json:"items,omitempty"`
 	Errors  []ContributionImportError `json:"errors,omitempty"`
+}
+
+type ContributionImportPreview struct {
+	Total       int                             `json:"total"`
+	Valid       int                             `json:"valid"`
+	Duplicate   int                             `json:"duplicate"`
+	Unsupported int                             `json:"unsupported"`
+	Invalid     int                             `json:"invalid"`
+	Items       []ContributionImportPreviewItem `json:"items,omitempty"`
+}
+
+type ContributionImportPreviewItem struct {
+	Index           int    `json:"index"`
+	Name            string `json:"name,omitempty"`
+	Valid           bool   `json:"valid"`
+	Duplicate       bool   `json:"duplicate"`
+	Unsupported     bool   `json:"unsupported"`
+	Invalid         bool   `json:"invalid"`
+	IdentityPresent bool   `json:"identity_present"`
+	Message         string `json:"message,omitempty"`
 }
 
 type ContributionImportItem struct {
@@ -134,6 +172,80 @@ func (s *AccountContributionService) SubmitOpenAI(ctx context.Context, userID in
 		AutoPauseOnExpired:      true,
 		ContributionIdentityKey: identityKey,
 	})
+}
+
+func (s *AccountContributionService) PreviewOpenAIJSON(ctx context.Context, userID int64, input SubmitOpenAIJSONContributionInput) (ContributionImportPreview, error) {
+	preview := ContributionImportPreview{Total: len(input.Accounts)}
+	if userID <= 0 {
+		return preview, ErrUserNotFound
+	}
+	if len(input.Accounts) == 0 {
+		return preview, infraerrors.BadRequest("CONTRIBUTION_IMPORT_EMPTY", "accounts is required")
+	}
+	if len(input.Accounts) > 100 {
+		return preview, infraerrors.BadRequest("CONTRIBUTION_IMPORT_TOO_MANY", "too many accounts in one import")
+	}
+
+	seenInPayload := make(map[string]int, len(input.Accounts))
+	for i := range input.Accounts {
+		item := input.Accounts[i]
+		name := strings.TrimSpace(item.Name)
+		previewItem := ContributionImportPreviewItem{Index: i, Name: name}
+
+		if err := validateOpenAIJSONContributionAccount(item); err != nil {
+			previewItem.Message = err.Error()
+			if isContributionUnsupportedError(err) {
+				previewItem.Unsupported = true
+				preview.Unsupported++
+			} else {
+				previewItem.Invalid = true
+				preview.Invalid++
+			}
+			preview.Items = append(preview.Items, previewItem)
+			continue
+		}
+
+		enrichOpenAIContributionCredentialsFromIDToken(item.Credentials)
+		identityKey := contributionIdentityKey(item.Credentials)
+		if identityKey == "" {
+			previewItem.Invalid = true
+			previewItem.Message = "cannot determine contributed OpenAI account identity"
+			preview.Invalid++
+			preview.Items = append(preview.Items, previewItem)
+			continue
+		}
+		previewItem.IdentityPresent = true
+
+		if firstIndex, ok := seenInPayload[identityKey]; ok {
+			previewItem.Duplicate = true
+			previewItem.Message = fmt.Sprintf("duplicate with item #%d in current import", firstIndex+1)
+			preview.Duplicate++
+			preview.Items = append(preview.Items, previewItem)
+			continue
+		}
+		seenInPayload[identityKey] = i
+
+		dups, err := s.accountRepo.FindByExtraField(ctx, "contribution_identity_key", identityKey)
+		if err != nil {
+			return preview, err
+		}
+		for j := range dups {
+			if dups[j].OwnerUserID != nil && dups[j].ContributionStatus != "" {
+				previewItem.Duplicate = true
+				previewItem.Message = "openai account has already been contributed"
+				break
+			}
+		}
+		if previewItem.Duplicate {
+			preview.Duplicate++
+		} else {
+			previewItem.Valid = true
+			preview.Valid++
+		}
+		preview.Items = append(preview.Items, previewItem)
+	}
+
+	return preview, nil
 }
 
 func (s *AccountContributionService) SubmitOpenAIJSON(ctx context.Context, userID int64, input SubmitOpenAIJSONContributionInput) (ContributionImportResult, error) {
@@ -320,6 +432,11 @@ func validateOpenAIJSONContributionAccount(item OpenAIJSONContributionAccount) e
 	return nil
 }
 
+func isContributionUnsupportedError(err error) bool {
+	reason := infraerrors.Reason(err)
+	return reason == "CONTRIBUTION_IMPORT_PLATFORM_UNSUPPORTED" || reason == "CONTRIBUTION_IMPORT_TYPE_UNSUPPORTED"
+}
+
 func sanitizedContributionExtra(input map[string]any) map[string]any {
 	out := make(map[string]any, len(input)+2)
 	for key, value := range input {
@@ -386,18 +503,46 @@ func (s *AccountContributionService) Revoke(ctx context.Context, userID, account
 	account.ContributionRevokedAt = &now
 	account.Status = StatusDisabled
 	account.Schedulable = false
+	previousGroupIDs := append([]int64(nil), account.GroupIDs...)
 	if err := s.accountRepo.Update(ctx, account); err != nil {
 		return nil, err
 	}
-	return s.accountRepo.GetByID(ctx, account.ID)
+	updated, err := s.accountRepo.GetByID(ctx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	if s.schedulerRefresher != nil {
+		if err := s.schedulerRefresher.RefreshAccount(ctx, updated, previousGroupIDs, "contribution_revoke"); err != nil {
+			return nil, err
+		}
+	}
+	return updated, nil
 }
 
 func (s *AccountContributionService) ListRewards(ctx context.Context, userID int64, params pagination.PaginationParams) ([]ContributorRewardLog, *pagination.PaginationResult, error) {
 	return s.rewardRepo.ListByOwner(ctx, userID, params)
 }
 
+func (s *AccountContributionService) GetRewardSummary(ctx context.Context, userID int64) (ContributorRewardSummary, error) {
+	if userID <= 0 {
+		return ContributorRewardSummary{}, ErrUserNotFound
+	}
+	return s.rewardRepo.SummaryByOwner(ctx, userID, time.Now())
+}
+
+func (s *AccountContributionService) ListByStatus(ctx context.Context, status string, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
+	status = strings.ToLower(strings.TrimSpace(status))
+	if status == "" {
+		status = ContributionStatusPending
+	}
+	if status != "all" && status != ContributionStatusPending && status != ContributionStatusApproved && status != ContributionStatusRejected && status != ContributionStatusRevoked {
+		return nil, nil, infraerrors.BadRequest("CONTRIBUTION_STATUS_INVALID", "invalid contribution status")
+	}
+	return s.accountRepo.ListContributionsByStatus(ctx, status, params)
+}
+
 func (s *AccountContributionService) ListPending(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
-	return s.accountRepo.ListContributionsByStatus(ctx, ContributionStatusPending, params)
+	return s.ListByStatus(ctx, ContributionStatusPending, params)
 }
 
 func (s *AccountContributionService) Approve(ctx context.Context, accountID int64, input ApproveContributionInput) (*Account, error) {
