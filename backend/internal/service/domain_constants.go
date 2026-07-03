@@ -102,6 +102,14 @@ const (
 )
 
 // Group subscription type constants
+// Account contribution status constants
+const (
+	ContributionStatusPending  = "pending"
+	ContributionStatusApproved = "approved"
+	ContributionStatusRejected = "rejected"
+	ContributionStatusRevoked  = "revoked"
+)
+
 const (
 	SubscriptionTypeStandard     = domain.SubscriptionTypeStandard     // 标准计费模式（按余额扣费）
 	SubscriptionTypeSubscription = domain.SubscriptionTypeSubscription // 订阅模式（按限额控制）

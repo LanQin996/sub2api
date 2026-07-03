@@ -11,9 +11,11 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/contributorrewardlog"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -561,6 +563,36 @@ func (_u *UserUpdate) AddUsageLogs(v ...*UsageLog) *UserUpdate {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddContributedAccountIDs adds the "contributed_accounts" edge to the Account entity by IDs.
+func (_u *UserUpdate) AddContributedAccountIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddContributedAccountIDs(ids...)
+	return _u
+}
+
+// AddContributedAccounts adds the "contributed_accounts" edges to the Account entity.
+func (_u *UserUpdate) AddContributedAccounts(v ...*Account) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddContributedAccountIDs(ids...)
+}
+
+// AddContributorRewardLogIDs adds the "contributor_reward_logs" edge to the ContributorRewardLog entity by IDs.
+func (_u *UserUpdate) AddContributorRewardLogIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddContributorRewardLogIDs(ids...)
+	return _u
+}
+
+// AddContributorRewardLogs adds the "contributor_reward_logs" edges to the ContributorRewardLog entity.
+func (_u *UserUpdate) AddContributorRewardLogs(v ...*ContributorRewardLog) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddContributorRewardLogIDs(ids...)
+}
+
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
 func (_u *UserUpdate) AddAttributeValueIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAttributeValueIDs(ids...)
@@ -843,6 +875,48 @@ func (_u *UserUpdate) RemoveUsageLogs(v ...*UsageLog) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearContributedAccounts clears all "contributed_accounts" edges to the Account entity.
+func (_u *UserUpdate) ClearContributedAccounts() *UserUpdate {
+	_u.mutation.ClearContributedAccounts()
+	return _u
+}
+
+// RemoveContributedAccountIDs removes the "contributed_accounts" edge to Account entities by IDs.
+func (_u *UserUpdate) RemoveContributedAccountIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveContributedAccountIDs(ids...)
+	return _u
+}
+
+// RemoveContributedAccounts removes "contributed_accounts" edges to Account entities.
+func (_u *UserUpdate) RemoveContributedAccounts(v ...*Account) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveContributedAccountIDs(ids...)
+}
+
+// ClearContributorRewardLogs clears all "contributor_reward_logs" edges to the ContributorRewardLog entity.
+func (_u *UserUpdate) ClearContributorRewardLogs() *UserUpdate {
+	_u.mutation.ClearContributorRewardLogs()
+	return _u
+}
+
+// RemoveContributorRewardLogIDs removes the "contributor_reward_logs" edge to ContributorRewardLog entities by IDs.
+func (_u *UserUpdate) RemoveContributorRewardLogIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveContributorRewardLogIDs(ids...)
+	return _u
+}
+
+// RemoveContributorRewardLogs removes "contributor_reward_logs" edges to ContributorRewardLog entities.
+func (_u *UserUpdate) RemoveContributorRewardLogs(v ...*ContributorRewardLog) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveContributorRewardLogIDs(ids...)
 }
 
 // ClearAttributeValues clears all "attribute_values" edges to the UserAttributeValue entity.
@@ -1572,6 +1646,96 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ContributedAccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributedAccountsTable,
+			Columns: []string{user.ContributedAccountsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedContributedAccountsIDs(); len(nodes) > 0 && !_u.mutation.ContributedAccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributedAccountsTable,
+			Columns: []string{user.ContributedAccountsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ContributedAccountsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributedAccountsTable,
+			Columns: []string{user.ContributedAccountsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ContributorRewardLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributorRewardLogsTable,
+			Columns: []string{user.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedContributorRewardLogsIDs(); len(nodes) > 0 && !_u.mutation.ContributorRewardLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributorRewardLogsTable,
+			Columns: []string{user.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ContributorRewardLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributorRewardLogsTable,
+			Columns: []string{user.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -2389,6 +2553,36 @@ func (_u *UserUpdateOne) AddUsageLogs(v ...*UsageLog) *UserUpdateOne {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddContributedAccountIDs adds the "contributed_accounts" edge to the Account entity by IDs.
+func (_u *UserUpdateOne) AddContributedAccountIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddContributedAccountIDs(ids...)
+	return _u
+}
+
+// AddContributedAccounts adds the "contributed_accounts" edges to the Account entity.
+func (_u *UserUpdateOne) AddContributedAccounts(v ...*Account) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddContributedAccountIDs(ids...)
+}
+
+// AddContributorRewardLogIDs adds the "contributor_reward_logs" edge to the ContributorRewardLog entity by IDs.
+func (_u *UserUpdateOne) AddContributorRewardLogIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddContributorRewardLogIDs(ids...)
+	return _u
+}
+
+// AddContributorRewardLogs adds the "contributor_reward_logs" edges to the ContributorRewardLog entity.
+func (_u *UserUpdateOne) AddContributorRewardLogs(v ...*ContributorRewardLog) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddContributorRewardLogIDs(ids...)
+}
+
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
 func (_u *UserUpdateOne) AddAttributeValueIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAttributeValueIDs(ids...)
@@ -2671,6 +2865,48 @@ func (_u *UserUpdateOne) RemoveUsageLogs(v ...*UsageLog) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearContributedAccounts clears all "contributed_accounts" edges to the Account entity.
+func (_u *UserUpdateOne) ClearContributedAccounts() *UserUpdateOne {
+	_u.mutation.ClearContributedAccounts()
+	return _u
+}
+
+// RemoveContributedAccountIDs removes the "contributed_accounts" edge to Account entities by IDs.
+func (_u *UserUpdateOne) RemoveContributedAccountIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveContributedAccountIDs(ids...)
+	return _u
+}
+
+// RemoveContributedAccounts removes "contributed_accounts" edges to Account entities.
+func (_u *UserUpdateOne) RemoveContributedAccounts(v ...*Account) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveContributedAccountIDs(ids...)
+}
+
+// ClearContributorRewardLogs clears all "contributor_reward_logs" edges to the ContributorRewardLog entity.
+func (_u *UserUpdateOne) ClearContributorRewardLogs() *UserUpdateOne {
+	_u.mutation.ClearContributorRewardLogs()
+	return _u
+}
+
+// RemoveContributorRewardLogIDs removes the "contributor_reward_logs" edge to ContributorRewardLog entities by IDs.
+func (_u *UserUpdateOne) RemoveContributorRewardLogIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveContributorRewardLogIDs(ids...)
+	return _u
+}
+
+// RemoveContributorRewardLogs removes "contributor_reward_logs" edges to ContributorRewardLog entities.
+func (_u *UserUpdateOne) RemoveContributorRewardLogs(v ...*ContributorRewardLog) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveContributorRewardLogIDs(ids...)
 }
 
 // ClearAttributeValues clears all "attribute_values" edges to the UserAttributeValue entity.
@@ -3430,6 +3666,96 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ContributedAccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributedAccountsTable,
+			Columns: []string{user.ContributedAccountsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedContributedAccountsIDs(); len(nodes) > 0 && !_u.mutation.ContributedAccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributedAccountsTable,
+			Columns: []string{user.ContributedAccountsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ContributedAccountsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributedAccountsTable,
+			Columns: []string{user.ContributedAccountsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ContributorRewardLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributorRewardLogsTable,
+			Columns: []string{user.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedContributorRewardLogsIDs(); len(nodes) > 0 && !_u.mutation.ContributorRewardLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributorRewardLogsTable,
+			Columns: []string{user.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ContributorRewardLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributorRewardLogsTable,
+			Columns: []string{user.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

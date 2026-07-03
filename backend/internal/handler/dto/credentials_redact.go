@@ -28,6 +28,23 @@ func RedactCredentials(in map[string]any) (out map[string]any, status map[string
 	return out, status
 }
 
+// RedactAccountExtra 复制一份 account extra，剥离不应回传给前端的内部派生字段。
+func RedactAccountExtra(in map[string]any) map[string]any {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		switch k {
+		case "contribution_identity_key":
+			continue
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
 // isCredentialValuePresent 判断值是否"存在且非零"。空字符串、nil、false 均视为未配置；
 // 其余非零类型（数字、对象、字符串等）视为已配置。
 func isCredentialValuePresent(v any) bool {

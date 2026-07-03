@@ -42,6 +42,12 @@ type Account struct {
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 
+	OwnerUserID             *int64
+	ContributionStatus      string
+	ContributionSubmittedAt *time.Time
+	ContributionApprovedAt  *time.Time
+	ContributionRevokedAt   *time.Time
+
 	Schedulable bool
 
 	RateLimitedAt    *time.Time
@@ -134,8 +140,18 @@ func (a *Account) EffectiveLoadFactor() int {
 	return 1
 }
 
+func (a *Account) IsContributionSchedulable() bool {
+	if a == nil {
+		return false
+	}
+	if a.OwnerUserID == nil {
+		return a.ContributionStatus == ""
+	}
+	return a.ContributionStatus == ContributionStatusApproved
+}
+
 func (a *Account) IsSchedulable() bool {
-	if !a.IsActive() || !a.Schedulable {
+	if !a.IsActive() || !a.Schedulable || !a.IsContributionSchedulable() {
 		return false
 	}
 	now := time.Now()

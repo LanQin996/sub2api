@@ -12,10 +12,12 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
+	"github.com/Wei-Shaw/sub2api/ent/contributorrewardlog"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
 // AccountUpdate is the builder for updating Account entities.
@@ -564,6 +566,100 @@ func (_u *AccountUpdate) SetNillableQuotaDimension(v *account.QuotaDimension) *A
 	return _u
 }
 
+// SetOwnerUserID sets the "owner_user_id" field.
+func (_u *AccountUpdate) SetOwnerUserID(v int64) *AccountUpdate {
+	_u.mutation.SetOwnerUserID(v)
+	return _u
+}
+
+// SetNillableOwnerUserID sets the "owner_user_id" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableOwnerUserID(v *int64) *AccountUpdate {
+	if v != nil {
+		_u.SetOwnerUserID(*v)
+	}
+	return _u
+}
+
+// ClearOwnerUserID clears the value of the "owner_user_id" field.
+func (_u *AccountUpdate) ClearOwnerUserID() *AccountUpdate {
+	_u.mutation.ClearOwnerUserID()
+	return _u
+}
+
+// SetContributionStatus sets the "contribution_status" field.
+func (_u *AccountUpdate) SetContributionStatus(v string) *AccountUpdate {
+	_u.mutation.SetContributionStatus(v)
+	return _u
+}
+
+// SetNillableContributionStatus sets the "contribution_status" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableContributionStatus(v *string) *AccountUpdate {
+	if v != nil {
+		_u.SetContributionStatus(*v)
+	}
+	return _u
+}
+
+// SetContributionSubmittedAt sets the "contribution_submitted_at" field.
+func (_u *AccountUpdate) SetContributionSubmittedAt(v time.Time) *AccountUpdate {
+	_u.mutation.SetContributionSubmittedAt(v)
+	return _u
+}
+
+// SetNillableContributionSubmittedAt sets the "contribution_submitted_at" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableContributionSubmittedAt(v *time.Time) *AccountUpdate {
+	if v != nil {
+		_u.SetContributionSubmittedAt(*v)
+	}
+	return _u
+}
+
+// ClearContributionSubmittedAt clears the value of the "contribution_submitted_at" field.
+func (_u *AccountUpdate) ClearContributionSubmittedAt() *AccountUpdate {
+	_u.mutation.ClearContributionSubmittedAt()
+	return _u
+}
+
+// SetContributionApprovedAt sets the "contribution_approved_at" field.
+func (_u *AccountUpdate) SetContributionApprovedAt(v time.Time) *AccountUpdate {
+	_u.mutation.SetContributionApprovedAt(v)
+	return _u
+}
+
+// SetNillableContributionApprovedAt sets the "contribution_approved_at" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableContributionApprovedAt(v *time.Time) *AccountUpdate {
+	if v != nil {
+		_u.SetContributionApprovedAt(*v)
+	}
+	return _u
+}
+
+// ClearContributionApprovedAt clears the value of the "contribution_approved_at" field.
+func (_u *AccountUpdate) ClearContributionApprovedAt() *AccountUpdate {
+	_u.mutation.ClearContributionApprovedAt()
+	return _u
+}
+
+// SetContributionRevokedAt sets the "contribution_revoked_at" field.
+func (_u *AccountUpdate) SetContributionRevokedAt(v time.Time) *AccountUpdate {
+	_u.mutation.SetContributionRevokedAt(v)
+	return _u
+}
+
+// SetNillableContributionRevokedAt sets the "contribution_revoked_at" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableContributionRevokedAt(v *time.Time) *AccountUpdate {
+	if v != nil {
+		_u.SetContributionRevokedAt(*v)
+	}
+	return _u
+}
+
+// ClearContributionRevokedAt clears the value of the "contribution_revoked_at" field.
+func (_u *AccountUpdate) ClearContributionRevokedAt() *AccountUpdate {
+	_u.mutation.ClearContributionRevokedAt()
+	return _u
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_u *AccountUpdate) AddGroupIDs(ids ...int64) *AccountUpdate {
 	_u.mutation.AddGroupIDs(ids...)
@@ -631,6 +727,40 @@ func (_u *AccountUpdate) AddUsageLogs(v ...*UsageLog) *AccountUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddUsageLogIDs(ids...)
+}
+
+// AddContributorRewardLogIDs adds the "contributor_reward_logs" edge to the ContributorRewardLog entity by IDs.
+func (_u *AccountUpdate) AddContributorRewardLogIDs(ids ...int64) *AccountUpdate {
+	_u.mutation.AddContributorRewardLogIDs(ids...)
+	return _u
+}
+
+// AddContributorRewardLogs adds the "contributor_reward_logs" edges to the ContributorRewardLog entity.
+func (_u *AccountUpdate) AddContributorRewardLogs(v ...*ContributorRewardLog) *AccountUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddContributorRewardLogIDs(ids...)
+}
+
+// SetOwnerID sets the "owner" edge to the User entity by ID.
+func (_u *AccountUpdate) SetOwnerID(id int64) *AccountUpdate {
+	_u.mutation.SetOwnerID(id)
+	return _u
+}
+
+// SetNillableOwnerID sets the "owner" edge to the User entity by ID if the given value is not nil.
+func (_u *AccountUpdate) SetNillableOwnerID(id *int64) *AccountUpdate {
+	if id != nil {
+		_u = _u.SetOwnerID(*id)
+	}
+	return _u
+}
+
+// SetOwner sets the "owner" edge to the User entity.
+func (_u *AccountUpdate) SetOwner(v *User) *AccountUpdate {
+	return _u.SetOwnerID(v.ID)
 }
 
 // Mutation returns the AccountMutation object of the builder.
@@ -713,6 +843,33 @@ func (_u *AccountUpdate) RemoveUsageLogs(v ...*UsageLog) *AccountUpdate {
 	return _u.RemoveUsageLogIDs(ids...)
 }
 
+// ClearContributorRewardLogs clears all "contributor_reward_logs" edges to the ContributorRewardLog entity.
+func (_u *AccountUpdate) ClearContributorRewardLogs() *AccountUpdate {
+	_u.mutation.ClearContributorRewardLogs()
+	return _u
+}
+
+// RemoveContributorRewardLogIDs removes the "contributor_reward_logs" edge to ContributorRewardLog entities by IDs.
+func (_u *AccountUpdate) RemoveContributorRewardLogIDs(ids ...int64) *AccountUpdate {
+	_u.mutation.RemoveContributorRewardLogIDs(ids...)
+	return _u
+}
+
+// RemoveContributorRewardLogs removes "contributor_reward_logs" edges to ContributorRewardLog entities.
+func (_u *AccountUpdate) RemoveContributorRewardLogs(v ...*ContributorRewardLog) *AccountUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveContributorRewardLogIDs(ids...)
+}
+
+// ClearOwner clears the "owner" edge to the User entity.
+func (_u *AccountUpdate) ClearOwner() *AccountUpdate {
+	_u.mutation.ClearOwner()
+	return _u
+}
+
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (_u *AccountUpdate) Save(ctx context.Context) (int, error) {
 	if err := _u.defaults(); err != nil {
@@ -785,6 +942,11 @@ func (_u *AccountUpdate) check() error {
 	if v, ok := _u.mutation.QuotaDimension(); ok {
 		if err := account.QuotaDimensionValidator(v); err != nil {
 			return &ValidationError{Name: "quota_dimension", err: fmt.Errorf(`ent: validator failed for field "Account.quota_dimension": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ContributionStatus(); ok {
+		if err := account.ContributionStatusValidator(v); err != nil {
+			return &ValidationError{Name: "contribution_status", err: fmt.Errorf(`ent: validator failed for field "Account.contribution_status": %w`, err)}
 		}
 	}
 	return nil
@@ -945,6 +1107,27 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.ContributionStatus(); ok {
+		_spec.SetField(account.FieldContributionStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ContributionSubmittedAt(); ok {
+		_spec.SetField(account.FieldContributionSubmittedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ContributionSubmittedAtCleared() {
+		_spec.ClearField(account.FieldContributionSubmittedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ContributionApprovedAt(); ok {
+		_spec.SetField(account.FieldContributionApprovedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ContributionApprovedAtCleared() {
+		_spec.ClearField(account.FieldContributionApprovedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ContributionRevokedAt(); ok {
+		_spec.SetField(account.FieldContributionRevokedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ContributionRevokedAtCleared() {
+		_spec.ClearField(account.FieldContributionRevokedAt, field.TypeTime)
 	}
 	if _u.mutation.GroupsCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1144,6 +1327,80 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ContributorRewardLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.ContributorRewardLogsTable,
+			Columns: []string{account.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedContributorRewardLogsIDs(); len(nodes) > 0 && !_u.mutation.ContributorRewardLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.ContributorRewardLogsTable,
+			Columns: []string{account.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ContributorRewardLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.ContributorRewardLogsTable,
+			Columns: []string{account.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.OwnerCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   account.OwnerTable,
+			Columns: []string{account.OwnerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.OwnerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   account.OwnerTable,
+			Columns: []string{account.OwnerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1704,6 +1961,100 @@ func (_u *AccountUpdateOne) SetNillableQuotaDimension(v *account.QuotaDimension)
 	return _u
 }
 
+// SetOwnerUserID sets the "owner_user_id" field.
+func (_u *AccountUpdateOne) SetOwnerUserID(v int64) *AccountUpdateOne {
+	_u.mutation.SetOwnerUserID(v)
+	return _u
+}
+
+// SetNillableOwnerUserID sets the "owner_user_id" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableOwnerUserID(v *int64) *AccountUpdateOne {
+	if v != nil {
+		_u.SetOwnerUserID(*v)
+	}
+	return _u
+}
+
+// ClearOwnerUserID clears the value of the "owner_user_id" field.
+func (_u *AccountUpdateOne) ClearOwnerUserID() *AccountUpdateOne {
+	_u.mutation.ClearOwnerUserID()
+	return _u
+}
+
+// SetContributionStatus sets the "contribution_status" field.
+func (_u *AccountUpdateOne) SetContributionStatus(v string) *AccountUpdateOne {
+	_u.mutation.SetContributionStatus(v)
+	return _u
+}
+
+// SetNillableContributionStatus sets the "contribution_status" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableContributionStatus(v *string) *AccountUpdateOne {
+	if v != nil {
+		_u.SetContributionStatus(*v)
+	}
+	return _u
+}
+
+// SetContributionSubmittedAt sets the "contribution_submitted_at" field.
+func (_u *AccountUpdateOne) SetContributionSubmittedAt(v time.Time) *AccountUpdateOne {
+	_u.mutation.SetContributionSubmittedAt(v)
+	return _u
+}
+
+// SetNillableContributionSubmittedAt sets the "contribution_submitted_at" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableContributionSubmittedAt(v *time.Time) *AccountUpdateOne {
+	if v != nil {
+		_u.SetContributionSubmittedAt(*v)
+	}
+	return _u
+}
+
+// ClearContributionSubmittedAt clears the value of the "contribution_submitted_at" field.
+func (_u *AccountUpdateOne) ClearContributionSubmittedAt() *AccountUpdateOne {
+	_u.mutation.ClearContributionSubmittedAt()
+	return _u
+}
+
+// SetContributionApprovedAt sets the "contribution_approved_at" field.
+func (_u *AccountUpdateOne) SetContributionApprovedAt(v time.Time) *AccountUpdateOne {
+	_u.mutation.SetContributionApprovedAt(v)
+	return _u
+}
+
+// SetNillableContributionApprovedAt sets the "contribution_approved_at" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableContributionApprovedAt(v *time.Time) *AccountUpdateOne {
+	if v != nil {
+		_u.SetContributionApprovedAt(*v)
+	}
+	return _u
+}
+
+// ClearContributionApprovedAt clears the value of the "contribution_approved_at" field.
+func (_u *AccountUpdateOne) ClearContributionApprovedAt() *AccountUpdateOne {
+	_u.mutation.ClearContributionApprovedAt()
+	return _u
+}
+
+// SetContributionRevokedAt sets the "contribution_revoked_at" field.
+func (_u *AccountUpdateOne) SetContributionRevokedAt(v time.Time) *AccountUpdateOne {
+	_u.mutation.SetContributionRevokedAt(v)
+	return _u
+}
+
+// SetNillableContributionRevokedAt sets the "contribution_revoked_at" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableContributionRevokedAt(v *time.Time) *AccountUpdateOne {
+	if v != nil {
+		_u.SetContributionRevokedAt(*v)
+	}
+	return _u
+}
+
+// ClearContributionRevokedAt clears the value of the "contribution_revoked_at" field.
+func (_u *AccountUpdateOne) ClearContributionRevokedAt() *AccountUpdateOne {
+	_u.mutation.ClearContributionRevokedAt()
+	return _u
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_u *AccountUpdateOne) AddGroupIDs(ids ...int64) *AccountUpdateOne {
 	_u.mutation.AddGroupIDs(ids...)
@@ -1771,6 +2122,40 @@ func (_u *AccountUpdateOne) AddUsageLogs(v ...*UsageLog) *AccountUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.AddUsageLogIDs(ids...)
+}
+
+// AddContributorRewardLogIDs adds the "contributor_reward_logs" edge to the ContributorRewardLog entity by IDs.
+func (_u *AccountUpdateOne) AddContributorRewardLogIDs(ids ...int64) *AccountUpdateOne {
+	_u.mutation.AddContributorRewardLogIDs(ids...)
+	return _u
+}
+
+// AddContributorRewardLogs adds the "contributor_reward_logs" edges to the ContributorRewardLog entity.
+func (_u *AccountUpdateOne) AddContributorRewardLogs(v ...*ContributorRewardLog) *AccountUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddContributorRewardLogIDs(ids...)
+}
+
+// SetOwnerID sets the "owner" edge to the User entity by ID.
+func (_u *AccountUpdateOne) SetOwnerID(id int64) *AccountUpdateOne {
+	_u.mutation.SetOwnerID(id)
+	return _u
+}
+
+// SetNillableOwnerID sets the "owner" edge to the User entity by ID if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableOwnerID(id *int64) *AccountUpdateOne {
+	if id != nil {
+		_u = _u.SetOwnerID(*id)
+	}
+	return _u
+}
+
+// SetOwner sets the "owner" edge to the User entity.
+func (_u *AccountUpdateOne) SetOwner(v *User) *AccountUpdateOne {
+	return _u.SetOwnerID(v.ID)
 }
 
 // Mutation returns the AccountMutation object of the builder.
@@ -1851,6 +2236,33 @@ func (_u *AccountUpdateOne) RemoveUsageLogs(v ...*UsageLog) *AccountUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearContributorRewardLogs clears all "contributor_reward_logs" edges to the ContributorRewardLog entity.
+func (_u *AccountUpdateOne) ClearContributorRewardLogs() *AccountUpdateOne {
+	_u.mutation.ClearContributorRewardLogs()
+	return _u
+}
+
+// RemoveContributorRewardLogIDs removes the "contributor_reward_logs" edge to ContributorRewardLog entities by IDs.
+func (_u *AccountUpdateOne) RemoveContributorRewardLogIDs(ids ...int64) *AccountUpdateOne {
+	_u.mutation.RemoveContributorRewardLogIDs(ids...)
+	return _u
+}
+
+// RemoveContributorRewardLogs removes "contributor_reward_logs" edges to ContributorRewardLog entities.
+func (_u *AccountUpdateOne) RemoveContributorRewardLogs(v ...*ContributorRewardLog) *AccountUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveContributorRewardLogIDs(ids...)
+}
+
+// ClearOwner clears the "owner" edge to the User entity.
+func (_u *AccountUpdateOne) ClearOwner() *AccountUpdateOne {
+	_u.mutation.ClearOwner()
+	return _u
 }
 
 // Where appends a list predicates to the AccountUpdate builder.
@@ -1938,6 +2350,11 @@ func (_u *AccountUpdateOne) check() error {
 	if v, ok := _u.mutation.QuotaDimension(); ok {
 		if err := account.QuotaDimensionValidator(v); err != nil {
 			return &ValidationError{Name: "quota_dimension", err: fmt.Errorf(`ent: validator failed for field "Account.quota_dimension": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ContributionStatus(); ok {
+		if err := account.ContributionStatusValidator(v); err != nil {
+			return &ValidationError{Name: "contribution_status", err: fmt.Errorf(`ent: validator failed for field "Account.contribution_status": %w`, err)}
 		}
 	}
 	return nil
@@ -2115,6 +2532,27 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if value, ok := _u.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.ContributionStatus(); ok {
+		_spec.SetField(account.FieldContributionStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ContributionSubmittedAt(); ok {
+		_spec.SetField(account.FieldContributionSubmittedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ContributionSubmittedAtCleared() {
+		_spec.ClearField(account.FieldContributionSubmittedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ContributionApprovedAt(); ok {
+		_spec.SetField(account.FieldContributionApprovedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ContributionApprovedAtCleared() {
+		_spec.ClearField(account.FieldContributionApprovedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ContributionRevokedAt(); ok {
+		_spec.SetField(account.FieldContributionRevokedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ContributionRevokedAtCleared() {
+		_spec.ClearField(account.FieldContributionRevokedAt, field.TypeTime)
 	}
 	if _u.mutation.GroupsCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2314,6 +2752,80 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ContributorRewardLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.ContributorRewardLogsTable,
+			Columns: []string{account.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedContributorRewardLogsIDs(); len(nodes) > 0 && !_u.mutation.ContributorRewardLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.ContributorRewardLogsTable,
+			Columns: []string{account.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ContributorRewardLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.ContributorRewardLogsTable,
+			Columns: []string{account.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.OwnerCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   account.OwnerTable,
+			Columns: []string{account.OwnerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.OwnerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   account.OwnerTable,
+			Columns: []string{account.OwnerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

@@ -38,6 +38,14 @@ func RegisterAdminRoutes(
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 
+		// 用户贡献账号审核
+		accountContributions := admin.Group("/account-contributions")
+		{
+			accountContributions.GET("", h.AccountContribution.ListPending)
+			accountContributions.POST("/:id/approve", h.AccountContribution.Approve)
+			accountContributions.POST("/:id/reject", h.AccountContribution.Reject)
+		}
+
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
 

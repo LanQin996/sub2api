@@ -113,6 +113,16 @@ func RegisterUserRoutes(
 			redeem.POST("/invitation-codes/generate", h.Redeem.GenerateInvitationCodes)
 		}
 
+		// 用户贡献账号
+		contributions := authenticated.Group("/account-contributions")
+		{
+			contributions.POST("/openai/auth-url", h.AccountContribution.GenerateOpenAIAuthURL)
+			contributions.POST("/openai/exchange-code", h.AccountContribution.SubmitOpenAI)
+			contributions.GET("", h.AccountContribution.ListMine)
+			contributions.DELETE("/:id", h.AccountContribution.Revoke)
+			contributions.GET("/rewards", h.AccountContribution.ListRewards)
+		}
+
 		// 用户订阅
 		subscriptions := authenticated.Group("/subscriptions")
 		{

@@ -65,3 +65,22 @@ func TestAccountFromServiceShallow_NilCredentialsOmitsStatus(t *testing.T) {
 	require.Nil(t, got.Credentials)
 	require.Nil(t, got.CredentialsStatus)
 }
+
+func TestAccountFromServiceShallow_RedactsContributionIdentityKey(t *testing.T) {
+	src := &service.Account{
+		ID:       7,
+		Name:     "contributed",
+		Platform: "openai",
+		Type:     "oauth",
+		Extra: map[string]any{
+			"contribution_identity_key": "token_sha256:secret-fingerprint",
+			"plan_type":                 "plus",
+		},
+	}
+
+	got := AccountFromServiceShallow(src)
+	require.NotNil(t, got)
+	require.NotContains(t, got.Extra, "contribution_identity_key")
+	require.Equal(t, "plus", got.Extra["plan_type"])
+	require.Equal(t, "token_sha256:secret-fingerprint", src.Extra["contribution_identity_key"])
+}

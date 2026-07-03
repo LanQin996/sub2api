@@ -76,6 +76,12 @@ func (m *sessionWindowMockRepo) GetByCRSAccountID(context.Context, string) (*Acc
 func (m *sessionWindowMockRepo) FindByExtraField(context.Context, string, any) ([]Account, error) {
 	panic("unexpected")
 }
+func (m *sessionWindowMockRepo) ListContributionsByOwner(context.Context, int64, pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
+	panic("unexpected")
+}
+func (m *sessionWindowMockRepo) ListContributionsByStatus(context.Context, string, pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
+	panic("unexpected")
+}
 func (m *sessionWindowMockRepo) ListCRSAccountIDs(context.Context) (map[string]int64, error) {
 	panic("unexpected")
 }

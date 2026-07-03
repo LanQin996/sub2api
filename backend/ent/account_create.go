@@ -12,9 +12,11 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
+	"github.com/Wei-Shaw/sub2api/ent/contributorrewardlog"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
 // AccountCreate is the builder for creating a Account entity.
@@ -419,6 +421,76 @@ func (_c *AccountCreate) SetNillableQuotaDimension(v *account.QuotaDimension) *A
 	return _c
 }
 
+// SetOwnerUserID sets the "owner_user_id" field.
+func (_c *AccountCreate) SetOwnerUserID(v int64) *AccountCreate {
+	_c.mutation.SetOwnerUserID(v)
+	return _c
+}
+
+// SetNillableOwnerUserID sets the "owner_user_id" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableOwnerUserID(v *int64) *AccountCreate {
+	if v != nil {
+		_c.SetOwnerUserID(*v)
+	}
+	return _c
+}
+
+// SetContributionStatus sets the "contribution_status" field.
+func (_c *AccountCreate) SetContributionStatus(v string) *AccountCreate {
+	_c.mutation.SetContributionStatus(v)
+	return _c
+}
+
+// SetNillableContributionStatus sets the "contribution_status" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableContributionStatus(v *string) *AccountCreate {
+	if v != nil {
+		_c.SetContributionStatus(*v)
+	}
+	return _c
+}
+
+// SetContributionSubmittedAt sets the "contribution_submitted_at" field.
+func (_c *AccountCreate) SetContributionSubmittedAt(v time.Time) *AccountCreate {
+	_c.mutation.SetContributionSubmittedAt(v)
+	return _c
+}
+
+// SetNillableContributionSubmittedAt sets the "contribution_submitted_at" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableContributionSubmittedAt(v *time.Time) *AccountCreate {
+	if v != nil {
+		_c.SetContributionSubmittedAt(*v)
+	}
+	return _c
+}
+
+// SetContributionApprovedAt sets the "contribution_approved_at" field.
+func (_c *AccountCreate) SetContributionApprovedAt(v time.Time) *AccountCreate {
+	_c.mutation.SetContributionApprovedAt(v)
+	return _c
+}
+
+// SetNillableContributionApprovedAt sets the "contribution_approved_at" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableContributionApprovedAt(v *time.Time) *AccountCreate {
+	if v != nil {
+		_c.SetContributionApprovedAt(*v)
+	}
+	return _c
+}
+
+// SetContributionRevokedAt sets the "contribution_revoked_at" field.
+func (_c *AccountCreate) SetContributionRevokedAt(v time.Time) *AccountCreate {
+	_c.mutation.SetContributionRevokedAt(v)
+	return _c
+}
+
+// SetNillableContributionRevokedAt sets the "contribution_revoked_at" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableContributionRevokedAt(v *time.Time) *AccountCreate {
+	if v != nil {
+		_c.SetContributionRevokedAt(*v)
+	}
+	return _c
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_c *AccountCreate) AddGroupIDs(ids ...int64) *AccountCreate {
 	_c.mutation.AddGroupIDs(ids...)
@@ -486,6 +558,40 @@ func (_c *AccountCreate) AddUsageLogs(v ...*UsageLog) *AccountCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddUsageLogIDs(ids...)
+}
+
+// AddContributorRewardLogIDs adds the "contributor_reward_logs" edge to the ContributorRewardLog entity by IDs.
+func (_c *AccountCreate) AddContributorRewardLogIDs(ids ...int64) *AccountCreate {
+	_c.mutation.AddContributorRewardLogIDs(ids...)
+	return _c
+}
+
+// AddContributorRewardLogs adds the "contributor_reward_logs" edges to the ContributorRewardLog entity.
+func (_c *AccountCreate) AddContributorRewardLogs(v ...*ContributorRewardLog) *AccountCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddContributorRewardLogIDs(ids...)
+}
+
+// SetOwnerID sets the "owner" edge to the User entity by ID.
+func (_c *AccountCreate) SetOwnerID(id int64) *AccountCreate {
+	_c.mutation.SetOwnerID(id)
+	return _c
+}
+
+// SetNillableOwnerID sets the "owner" edge to the User entity by ID if the given value is not nil.
+func (_c *AccountCreate) SetNillableOwnerID(id *int64) *AccountCreate {
+	if id != nil {
+		_c = _c.SetOwnerID(*id)
+	}
+	return _c
+}
+
+// SetOwner sets the "owner" edge to the User entity.
+func (_c *AccountCreate) SetOwner(v *User) *AccountCreate {
+	return _c.SetOwnerID(v.ID)
 }
 
 // Mutation returns the AccountMutation object of the builder.
@@ -581,6 +687,10 @@ func (_c *AccountCreate) defaults() error {
 		v := account.DefaultQuotaDimension
 		_c.mutation.SetQuotaDimension(v)
 	}
+	if _, ok := _c.mutation.ContributionStatus(); !ok {
+		v := account.DefaultContributionStatus
+		_c.mutation.SetContributionStatus(v)
+	}
 	return nil
 }
 
@@ -656,6 +766,14 @@ func (_c *AccountCreate) check() error {
 	if v, ok := _c.mutation.QuotaDimension(); ok {
 		if err := account.QuotaDimensionValidator(v); err != nil {
 			return &ValidationError{Name: "quota_dimension", err: fmt.Errorf(`ent: validator failed for field "Account.quota_dimension": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ContributionStatus(); !ok {
+		return &ValidationError{Name: "contribution_status", err: errors.New(`ent: missing required field "Account.contribution_status"`)}
+	}
+	if v, ok := _c.mutation.ContributionStatus(); ok {
+		if err := account.ContributionStatusValidator(v); err != nil {
+			return &ValidationError{Name: "contribution_status", err: fmt.Errorf(`ent: validator failed for field "Account.contribution_status": %w`, err)}
 		}
 	}
 	return nil
@@ -801,6 +919,22 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
 		_node.QuotaDimension = value
 	}
+	if value, ok := _c.mutation.ContributionStatus(); ok {
+		_spec.SetField(account.FieldContributionStatus, field.TypeString, value)
+		_node.ContributionStatus = value
+	}
+	if value, ok := _c.mutation.ContributionSubmittedAt(); ok {
+		_spec.SetField(account.FieldContributionSubmittedAt, field.TypeTime, value)
+		_node.ContributionSubmittedAt = &value
+	}
+	if value, ok := _c.mutation.ContributionApprovedAt(); ok {
+		_spec.SetField(account.FieldContributionApprovedAt, field.TypeTime, value)
+		_node.ContributionApprovedAt = &value
+	}
+	if value, ok := _c.mutation.ContributionRevokedAt(); ok {
+		_spec.SetField(account.FieldContributionRevokedAt, field.TypeTime, value)
+		_node.ContributionRevokedAt = &value
+	}
 	if nodes := _c.mutation.GroupsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2M,
@@ -885,6 +1019,39 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ContributorRewardLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.ContributorRewardLogsTable,
+			Columns: []string{account.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.OwnerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   account.OwnerTable,
+			Columns: []string{account.OwnerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.OwnerUserID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -1428,6 +1595,90 @@ func (u *AccountUpsert) SetQuotaDimension(v account.QuotaDimension) *AccountUpse
 // UpdateQuotaDimension sets the "quota_dimension" field to the value that was provided on create.
 func (u *AccountUpsert) UpdateQuotaDimension() *AccountUpsert {
 	u.SetExcluded(account.FieldQuotaDimension)
+	return u
+}
+
+// SetOwnerUserID sets the "owner_user_id" field.
+func (u *AccountUpsert) SetOwnerUserID(v int64) *AccountUpsert {
+	u.Set(account.FieldOwnerUserID, v)
+	return u
+}
+
+// UpdateOwnerUserID sets the "owner_user_id" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateOwnerUserID() *AccountUpsert {
+	u.SetExcluded(account.FieldOwnerUserID)
+	return u
+}
+
+// ClearOwnerUserID clears the value of the "owner_user_id" field.
+func (u *AccountUpsert) ClearOwnerUserID() *AccountUpsert {
+	u.SetNull(account.FieldOwnerUserID)
+	return u
+}
+
+// SetContributionStatus sets the "contribution_status" field.
+func (u *AccountUpsert) SetContributionStatus(v string) *AccountUpsert {
+	u.Set(account.FieldContributionStatus, v)
+	return u
+}
+
+// UpdateContributionStatus sets the "contribution_status" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateContributionStatus() *AccountUpsert {
+	u.SetExcluded(account.FieldContributionStatus)
+	return u
+}
+
+// SetContributionSubmittedAt sets the "contribution_submitted_at" field.
+func (u *AccountUpsert) SetContributionSubmittedAt(v time.Time) *AccountUpsert {
+	u.Set(account.FieldContributionSubmittedAt, v)
+	return u
+}
+
+// UpdateContributionSubmittedAt sets the "contribution_submitted_at" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateContributionSubmittedAt() *AccountUpsert {
+	u.SetExcluded(account.FieldContributionSubmittedAt)
+	return u
+}
+
+// ClearContributionSubmittedAt clears the value of the "contribution_submitted_at" field.
+func (u *AccountUpsert) ClearContributionSubmittedAt() *AccountUpsert {
+	u.SetNull(account.FieldContributionSubmittedAt)
+	return u
+}
+
+// SetContributionApprovedAt sets the "contribution_approved_at" field.
+func (u *AccountUpsert) SetContributionApprovedAt(v time.Time) *AccountUpsert {
+	u.Set(account.FieldContributionApprovedAt, v)
+	return u
+}
+
+// UpdateContributionApprovedAt sets the "contribution_approved_at" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateContributionApprovedAt() *AccountUpsert {
+	u.SetExcluded(account.FieldContributionApprovedAt)
+	return u
+}
+
+// ClearContributionApprovedAt clears the value of the "contribution_approved_at" field.
+func (u *AccountUpsert) ClearContributionApprovedAt() *AccountUpsert {
+	u.SetNull(account.FieldContributionApprovedAt)
+	return u
+}
+
+// SetContributionRevokedAt sets the "contribution_revoked_at" field.
+func (u *AccountUpsert) SetContributionRevokedAt(v time.Time) *AccountUpsert {
+	u.Set(account.FieldContributionRevokedAt, v)
+	return u
+}
+
+// UpdateContributionRevokedAt sets the "contribution_revoked_at" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateContributionRevokedAt() *AccountUpsert {
+	u.SetExcluded(account.FieldContributionRevokedAt)
+	return u
+}
+
+// ClearContributionRevokedAt clears the value of the "contribution_revoked_at" field.
+func (u *AccountUpsert) ClearContributionRevokedAt() *AccountUpsert {
+	u.SetNull(account.FieldContributionRevokedAt)
 	return u
 }
 
@@ -2047,6 +2298,104 @@ func (u *AccountUpsertOne) SetQuotaDimension(v account.QuotaDimension) *AccountU
 func (u *AccountUpsertOne) UpdateQuotaDimension() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateQuotaDimension()
+	})
+}
+
+// SetOwnerUserID sets the "owner_user_id" field.
+func (u *AccountUpsertOne) SetOwnerUserID(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetOwnerUserID(v)
+	})
+}
+
+// UpdateOwnerUserID sets the "owner_user_id" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateOwnerUserID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateOwnerUserID()
+	})
+}
+
+// ClearOwnerUserID clears the value of the "owner_user_id" field.
+func (u *AccountUpsertOne) ClearOwnerUserID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearOwnerUserID()
+	})
+}
+
+// SetContributionStatus sets the "contribution_status" field.
+func (u *AccountUpsertOne) SetContributionStatus(v string) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetContributionStatus(v)
+	})
+}
+
+// UpdateContributionStatus sets the "contribution_status" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateContributionStatus() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateContributionStatus()
+	})
+}
+
+// SetContributionSubmittedAt sets the "contribution_submitted_at" field.
+func (u *AccountUpsertOne) SetContributionSubmittedAt(v time.Time) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetContributionSubmittedAt(v)
+	})
+}
+
+// UpdateContributionSubmittedAt sets the "contribution_submitted_at" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateContributionSubmittedAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateContributionSubmittedAt()
+	})
+}
+
+// ClearContributionSubmittedAt clears the value of the "contribution_submitted_at" field.
+func (u *AccountUpsertOne) ClearContributionSubmittedAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearContributionSubmittedAt()
+	})
+}
+
+// SetContributionApprovedAt sets the "contribution_approved_at" field.
+func (u *AccountUpsertOne) SetContributionApprovedAt(v time.Time) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetContributionApprovedAt(v)
+	})
+}
+
+// UpdateContributionApprovedAt sets the "contribution_approved_at" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateContributionApprovedAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateContributionApprovedAt()
+	})
+}
+
+// ClearContributionApprovedAt clears the value of the "contribution_approved_at" field.
+func (u *AccountUpsertOne) ClearContributionApprovedAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearContributionApprovedAt()
+	})
+}
+
+// SetContributionRevokedAt sets the "contribution_revoked_at" field.
+func (u *AccountUpsertOne) SetContributionRevokedAt(v time.Time) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetContributionRevokedAt(v)
+	})
+}
+
+// UpdateContributionRevokedAt sets the "contribution_revoked_at" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateContributionRevokedAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateContributionRevokedAt()
+	})
+}
+
+// ClearContributionRevokedAt clears the value of the "contribution_revoked_at" field.
+func (u *AccountUpsertOne) ClearContributionRevokedAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearContributionRevokedAt()
 	})
 }
 
@@ -2832,6 +3181,104 @@ func (u *AccountUpsertBulk) SetQuotaDimension(v account.QuotaDimension) *Account
 func (u *AccountUpsertBulk) UpdateQuotaDimension() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateQuotaDimension()
+	})
+}
+
+// SetOwnerUserID sets the "owner_user_id" field.
+func (u *AccountUpsertBulk) SetOwnerUserID(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetOwnerUserID(v)
+	})
+}
+
+// UpdateOwnerUserID sets the "owner_user_id" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateOwnerUserID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateOwnerUserID()
+	})
+}
+
+// ClearOwnerUserID clears the value of the "owner_user_id" field.
+func (u *AccountUpsertBulk) ClearOwnerUserID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearOwnerUserID()
+	})
+}
+
+// SetContributionStatus sets the "contribution_status" field.
+func (u *AccountUpsertBulk) SetContributionStatus(v string) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetContributionStatus(v)
+	})
+}
+
+// UpdateContributionStatus sets the "contribution_status" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateContributionStatus() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateContributionStatus()
+	})
+}
+
+// SetContributionSubmittedAt sets the "contribution_submitted_at" field.
+func (u *AccountUpsertBulk) SetContributionSubmittedAt(v time.Time) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetContributionSubmittedAt(v)
+	})
+}
+
+// UpdateContributionSubmittedAt sets the "contribution_submitted_at" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateContributionSubmittedAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateContributionSubmittedAt()
+	})
+}
+
+// ClearContributionSubmittedAt clears the value of the "contribution_submitted_at" field.
+func (u *AccountUpsertBulk) ClearContributionSubmittedAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearContributionSubmittedAt()
+	})
+}
+
+// SetContributionApprovedAt sets the "contribution_approved_at" field.
+func (u *AccountUpsertBulk) SetContributionApprovedAt(v time.Time) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetContributionApprovedAt(v)
+	})
+}
+
+// UpdateContributionApprovedAt sets the "contribution_approved_at" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateContributionApprovedAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateContributionApprovedAt()
+	})
+}
+
+// ClearContributionApprovedAt clears the value of the "contribution_approved_at" field.
+func (u *AccountUpsertBulk) ClearContributionApprovedAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearContributionApprovedAt()
+	})
+}
+
+// SetContributionRevokedAt sets the "contribution_revoked_at" field.
+func (u *AccountUpsertBulk) SetContributionRevokedAt(v time.Time) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetContributionRevokedAt(v)
+	})
+}
+
+// UpdateContributionRevokedAt sets the "contribution_revoked_at" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateContributionRevokedAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateContributionRevokedAt()
+	})
+}
+
+// ClearContributionRevokedAt clears the value of the "contribution_revoked_at" field.
+func (u *AccountUpsertBulk) ClearContributionRevokedAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearContributionRevokedAt()
 	})
 }
 

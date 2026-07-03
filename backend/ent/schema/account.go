@@ -201,6 +201,16 @@ func (Account) Fields() []ent.Field {
 			Comment("Parent account id for a linked spark shadow (NULL = normal)."),
 		field.Enum("quota_dimension").Values("global", "spark").Default("global").
 			Comment("'global' (default) or 'spark' (shadow reads codex_bengalfox)."),
+
+		// 用户贡献共享号池字段。owner_user_id 非空表示该账号由站内用户贡献；
+		// contribution_status 为空表示普通管理员账号，非空时仅 approved 可被调度。
+		field.Int64("owner_user_id").Optional().Nillable().
+			Comment("User who contributed this account; NULL = platform/admin-owned account."),
+		field.String("contribution_status").MaxLen(20).Default("").
+			Comment("Contribution lifecycle: '' for normal accounts, or pending/approved/rejected/revoked."),
+		field.Time("contribution_submitted_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Time("contribution_approved_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Time("contribution_revoked_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 
@@ -227,6 +237,11 @@ func (Account) Edges() []ent.Edge {
 			Unique(),
 		// usage_logs: 该账户的使用日志
 		edge.To("usage_logs", UsageLog.Type),
+		edge.To("contributor_reward_logs", ContributorRewardLog.Type),
+		edge.From("owner", User.Type).
+			Ref("contributed_accounts").
+			Field("owner_user_id").
+			Unique(),
 	}
 }
 
@@ -249,5 +264,7 @@ func (Account) Indexes() []ent.Index {
 		index.Fields("priority", "status"),
 		index.Fields("deleted_at"), // 软删除查询优化
 		index.Fields("parent_account_id"),
+		index.Fields("owner_user_id"),
+		index.Fields("contribution_status"),
 	}
 }

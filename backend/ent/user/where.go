@@ -1562,6 +1562,52 @@ func HasUsageLogsWith(preds ...predicate.UsageLog) predicate.User {
 	})
 }
 
+// HasContributedAccounts applies the HasEdge predicate on the "contributed_accounts" edge.
+func HasContributedAccounts() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ContributedAccountsTable, ContributedAccountsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasContributedAccountsWith applies the HasEdge predicate on the "contributed_accounts" edge with a given conditions (other predicates).
+func HasContributedAccountsWith(preds ...predicate.Account) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newContributedAccountsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasContributorRewardLogs applies the HasEdge predicate on the "contributor_reward_logs" edge.
+func HasContributorRewardLogs() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ContributorRewardLogsTable, ContributorRewardLogsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasContributorRewardLogsWith applies the HasEdge predicate on the "contributor_reward_logs" edge with a given conditions (other predicates).
+func HasContributorRewardLogsWith(preds ...predicate.ContributorRewardLog) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newContributorRewardLogsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasAttributeValues applies the HasEdge predicate on the "attribute_values" edge.
 func HasAttributeValues() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

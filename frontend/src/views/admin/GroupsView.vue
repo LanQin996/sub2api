@@ -219,6 +219,12 @@
             >
           </template>
 
+          <template #cell-contributor_reward_multiplier="{ value }">
+            <span class="text-sm text-gray-700 dark:text-gray-300"
+              >{{ value ?? 0 }}x</span
+            >
+          </template>
+
           <template #cell-is_exclusive="{ value }">
             <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
               {{
@@ -530,6 +536,21 @@
             data-tour="group-form-multiplier"
           />
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.contributorRewardMultiplier")
+          }}</label>
+          <input
+            v-model.number="createForm.contributor_reward_multiplier"
+            type="number"
+            step="0.001"
+            min="0"
+            class="input"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.contributorRewardMultiplierHint") }}
+          </p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -1867,6 +1888,21 @@
             class="input"
             data-tour="group-form-multiplier"
           />
+        </div>
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.contributorRewardMultiplier")
+          }}</label>
+          <input
+            v-model.number="editForm.contributor_reward_multiplier"
+            type="number"
+            step="0.001"
+            min="0"
+            class="input"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.contributorRewardMultiplierHint") }}
+          </p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -3242,6 +3278,11 @@ const allColumns = computed<Column[]>(() => [
     sortable: true,
   },
   {
+    key: "contributor_reward_multiplier",
+    label: t("admin.groups.columns.contributorRewardMultiplier"),
+    sortable: true,
+  },
+  {
     key: "is_exclusive",
     label: t("admin.groups.columns.type"),
     sortable: true,
@@ -3542,6 +3583,7 @@ const createForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  contributor_reward_multiplier: 0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -3877,6 +3919,7 @@ const editForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  contributor_reward_multiplier: 0,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -4152,6 +4195,7 @@ const closeCreateModal = () => {
   createForm.description = "";
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
+  createForm.contributor_reward_multiplier = 0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
@@ -4210,6 +4254,17 @@ const normalizeRateMultiplier = (
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1;
 };
 
+const normalizeNonNegativeNumber = (
+  value: number | string | null | undefined,
+  fallback = 0,
+): number => {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
@@ -4256,6 +4311,10 @@ const handleCreateGroup = async () => {
     requestData.image_rate_multiplier = normalizeRateMultiplier(
       requestData.image_rate_multiplier,
     );
+    requestData.contributor_reward_multiplier = normalizeNonNegativeNumber(
+      requestData.contributor_reward_multiplier,
+      0,
+    );
     requestData.peak_rate_enabled = createForm.peak_rate_enabled;
     requestData.peak_start = createForm.peak_start;
     requestData.peak_end = createForm.peak_end;
@@ -4287,6 +4346,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.description = group.description || "";
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
+  editForm.contributor_reward_multiplier =
+    group.contributor_reward_multiplier ?? 0;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
@@ -4408,6 +4469,10 @@ const handleUpdateGroup = async () => {
     payload.monthly_limit_usd = emptyToNull(payload.monthly_limit_usd);
     payload.image_rate_multiplier = normalizeRateMultiplier(
       payload.image_rate_multiplier,
+    );
+    payload.contributor_reward_multiplier = normalizeNonNegativeNumber(
+      payload.contributor_reward_multiplier,
+      0,
     );
     payload.peak_rate_enabled = editForm.peak_rate_enabled;
     payload.peak_start = editForm.peak_start;

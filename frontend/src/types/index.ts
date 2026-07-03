@@ -510,6 +510,7 @@ export interface Group {
   description: string | null
   platform: GroupPlatform
   rate_multiplier: number
+  contributor_reward_multiplier: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   is_exclusive: boolean
   status: 'active' | 'inactive'
@@ -636,6 +637,7 @@ export interface CreateGroupRequest {
   description?: string | null
   platform?: GroupPlatform
   rate_multiplier?: number
+  contributor_reward_multiplier?: number
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
@@ -674,6 +676,7 @@ export interface UpdateGroupRequest {
   description?: string | null
   platform?: GroupPlatform
   rate_multiplier?: number
+  contributor_reward_multiplier?: number
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
@@ -868,6 +871,11 @@ export interface Account {
   auto_pause_on_expired: boolean
   created_at: string
   updated_at: string
+  owner_user_id?: number | null
+  contribution_status?: 'pending' | 'approved' | 'rejected' | 'revoked' | ''
+  contribution_submitted_at?: string | null
+  contribution_approved_at?: string | null
+  contribution_revoked_at?: string | null
   proxy?: Proxy
   group_ids?: number[] // Groups this account belongs to
   groups?: Group[] // Preloaded group objects
@@ -1910,6 +1918,21 @@ export interface AccountUsageStatsResponse {
   models: ModelStat[]
   endpoints: EndpointStat[]
   upstream_endpoints: EndpointStat[]
+}
+
+export interface ContributorRewardLog {
+  id: number
+  request_id: string
+  api_key_id: number
+  owner_user_id: number
+  consumer_user_id: number
+  account_id: number
+  group_id: number
+  total_cost: number
+  actual_cost: number
+  reward_multiplier: number
+  reward_amount: number
+  created_at: string
 }
 
 // ==================== User Attribute Types ====================

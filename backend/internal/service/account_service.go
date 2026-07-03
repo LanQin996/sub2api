@@ -31,6 +31,8 @@ type AccountRepository interface {
 	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error)
 	// FindByExtraField 根据 extra 字段中的键值对查找账号
 	FindByExtraField(ctx context.Context, key string, value any) ([]Account, error)
+	ListContributionsByOwner(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
+	ListContributionsByStatus(ctx context.Context, status string, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
 	// ListCRSAccountIDs returns a map of crs_account_id -> local account ID
 	// for all accounts that have been synced from CRS.
 	ListCRSAccountIDs(ctx context.Context) (map[string]int64, error)

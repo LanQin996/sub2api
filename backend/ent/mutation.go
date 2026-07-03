@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/contributorrewardlog"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -72,6 +73,7 @@ const (
 	TypeChannelMonitorDailyRollup     = "ChannelMonitorDailyRollup"
 	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
 	TypeChannelMonitorRequestTemplate = "ChannelMonitorRequestTemplate"
+	TypeContributorRewardLog          = "ContributorRewardLog"
 	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
 	TypeGroup                         = "Group"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
@@ -2276,60 +2278,69 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
 type AccountMutation struct {
 	config
-	op                          Op
-	typ                         string
-	id                          *int64
-	created_at                  *time.Time
-	updated_at                  *time.Time
-	deleted_at                  *time.Time
-	name                        *string
-	notes                       *string
-	platform                    *string
-	_type                       *string
-	credentials                 *map[string]interface{}
-	extra                       *map[string]interface{}
-	proxy_fallback_origin_id    *int64
-	addproxy_fallback_origin_id *int64
-	concurrency                 *int
-	addconcurrency              *int
-	load_factor                 *int
-	addload_factor              *int
-	priority                    *int
-	addpriority                 *int
-	rate_multiplier             *float64
-	addrate_multiplier          *float64
-	status                      *string
-	error_message               *string
-	last_used_at                *time.Time
-	expires_at                  *time.Time
-	auto_pause_on_expired       *bool
-	schedulable                 *bool
-	rate_limited_at             *time.Time
-	rate_limit_reset_at         *time.Time
-	overload_until              *time.Time
-	temp_unschedulable_until    *time.Time
-	temp_unschedulable_reason   *string
-	session_window_start        *time.Time
-	session_window_end          *time.Time
-	session_window_status       *string
-	quota_dimension             *account.QuotaDimension
-	clearedFields               map[string]struct{}
-	groups                      map[int64]struct{}
-	removedgroups               map[int64]struct{}
-	clearedgroups               bool
-	proxy                       *int64
-	clearedproxy                bool
-	parent                      *int64
-	clearedparent               bool
-	children                    map[int64]struct{}
-	removedchildren             map[int64]struct{}
-	clearedchildren             bool
-	usage_logs                  map[int64]struct{}
-	removedusage_logs           map[int64]struct{}
-	clearedusage_logs           bool
-	done                        bool
-	oldValue                    func(context.Context) (*Account, error)
-	predicates                  []predicate.Account
+	op                             Op
+	typ                            string
+	id                             *int64
+	created_at                     *time.Time
+	updated_at                     *time.Time
+	deleted_at                     *time.Time
+	name                           *string
+	notes                          *string
+	platform                       *string
+	_type                          *string
+	credentials                    *map[string]interface{}
+	extra                          *map[string]interface{}
+	proxy_fallback_origin_id       *int64
+	addproxy_fallback_origin_id    *int64
+	concurrency                    *int
+	addconcurrency                 *int
+	load_factor                    *int
+	addload_factor                 *int
+	priority                       *int
+	addpriority                    *int
+	rate_multiplier                *float64
+	addrate_multiplier             *float64
+	status                         *string
+	error_message                  *string
+	last_used_at                   *time.Time
+	expires_at                     *time.Time
+	auto_pause_on_expired          *bool
+	schedulable                    *bool
+	rate_limited_at                *time.Time
+	rate_limit_reset_at            *time.Time
+	overload_until                 *time.Time
+	temp_unschedulable_until       *time.Time
+	temp_unschedulable_reason      *string
+	session_window_start           *time.Time
+	session_window_end             *time.Time
+	session_window_status          *string
+	quota_dimension                *account.QuotaDimension
+	contribution_status            *string
+	contribution_submitted_at      *time.Time
+	contribution_approved_at       *time.Time
+	contribution_revoked_at        *time.Time
+	clearedFields                  map[string]struct{}
+	groups                         map[int64]struct{}
+	removedgroups                  map[int64]struct{}
+	clearedgroups                  bool
+	proxy                          *int64
+	clearedproxy                   bool
+	parent                         *int64
+	clearedparent                  bool
+	children                       map[int64]struct{}
+	removedchildren                map[int64]struct{}
+	clearedchildren                bool
+	usage_logs                     map[int64]struct{}
+	removedusage_logs              map[int64]struct{}
+	clearedusage_logs              bool
+	contributor_reward_logs        map[int64]struct{}
+	removedcontributor_reward_logs map[int64]struct{}
+	clearedcontributor_reward_logs bool
+	owner                          *int64
+	clearedowner                   bool
+	done                           bool
+	oldValue                       func(context.Context) (*Account, error)
+	predicates                     []predicate.Account
 }
 
 var _ ent.Mutation = (*AccountMutation)(nil)
@@ -3869,6 +3880,238 @@ func (m *AccountMutation) ResetQuotaDimension() {
 	m.quota_dimension = nil
 }
 
+// SetOwnerUserID sets the "owner_user_id" field.
+func (m *AccountMutation) SetOwnerUserID(i int64) {
+	m.owner = &i
+}
+
+// OwnerUserID returns the value of the "owner_user_id" field in the mutation.
+func (m *AccountMutation) OwnerUserID() (r int64, exists bool) {
+	v := m.owner
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOwnerUserID returns the old "owner_user_id" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldOwnerUserID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOwnerUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOwnerUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOwnerUserID: %w", err)
+	}
+	return oldValue.OwnerUserID, nil
+}
+
+// ClearOwnerUserID clears the value of the "owner_user_id" field.
+func (m *AccountMutation) ClearOwnerUserID() {
+	m.owner = nil
+	m.clearedFields[account.FieldOwnerUserID] = struct{}{}
+}
+
+// OwnerUserIDCleared returns if the "owner_user_id" field was cleared in this mutation.
+func (m *AccountMutation) OwnerUserIDCleared() bool {
+	_, ok := m.clearedFields[account.FieldOwnerUserID]
+	return ok
+}
+
+// ResetOwnerUserID resets all changes to the "owner_user_id" field.
+func (m *AccountMutation) ResetOwnerUserID() {
+	m.owner = nil
+	delete(m.clearedFields, account.FieldOwnerUserID)
+}
+
+// SetContributionStatus sets the "contribution_status" field.
+func (m *AccountMutation) SetContributionStatus(s string) {
+	m.contribution_status = &s
+}
+
+// ContributionStatus returns the value of the "contribution_status" field in the mutation.
+func (m *AccountMutation) ContributionStatus() (r string, exists bool) {
+	v := m.contribution_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContributionStatus returns the old "contribution_status" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldContributionStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContributionStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContributionStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContributionStatus: %w", err)
+	}
+	return oldValue.ContributionStatus, nil
+}
+
+// ResetContributionStatus resets all changes to the "contribution_status" field.
+func (m *AccountMutation) ResetContributionStatus() {
+	m.contribution_status = nil
+}
+
+// SetContributionSubmittedAt sets the "contribution_submitted_at" field.
+func (m *AccountMutation) SetContributionSubmittedAt(t time.Time) {
+	m.contribution_submitted_at = &t
+}
+
+// ContributionSubmittedAt returns the value of the "contribution_submitted_at" field in the mutation.
+func (m *AccountMutation) ContributionSubmittedAt() (r time.Time, exists bool) {
+	v := m.contribution_submitted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContributionSubmittedAt returns the old "contribution_submitted_at" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldContributionSubmittedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContributionSubmittedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContributionSubmittedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContributionSubmittedAt: %w", err)
+	}
+	return oldValue.ContributionSubmittedAt, nil
+}
+
+// ClearContributionSubmittedAt clears the value of the "contribution_submitted_at" field.
+func (m *AccountMutation) ClearContributionSubmittedAt() {
+	m.contribution_submitted_at = nil
+	m.clearedFields[account.FieldContributionSubmittedAt] = struct{}{}
+}
+
+// ContributionSubmittedAtCleared returns if the "contribution_submitted_at" field was cleared in this mutation.
+func (m *AccountMutation) ContributionSubmittedAtCleared() bool {
+	_, ok := m.clearedFields[account.FieldContributionSubmittedAt]
+	return ok
+}
+
+// ResetContributionSubmittedAt resets all changes to the "contribution_submitted_at" field.
+func (m *AccountMutation) ResetContributionSubmittedAt() {
+	m.contribution_submitted_at = nil
+	delete(m.clearedFields, account.FieldContributionSubmittedAt)
+}
+
+// SetContributionApprovedAt sets the "contribution_approved_at" field.
+func (m *AccountMutation) SetContributionApprovedAt(t time.Time) {
+	m.contribution_approved_at = &t
+}
+
+// ContributionApprovedAt returns the value of the "contribution_approved_at" field in the mutation.
+func (m *AccountMutation) ContributionApprovedAt() (r time.Time, exists bool) {
+	v := m.contribution_approved_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContributionApprovedAt returns the old "contribution_approved_at" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldContributionApprovedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContributionApprovedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContributionApprovedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContributionApprovedAt: %w", err)
+	}
+	return oldValue.ContributionApprovedAt, nil
+}
+
+// ClearContributionApprovedAt clears the value of the "contribution_approved_at" field.
+func (m *AccountMutation) ClearContributionApprovedAt() {
+	m.contribution_approved_at = nil
+	m.clearedFields[account.FieldContributionApprovedAt] = struct{}{}
+}
+
+// ContributionApprovedAtCleared returns if the "contribution_approved_at" field was cleared in this mutation.
+func (m *AccountMutation) ContributionApprovedAtCleared() bool {
+	_, ok := m.clearedFields[account.FieldContributionApprovedAt]
+	return ok
+}
+
+// ResetContributionApprovedAt resets all changes to the "contribution_approved_at" field.
+func (m *AccountMutation) ResetContributionApprovedAt() {
+	m.contribution_approved_at = nil
+	delete(m.clearedFields, account.FieldContributionApprovedAt)
+}
+
+// SetContributionRevokedAt sets the "contribution_revoked_at" field.
+func (m *AccountMutation) SetContributionRevokedAt(t time.Time) {
+	m.contribution_revoked_at = &t
+}
+
+// ContributionRevokedAt returns the value of the "contribution_revoked_at" field in the mutation.
+func (m *AccountMutation) ContributionRevokedAt() (r time.Time, exists bool) {
+	v := m.contribution_revoked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContributionRevokedAt returns the old "contribution_revoked_at" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldContributionRevokedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContributionRevokedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContributionRevokedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContributionRevokedAt: %w", err)
+	}
+	return oldValue.ContributionRevokedAt, nil
+}
+
+// ClearContributionRevokedAt clears the value of the "contribution_revoked_at" field.
+func (m *AccountMutation) ClearContributionRevokedAt() {
+	m.contribution_revoked_at = nil
+	m.clearedFields[account.FieldContributionRevokedAt] = struct{}{}
+}
+
+// ContributionRevokedAtCleared returns if the "contribution_revoked_at" field was cleared in this mutation.
+func (m *AccountMutation) ContributionRevokedAtCleared() bool {
+	_, ok := m.clearedFields[account.FieldContributionRevokedAt]
+	return ok
+}
+
+// ResetContributionRevokedAt resets all changes to the "contribution_revoked_at" field.
+func (m *AccountMutation) ResetContributionRevokedAt() {
+	m.contribution_revoked_at = nil
+	delete(m.clearedFields, account.FieldContributionRevokedAt)
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by ids.
 func (m *AccountMutation) AddGroupIDs(ids ...int64) {
 	if m.groups == nil {
@@ -4098,6 +4341,100 @@ func (m *AccountMutation) ResetUsageLogs() {
 	m.removedusage_logs = nil
 }
 
+// AddContributorRewardLogIDs adds the "contributor_reward_logs" edge to the ContributorRewardLog entity by ids.
+func (m *AccountMutation) AddContributorRewardLogIDs(ids ...int64) {
+	if m.contributor_reward_logs == nil {
+		m.contributor_reward_logs = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.contributor_reward_logs[ids[i]] = struct{}{}
+	}
+}
+
+// ClearContributorRewardLogs clears the "contributor_reward_logs" edge to the ContributorRewardLog entity.
+func (m *AccountMutation) ClearContributorRewardLogs() {
+	m.clearedcontributor_reward_logs = true
+}
+
+// ContributorRewardLogsCleared reports if the "contributor_reward_logs" edge to the ContributorRewardLog entity was cleared.
+func (m *AccountMutation) ContributorRewardLogsCleared() bool {
+	return m.clearedcontributor_reward_logs
+}
+
+// RemoveContributorRewardLogIDs removes the "contributor_reward_logs" edge to the ContributorRewardLog entity by IDs.
+func (m *AccountMutation) RemoveContributorRewardLogIDs(ids ...int64) {
+	if m.removedcontributor_reward_logs == nil {
+		m.removedcontributor_reward_logs = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.contributor_reward_logs, ids[i])
+		m.removedcontributor_reward_logs[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedContributorRewardLogs returns the removed IDs of the "contributor_reward_logs" edge to the ContributorRewardLog entity.
+func (m *AccountMutation) RemovedContributorRewardLogsIDs() (ids []int64) {
+	for id := range m.removedcontributor_reward_logs {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ContributorRewardLogsIDs returns the "contributor_reward_logs" edge IDs in the mutation.
+func (m *AccountMutation) ContributorRewardLogsIDs() (ids []int64) {
+	for id := range m.contributor_reward_logs {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetContributorRewardLogs resets all changes to the "contributor_reward_logs" edge.
+func (m *AccountMutation) ResetContributorRewardLogs() {
+	m.contributor_reward_logs = nil
+	m.clearedcontributor_reward_logs = false
+	m.removedcontributor_reward_logs = nil
+}
+
+// SetOwnerID sets the "owner" edge to the User entity by id.
+func (m *AccountMutation) SetOwnerID(id int64) {
+	m.owner = &id
+}
+
+// ClearOwner clears the "owner" edge to the User entity.
+func (m *AccountMutation) ClearOwner() {
+	m.clearedowner = true
+	m.clearedFields[account.FieldOwnerUserID] = struct{}{}
+}
+
+// OwnerCleared reports if the "owner" edge to the User entity was cleared.
+func (m *AccountMutation) OwnerCleared() bool {
+	return m.OwnerUserIDCleared() || m.clearedowner
+}
+
+// OwnerID returns the "owner" edge ID in the mutation.
+func (m *AccountMutation) OwnerID() (id int64, exists bool) {
+	if m.owner != nil {
+		return *m.owner, true
+	}
+	return
+}
+
+// OwnerIDs returns the "owner" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OwnerID instead. It exists only for internal usage by the builders.
+func (m *AccountMutation) OwnerIDs() (ids []int64) {
+	if id := m.owner; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOwner resets all changes to the "owner" edge.
+func (m *AccountMutation) ResetOwner() {
+	m.owner = nil
+	m.clearedowner = false
+}
+
 // Where appends a list predicates to the AccountMutation builder.
 func (m *AccountMutation) Where(ps ...predicate.Account) {
 	m.predicates = append(m.predicates, ps...)
@@ -4132,7 +4469,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 36)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4226,6 +4563,21 @@ func (m *AccountMutation) Fields() []string {
 	if m.quota_dimension != nil {
 		fields = append(fields, account.FieldQuotaDimension)
 	}
+	if m.owner != nil {
+		fields = append(fields, account.FieldOwnerUserID)
+	}
+	if m.contribution_status != nil {
+		fields = append(fields, account.FieldContributionStatus)
+	}
+	if m.contribution_submitted_at != nil {
+		fields = append(fields, account.FieldContributionSubmittedAt)
+	}
+	if m.contribution_approved_at != nil {
+		fields = append(fields, account.FieldContributionApprovedAt)
+	}
+	if m.contribution_revoked_at != nil {
+		fields = append(fields, account.FieldContributionRevokedAt)
+	}
 	return fields
 }
 
@@ -4296,6 +4648,16 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.ParentAccountID()
 	case account.FieldQuotaDimension:
 		return m.QuotaDimension()
+	case account.FieldOwnerUserID:
+		return m.OwnerUserID()
+	case account.FieldContributionStatus:
+		return m.ContributionStatus()
+	case account.FieldContributionSubmittedAt:
+		return m.ContributionSubmittedAt()
+	case account.FieldContributionApprovedAt:
+		return m.ContributionApprovedAt()
+	case account.FieldContributionRevokedAt:
+		return m.ContributionRevokedAt()
 	}
 	return nil, false
 }
@@ -4367,6 +4729,16 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldParentAccountID(ctx)
 	case account.FieldQuotaDimension:
 		return m.OldQuotaDimension(ctx)
+	case account.FieldOwnerUserID:
+		return m.OldOwnerUserID(ctx)
+	case account.FieldContributionStatus:
+		return m.OldContributionStatus(ctx)
+	case account.FieldContributionSubmittedAt:
+		return m.OldContributionSubmittedAt(ctx)
+	case account.FieldContributionApprovedAt:
+		return m.OldContributionApprovedAt(ctx)
+	case account.FieldContributionRevokedAt:
+		return m.OldContributionRevokedAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown Account field %s", name)
 }
@@ -4593,6 +4965,41 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetQuotaDimension(v)
 		return nil
+	case account.FieldOwnerUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOwnerUserID(v)
+		return nil
+	case account.FieldContributionStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContributionStatus(v)
+		return nil
+	case account.FieldContributionSubmittedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContributionSubmittedAt(v)
+		return nil
+	case account.FieldContributionApprovedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContributionApprovedAt(v)
+		return nil
+	case account.FieldContributionRevokedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContributionRevokedAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)
 }
@@ -4737,6 +5144,18 @@ func (m *AccountMutation) ClearedFields() []string {
 	if m.FieldCleared(account.FieldParentAccountID) {
 		fields = append(fields, account.FieldParentAccountID)
 	}
+	if m.FieldCleared(account.FieldOwnerUserID) {
+		fields = append(fields, account.FieldOwnerUserID)
+	}
+	if m.FieldCleared(account.FieldContributionSubmittedAt) {
+		fields = append(fields, account.FieldContributionSubmittedAt)
+	}
+	if m.FieldCleared(account.FieldContributionApprovedAt) {
+		fields = append(fields, account.FieldContributionApprovedAt)
+	}
+	if m.FieldCleared(account.FieldContributionRevokedAt) {
+		fields = append(fields, account.FieldContributionRevokedAt)
+	}
 	return fields
 }
 
@@ -4801,6 +5220,18 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldParentAccountID:
 		m.ClearParentAccountID()
+		return nil
+	case account.FieldOwnerUserID:
+		m.ClearOwnerUserID()
+		return nil
+	case account.FieldContributionSubmittedAt:
+		m.ClearContributionSubmittedAt()
+		return nil
+	case account.FieldContributionApprovedAt:
+		m.ClearContributionApprovedAt()
+		return nil
+	case account.FieldContributionRevokedAt:
+		m.ClearContributionRevokedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown Account nullable field %s", name)
@@ -4903,13 +5334,28 @@ func (m *AccountMutation) ResetField(name string) error {
 	case account.FieldQuotaDimension:
 		m.ResetQuotaDimension()
 		return nil
+	case account.FieldOwnerUserID:
+		m.ResetOwnerUserID()
+		return nil
+	case account.FieldContributionStatus:
+		m.ResetContributionStatus()
+		return nil
+	case account.FieldContributionSubmittedAt:
+		m.ResetContributionSubmittedAt()
+		return nil
+	case account.FieldContributionApprovedAt:
+		m.ResetContributionApprovedAt()
+		return nil
+	case account.FieldContributionRevokedAt:
+		m.ResetContributionRevokedAt()
+		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)
 }
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *AccountMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 7)
 	if m.groups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -4924,6 +5370,12 @@ func (m *AccountMutation) AddedEdges() []string {
 	}
 	if m.usage_logs != nil {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.contributor_reward_logs != nil {
+		edges = append(edges, account.EdgeContributorRewardLogs)
+	}
+	if m.owner != nil {
+		edges = append(edges, account.EdgeOwner)
 	}
 	return edges
 }
@@ -4958,13 +5410,23 @@ func (m *AccountMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case account.EdgeContributorRewardLogs:
+		ids := make([]ent.Value, 0, len(m.contributor_reward_logs))
+		for id := range m.contributor_reward_logs {
+			ids = append(ids, id)
+		}
+		return ids
+	case account.EdgeOwner:
+		if id := m.owner; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *AccountMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 7)
 	if m.removedgroups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -4973,6 +5435,9 @@ func (m *AccountMutation) RemovedEdges() []string {
 	}
 	if m.removedusage_logs != nil {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.removedcontributor_reward_logs != nil {
+		edges = append(edges, account.EdgeContributorRewardLogs)
 	}
 	return edges
 }
@@ -4999,13 +5464,19 @@ func (m *AccountMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case account.EdgeContributorRewardLogs:
+		ids := make([]ent.Value, 0, len(m.removedcontributor_reward_logs))
+		for id := range m.removedcontributor_reward_logs {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *AccountMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 7)
 	if m.clearedgroups {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -5020,6 +5491,12 @@ func (m *AccountMutation) ClearedEdges() []string {
 	}
 	if m.clearedusage_logs {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.clearedcontributor_reward_logs {
+		edges = append(edges, account.EdgeContributorRewardLogs)
+	}
+	if m.clearedowner {
+		edges = append(edges, account.EdgeOwner)
 	}
 	return edges
 }
@@ -5038,6 +5515,10 @@ func (m *AccountMutation) EdgeCleared(name string) bool {
 		return m.clearedchildren
 	case account.EdgeUsageLogs:
 		return m.clearedusage_logs
+	case account.EdgeContributorRewardLogs:
+		return m.clearedcontributor_reward_logs
+	case account.EdgeOwner:
+		return m.clearedowner
 	}
 	return false
 }
@@ -5051,6 +5532,9 @@ func (m *AccountMutation) ClearEdge(name string) error {
 		return nil
 	case account.EdgeParent:
 		m.ClearParent()
+		return nil
+	case account.EdgeOwner:
+		m.ClearOwner()
 		return nil
 	}
 	return fmt.Errorf("unknown Account unique edge %s", name)
@@ -5074,6 +5558,12 @@ func (m *AccountMutation) ResetEdge(name string) error {
 		return nil
 	case account.EdgeUsageLogs:
 		m.ResetUsageLogs()
+		return nil
+	case account.EdgeContributorRewardLogs:
+		m.ResetContributorRewardLogs()
+		return nil
+	case account.EdgeOwner:
+		m.ResetOwner()
 		return nil
 	}
 	return fmt.Errorf("unknown Account edge %s", name)
@@ -13994,6 +14484,1242 @@ func (m *ChannelMonitorRequestTemplateMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ChannelMonitorRequestTemplate edge %s", name)
 }
 
+// ContributorRewardLogMutation represents an operation that mutates the ContributorRewardLog nodes in the graph.
+type ContributorRewardLogMutation struct {
+	config
+	op                   Op
+	typ                  string
+	id                   *int64
+	request_id           *string
+	api_key_id           *int64
+	addapi_key_id        *int64
+	consumer_user_id     *int64
+	addconsumer_user_id  *int64
+	group_id             *int64
+	addgroup_id          *int64
+	total_cost           *float64
+	addtotal_cost        *float64
+	actual_cost          *float64
+	addactual_cost       *float64
+	reward_multiplier    *float64
+	addreward_multiplier *float64
+	reward_amount        *float64
+	addreward_amount     *float64
+	created_at           *time.Time
+	clearedFields        map[string]struct{}
+	owner                *int64
+	clearedowner         bool
+	account              *int64
+	clearedaccount       bool
+	done                 bool
+	oldValue             func(context.Context) (*ContributorRewardLog, error)
+	predicates           []predicate.ContributorRewardLog
+}
+
+var _ ent.Mutation = (*ContributorRewardLogMutation)(nil)
+
+// contributorrewardlogOption allows management of the mutation configuration using functional options.
+type contributorrewardlogOption func(*ContributorRewardLogMutation)
+
+// newContributorRewardLogMutation creates new mutation for the ContributorRewardLog entity.
+func newContributorRewardLogMutation(c config, op Op, opts ...contributorrewardlogOption) *ContributorRewardLogMutation {
+	m := &ContributorRewardLogMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeContributorRewardLog,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withContributorRewardLogID sets the ID field of the mutation.
+func withContributorRewardLogID(id int64) contributorrewardlogOption {
+	return func(m *ContributorRewardLogMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ContributorRewardLog
+		)
+		m.oldValue = func(ctx context.Context) (*ContributorRewardLog, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ContributorRewardLog.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withContributorRewardLog sets the old ContributorRewardLog of the mutation.
+func withContributorRewardLog(node *ContributorRewardLog) contributorrewardlogOption {
+	return func(m *ContributorRewardLogMutation) {
+		m.oldValue = func(context.Context) (*ContributorRewardLog, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ContributorRewardLogMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ContributorRewardLogMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ContributorRewardLogMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ContributorRewardLogMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ContributorRewardLog.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetRequestID sets the "request_id" field.
+func (m *ContributorRewardLogMutation) SetRequestID(s string) {
+	m.request_id = &s
+}
+
+// RequestID returns the value of the "request_id" field in the mutation.
+func (m *ContributorRewardLogMutation) RequestID() (r string, exists bool) {
+	v := m.request_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestID returns the old "request_id" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldRequestID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestID: %w", err)
+	}
+	return oldValue.RequestID, nil
+}
+
+// ResetRequestID resets all changes to the "request_id" field.
+func (m *ContributorRewardLogMutation) ResetRequestID() {
+	m.request_id = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *ContributorRewardLogMutation) SetAPIKeyID(i int64) {
+	m.api_key_id = &i
+	m.addapi_key_id = nil
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *ContributorRewardLogMutation) APIKeyID() (r int64, exists bool) {
+	v := m.api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// AddAPIKeyID adds i to the "api_key_id" field.
+func (m *ContributorRewardLogMutation) AddAPIKeyID(i int64) {
+	if m.addapi_key_id != nil {
+		*m.addapi_key_id += i
+	} else {
+		m.addapi_key_id = &i
+	}
+}
+
+// AddedAPIKeyID returns the value that was added to the "api_key_id" field in this mutation.
+func (m *ContributorRewardLogMutation) AddedAPIKeyID() (r int64, exists bool) {
+	v := m.addapi_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *ContributorRewardLogMutation) ResetAPIKeyID() {
+	m.api_key_id = nil
+	m.addapi_key_id = nil
+}
+
+// SetOwnerUserID sets the "owner_user_id" field.
+func (m *ContributorRewardLogMutation) SetOwnerUserID(i int64) {
+	m.owner = &i
+}
+
+// OwnerUserID returns the value of the "owner_user_id" field in the mutation.
+func (m *ContributorRewardLogMutation) OwnerUserID() (r int64, exists bool) {
+	v := m.owner
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOwnerUserID returns the old "owner_user_id" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldOwnerUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOwnerUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOwnerUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOwnerUserID: %w", err)
+	}
+	return oldValue.OwnerUserID, nil
+}
+
+// ResetOwnerUserID resets all changes to the "owner_user_id" field.
+func (m *ContributorRewardLogMutation) ResetOwnerUserID() {
+	m.owner = nil
+}
+
+// SetConsumerUserID sets the "consumer_user_id" field.
+func (m *ContributorRewardLogMutation) SetConsumerUserID(i int64) {
+	m.consumer_user_id = &i
+	m.addconsumer_user_id = nil
+}
+
+// ConsumerUserID returns the value of the "consumer_user_id" field in the mutation.
+func (m *ContributorRewardLogMutation) ConsumerUserID() (r int64, exists bool) {
+	v := m.consumer_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConsumerUserID returns the old "consumer_user_id" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldConsumerUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConsumerUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConsumerUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConsumerUserID: %w", err)
+	}
+	return oldValue.ConsumerUserID, nil
+}
+
+// AddConsumerUserID adds i to the "consumer_user_id" field.
+func (m *ContributorRewardLogMutation) AddConsumerUserID(i int64) {
+	if m.addconsumer_user_id != nil {
+		*m.addconsumer_user_id += i
+	} else {
+		m.addconsumer_user_id = &i
+	}
+}
+
+// AddedConsumerUserID returns the value that was added to the "consumer_user_id" field in this mutation.
+func (m *ContributorRewardLogMutation) AddedConsumerUserID() (r int64, exists bool) {
+	v := m.addconsumer_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetConsumerUserID resets all changes to the "consumer_user_id" field.
+func (m *ContributorRewardLogMutation) ResetConsumerUserID() {
+	m.consumer_user_id = nil
+	m.addconsumer_user_id = nil
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *ContributorRewardLogMutation) SetAccountID(i int64) {
+	m.account = &i
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *ContributorRewardLogMutation) AccountID() (r int64, exists bool) {
+	v := m.account
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *ContributorRewardLogMutation) ResetAccountID() {
+	m.account = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *ContributorRewardLogMutation) SetGroupID(i int64) {
+	m.group_id = &i
+	m.addgroup_id = nil
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *ContributorRewardLogMutation) GroupID() (r int64, exists bool) {
+	v := m.group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// AddGroupID adds i to the "group_id" field.
+func (m *ContributorRewardLogMutation) AddGroupID(i int64) {
+	if m.addgroup_id != nil {
+		*m.addgroup_id += i
+	} else {
+		m.addgroup_id = &i
+	}
+}
+
+// AddedGroupID returns the value that was added to the "group_id" field in this mutation.
+func (m *ContributorRewardLogMutation) AddedGroupID() (r int64, exists bool) {
+	v := m.addgroup_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (m *ContributorRewardLogMutation) ClearGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+	m.clearedFields[contributorrewardlog.FieldGroupID] = struct{}{}
+}
+
+// GroupIDCleared returns if the "group_id" field was cleared in this mutation.
+func (m *ContributorRewardLogMutation) GroupIDCleared() bool {
+	_, ok := m.clearedFields[contributorrewardlog.FieldGroupID]
+	return ok
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *ContributorRewardLogMutation) ResetGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+	delete(m.clearedFields, contributorrewardlog.FieldGroupID)
+}
+
+// SetTotalCost sets the "total_cost" field.
+func (m *ContributorRewardLogMutation) SetTotalCost(f float64) {
+	m.total_cost = &f
+	m.addtotal_cost = nil
+}
+
+// TotalCost returns the value of the "total_cost" field in the mutation.
+func (m *ContributorRewardLogMutation) TotalCost() (r float64, exists bool) {
+	v := m.total_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalCost returns the old "total_cost" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldTotalCost(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalCost: %w", err)
+	}
+	return oldValue.TotalCost, nil
+}
+
+// AddTotalCost adds f to the "total_cost" field.
+func (m *ContributorRewardLogMutation) AddTotalCost(f float64) {
+	if m.addtotal_cost != nil {
+		*m.addtotal_cost += f
+	} else {
+		m.addtotal_cost = &f
+	}
+}
+
+// AddedTotalCost returns the value that was added to the "total_cost" field in this mutation.
+func (m *ContributorRewardLogMutation) AddedTotalCost() (r float64, exists bool) {
+	v := m.addtotal_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTotalCost resets all changes to the "total_cost" field.
+func (m *ContributorRewardLogMutation) ResetTotalCost() {
+	m.total_cost = nil
+	m.addtotal_cost = nil
+}
+
+// SetActualCost sets the "actual_cost" field.
+func (m *ContributorRewardLogMutation) SetActualCost(f float64) {
+	m.actual_cost = &f
+	m.addactual_cost = nil
+}
+
+// ActualCost returns the value of the "actual_cost" field in the mutation.
+func (m *ContributorRewardLogMutation) ActualCost() (r float64, exists bool) {
+	v := m.actual_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActualCost returns the old "actual_cost" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldActualCost(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActualCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActualCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActualCost: %w", err)
+	}
+	return oldValue.ActualCost, nil
+}
+
+// AddActualCost adds f to the "actual_cost" field.
+func (m *ContributorRewardLogMutation) AddActualCost(f float64) {
+	if m.addactual_cost != nil {
+		*m.addactual_cost += f
+	} else {
+		m.addactual_cost = &f
+	}
+}
+
+// AddedActualCost returns the value that was added to the "actual_cost" field in this mutation.
+func (m *ContributorRewardLogMutation) AddedActualCost() (r float64, exists bool) {
+	v := m.addactual_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetActualCost resets all changes to the "actual_cost" field.
+func (m *ContributorRewardLogMutation) ResetActualCost() {
+	m.actual_cost = nil
+	m.addactual_cost = nil
+}
+
+// SetRewardMultiplier sets the "reward_multiplier" field.
+func (m *ContributorRewardLogMutation) SetRewardMultiplier(f float64) {
+	m.reward_multiplier = &f
+	m.addreward_multiplier = nil
+}
+
+// RewardMultiplier returns the value of the "reward_multiplier" field in the mutation.
+func (m *ContributorRewardLogMutation) RewardMultiplier() (r float64, exists bool) {
+	v := m.reward_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRewardMultiplier returns the old "reward_multiplier" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldRewardMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRewardMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRewardMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRewardMultiplier: %w", err)
+	}
+	return oldValue.RewardMultiplier, nil
+}
+
+// AddRewardMultiplier adds f to the "reward_multiplier" field.
+func (m *ContributorRewardLogMutation) AddRewardMultiplier(f float64) {
+	if m.addreward_multiplier != nil {
+		*m.addreward_multiplier += f
+	} else {
+		m.addreward_multiplier = &f
+	}
+}
+
+// AddedRewardMultiplier returns the value that was added to the "reward_multiplier" field in this mutation.
+func (m *ContributorRewardLogMutation) AddedRewardMultiplier() (r float64, exists bool) {
+	v := m.addreward_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRewardMultiplier resets all changes to the "reward_multiplier" field.
+func (m *ContributorRewardLogMutation) ResetRewardMultiplier() {
+	m.reward_multiplier = nil
+	m.addreward_multiplier = nil
+}
+
+// SetRewardAmount sets the "reward_amount" field.
+func (m *ContributorRewardLogMutation) SetRewardAmount(f float64) {
+	m.reward_amount = &f
+	m.addreward_amount = nil
+}
+
+// RewardAmount returns the value of the "reward_amount" field in the mutation.
+func (m *ContributorRewardLogMutation) RewardAmount() (r float64, exists bool) {
+	v := m.reward_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRewardAmount returns the old "reward_amount" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldRewardAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRewardAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRewardAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRewardAmount: %w", err)
+	}
+	return oldValue.RewardAmount, nil
+}
+
+// AddRewardAmount adds f to the "reward_amount" field.
+func (m *ContributorRewardLogMutation) AddRewardAmount(f float64) {
+	if m.addreward_amount != nil {
+		*m.addreward_amount += f
+	} else {
+		m.addreward_amount = &f
+	}
+}
+
+// AddedRewardAmount returns the value that was added to the "reward_amount" field in this mutation.
+func (m *ContributorRewardLogMutation) AddedRewardAmount() (r float64, exists bool) {
+	v := m.addreward_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRewardAmount resets all changes to the "reward_amount" field.
+func (m *ContributorRewardLogMutation) ResetRewardAmount() {
+	m.reward_amount = nil
+	m.addreward_amount = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ContributorRewardLogMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ContributorRewardLogMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ContributorRewardLog entity.
+// If the ContributorRewardLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContributorRewardLogMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ContributorRewardLogMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetOwnerID sets the "owner" edge to the User entity by id.
+func (m *ContributorRewardLogMutation) SetOwnerID(id int64) {
+	m.owner = &id
+}
+
+// ClearOwner clears the "owner" edge to the User entity.
+func (m *ContributorRewardLogMutation) ClearOwner() {
+	m.clearedowner = true
+	m.clearedFields[contributorrewardlog.FieldOwnerUserID] = struct{}{}
+}
+
+// OwnerCleared reports if the "owner" edge to the User entity was cleared.
+func (m *ContributorRewardLogMutation) OwnerCleared() bool {
+	return m.clearedowner
+}
+
+// OwnerID returns the "owner" edge ID in the mutation.
+func (m *ContributorRewardLogMutation) OwnerID() (id int64, exists bool) {
+	if m.owner != nil {
+		return *m.owner, true
+	}
+	return
+}
+
+// OwnerIDs returns the "owner" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OwnerID instead. It exists only for internal usage by the builders.
+func (m *ContributorRewardLogMutation) OwnerIDs() (ids []int64) {
+	if id := m.owner; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOwner resets all changes to the "owner" edge.
+func (m *ContributorRewardLogMutation) ResetOwner() {
+	m.owner = nil
+	m.clearedowner = false
+}
+
+// ClearAccount clears the "account" edge to the Account entity.
+func (m *ContributorRewardLogMutation) ClearAccount() {
+	m.clearedaccount = true
+	m.clearedFields[contributorrewardlog.FieldAccountID] = struct{}{}
+}
+
+// AccountCleared reports if the "account" edge to the Account entity was cleared.
+func (m *ContributorRewardLogMutation) AccountCleared() bool {
+	return m.clearedaccount
+}
+
+// AccountIDs returns the "account" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// AccountID instead. It exists only for internal usage by the builders.
+func (m *ContributorRewardLogMutation) AccountIDs() (ids []int64) {
+	if id := m.account; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetAccount resets all changes to the "account" edge.
+func (m *ContributorRewardLogMutation) ResetAccount() {
+	m.account = nil
+	m.clearedaccount = false
+}
+
+// Where appends a list predicates to the ContributorRewardLogMutation builder.
+func (m *ContributorRewardLogMutation) Where(ps ...predicate.ContributorRewardLog) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ContributorRewardLogMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ContributorRewardLogMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ContributorRewardLog, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ContributorRewardLogMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ContributorRewardLogMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ContributorRewardLog).
+func (m *ContributorRewardLogMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ContributorRewardLogMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.request_id != nil {
+		fields = append(fields, contributorrewardlog.FieldRequestID)
+	}
+	if m.api_key_id != nil {
+		fields = append(fields, contributorrewardlog.FieldAPIKeyID)
+	}
+	if m.owner != nil {
+		fields = append(fields, contributorrewardlog.FieldOwnerUserID)
+	}
+	if m.consumer_user_id != nil {
+		fields = append(fields, contributorrewardlog.FieldConsumerUserID)
+	}
+	if m.account != nil {
+		fields = append(fields, contributorrewardlog.FieldAccountID)
+	}
+	if m.group_id != nil {
+		fields = append(fields, contributorrewardlog.FieldGroupID)
+	}
+	if m.total_cost != nil {
+		fields = append(fields, contributorrewardlog.FieldTotalCost)
+	}
+	if m.actual_cost != nil {
+		fields = append(fields, contributorrewardlog.FieldActualCost)
+	}
+	if m.reward_multiplier != nil {
+		fields = append(fields, contributorrewardlog.FieldRewardMultiplier)
+	}
+	if m.reward_amount != nil {
+		fields = append(fields, contributorrewardlog.FieldRewardAmount)
+	}
+	if m.created_at != nil {
+		fields = append(fields, contributorrewardlog.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ContributorRewardLogMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case contributorrewardlog.FieldRequestID:
+		return m.RequestID()
+	case contributorrewardlog.FieldAPIKeyID:
+		return m.APIKeyID()
+	case contributorrewardlog.FieldOwnerUserID:
+		return m.OwnerUserID()
+	case contributorrewardlog.FieldConsumerUserID:
+		return m.ConsumerUserID()
+	case contributorrewardlog.FieldAccountID:
+		return m.AccountID()
+	case contributorrewardlog.FieldGroupID:
+		return m.GroupID()
+	case contributorrewardlog.FieldTotalCost:
+		return m.TotalCost()
+	case contributorrewardlog.FieldActualCost:
+		return m.ActualCost()
+	case contributorrewardlog.FieldRewardMultiplier:
+		return m.RewardMultiplier()
+	case contributorrewardlog.FieldRewardAmount:
+		return m.RewardAmount()
+	case contributorrewardlog.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ContributorRewardLogMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case contributorrewardlog.FieldRequestID:
+		return m.OldRequestID(ctx)
+	case contributorrewardlog.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case contributorrewardlog.FieldOwnerUserID:
+		return m.OldOwnerUserID(ctx)
+	case contributorrewardlog.FieldConsumerUserID:
+		return m.OldConsumerUserID(ctx)
+	case contributorrewardlog.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case contributorrewardlog.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case contributorrewardlog.FieldTotalCost:
+		return m.OldTotalCost(ctx)
+	case contributorrewardlog.FieldActualCost:
+		return m.OldActualCost(ctx)
+	case contributorrewardlog.FieldRewardMultiplier:
+		return m.OldRewardMultiplier(ctx)
+	case contributorrewardlog.FieldRewardAmount:
+		return m.OldRewardAmount(ctx)
+	case contributorrewardlog.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ContributorRewardLog field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ContributorRewardLogMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case contributorrewardlog.FieldRequestID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestID(v)
+		return nil
+	case contributorrewardlog.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case contributorrewardlog.FieldOwnerUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOwnerUserID(v)
+		return nil
+	case contributorrewardlog.FieldConsumerUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConsumerUserID(v)
+		return nil
+	case contributorrewardlog.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case contributorrewardlog.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case contributorrewardlog.FieldTotalCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalCost(v)
+		return nil
+	case contributorrewardlog.FieldActualCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActualCost(v)
+		return nil
+	case contributorrewardlog.FieldRewardMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRewardMultiplier(v)
+		return nil
+	case contributorrewardlog.FieldRewardAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRewardAmount(v)
+		return nil
+	case contributorrewardlog.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ContributorRewardLog field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ContributorRewardLogMutation) AddedFields() []string {
+	var fields []string
+	if m.addapi_key_id != nil {
+		fields = append(fields, contributorrewardlog.FieldAPIKeyID)
+	}
+	if m.addconsumer_user_id != nil {
+		fields = append(fields, contributorrewardlog.FieldConsumerUserID)
+	}
+	if m.addgroup_id != nil {
+		fields = append(fields, contributorrewardlog.FieldGroupID)
+	}
+	if m.addtotal_cost != nil {
+		fields = append(fields, contributorrewardlog.FieldTotalCost)
+	}
+	if m.addactual_cost != nil {
+		fields = append(fields, contributorrewardlog.FieldActualCost)
+	}
+	if m.addreward_multiplier != nil {
+		fields = append(fields, contributorrewardlog.FieldRewardMultiplier)
+	}
+	if m.addreward_amount != nil {
+		fields = append(fields, contributorrewardlog.FieldRewardAmount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ContributorRewardLogMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case contributorrewardlog.FieldAPIKeyID:
+		return m.AddedAPIKeyID()
+	case contributorrewardlog.FieldConsumerUserID:
+		return m.AddedConsumerUserID()
+	case contributorrewardlog.FieldGroupID:
+		return m.AddedGroupID()
+	case contributorrewardlog.FieldTotalCost:
+		return m.AddedTotalCost()
+	case contributorrewardlog.FieldActualCost:
+		return m.AddedActualCost()
+	case contributorrewardlog.FieldRewardMultiplier:
+		return m.AddedRewardMultiplier()
+	case contributorrewardlog.FieldRewardAmount:
+		return m.AddedRewardAmount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ContributorRewardLogMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case contributorrewardlog.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyID(v)
+		return nil
+	case contributorrewardlog.FieldConsumerUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddConsumerUserID(v)
+		return nil
+	case contributorrewardlog.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGroupID(v)
+		return nil
+	case contributorrewardlog.FieldTotalCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotalCost(v)
+		return nil
+	case contributorrewardlog.FieldActualCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddActualCost(v)
+		return nil
+	case contributorrewardlog.FieldRewardMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRewardMultiplier(v)
+		return nil
+	case contributorrewardlog.FieldRewardAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRewardAmount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ContributorRewardLog numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ContributorRewardLogMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(contributorrewardlog.FieldGroupID) {
+		fields = append(fields, contributorrewardlog.FieldGroupID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ContributorRewardLogMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ContributorRewardLogMutation) ClearField(name string) error {
+	switch name {
+	case contributorrewardlog.FieldGroupID:
+		m.ClearGroupID()
+		return nil
+	}
+	return fmt.Errorf("unknown ContributorRewardLog nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ContributorRewardLogMutation) ResetField(name string) error {
+	switch name {
+	case contributorrewardlog.FieldRequestID:
+		m.ResetRequestID()
+		return nil
+	case contributorrewardlog.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case contributorrewardlog.FieldOwnerUserID:
+		m.ResetOwnerUserID()
+		return nil
+	case contributorrewardlog.FieldConsumerUserID:
+		m.ResetConsumerUserID()
+		return nil
+	case contributorrewardlog.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case contributorrewardlog.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case contributorrewardlog.FieldTotalCost:
+		m.ResetTotalCost()
+		return nil
+	case contributorrewardlog.FieldActualCost:
+		m.ResetActualCost()
+		return nil
+	case contributorrewardlog.FieldRewardMultiplier:
+		m.ResetRewardMultiplier()
+		return nil
+	case contributorrewardlog.FieldRewardAmount:
+		m.ResetRewardAmount()
+		return nil
+	case contributorrewardlog.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ContributorRewardLog field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ContributorRewardLogMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.owner != nil {
+		edges = append(edges, contributorrewardlog.EdgeOwner)
+	}
+	if m.account != nil {
+		edges = append(edges, contributorrewardlog.EdgeAccount)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ContributorRewardLogMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case contributorrewardlog.EdgeOwner:
+		if id := m.owner; id != nil {
+			return []ent.Value{*id}
+		}
+	case contributorrewardlog.EdgeAccount:
+		if id := m.account; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ContributorRewardLogMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ContributorRewardLogMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ContributorRewardLogMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedowner {
+		edges = append(edges, contributorrewardlog.EdgeOwner)
+	}
+	if m.clearedaccount {
+		edges = append(edges, contributorrewardlog.EdgeAccount)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ContributorRewardLogMutation) EdgeCleared(name string) bool {
+	switch name {
+	case contributorrewardlog.EdgeOwner:
+		return m.clearedowner
+	case contributorrewardlog.EdgeAccount:
+		return m.clearedaccount
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ContributorRewardLogMutation) ClearEdge(name string) error {
+	switch name {
+	case contributorrewardlog.EdgeOwner:
+		m.ClearOwner()
+		return nil
+	case contributorrewardlog.EdgeAccount:
+		m.ClearAccount()
+		return nil
+	}
+	return fmt.Errorf("unknown ContributorRewardLog unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ContributorRewardLogMutation) ResetEdge(name string) error {
+	switch name {
+	case contributorrewardlog.EdgeOwner:
+		m.ResetOwner()
+		return nil
+	case contributorrewardlog.EdgeAccount:
+		m.ResetAccount()
+		return nil
+	}
+	return fmt.Errorf("unknown ContributorRewardLog edge %s", name)
+}
+
 // ErrorPassthroughRuleMutation represents an operation that mutates the ErrorPassthroughRule nodes in the graph.
 type ErrorPassthroughRuleMutation struct {
 	config
@@ -15327,6 +17053,8 @@ type GroupMutation struct {
 	description                             *string
 	rate_multiplier                         *float64
 	addrate_multiplier                      *float64
+	contributor_reward_multiplier           *float64
+	addcontributor_reward_multiplier        *float64
 	peak_rate_enabled                       *bool
 	peak_start                              *string
 	peak_end                                *string
@@ -15756,6 +17484,62 @@ func (m *GroupMutation) AddedRateMultiplier() (r float64, exists bool) {
 func (m *GroupMutation) ResetRateMultiplier() {
 	m.rate_multiplier = nil
 	m.addrate_multiplier = nil
+}
+
+// SetContributorRewardMultiplier sets the "contributor_reward_multiplier" field.
+func (m *GroupMutation) SetContributorRewardMultiplier(f float64) {
+	m.contributor_reward_multiplier = &f
+	m.addcontributor_reward_multiplier = nil
+}
+
+// ContributorRewardMultiplier returns the value of the "contributor_reward_multiplier" field in the mutation.
+func (m *GroupMutation) ContributorRewardMultiplier() (r float64, exists bool) {
+	v := m.contributor_reward_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContributorRewardMultiplier returns the old "contributor_reward_multiplier" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldContributorRewardMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContributorRewardMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContributorRewardMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContributorRewardMultiplier: %w", err)
+	}
+	return oldValue.ContributorRewardMultiplier, nil
+}
+
+// AddContributorRewardMultiplier adds f to the "contributor_reward_multiplier" field.
+func (m *GroupMutation) AddContributorRewardMultiplier(f float64) {
+	if m.addcontributor_reward_multiplier != nil {
+		*m.addcontributor_reward_multiplier += f
+	} else {
+		m.addcontributor_reward_multiplier = &f
+	}
+}
+
+// AddedContributorRewardMultiplier returns the value that was added to the "contributor_reward_multiplier" field in this mutation.
+func (m *GroupMutation) AddedContributorRewardMultiplier() (r float64, exists bool) {
+	v := m.addcontributor_reward_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetContributorRewardMultiplier resets all changes to the "contributor_reward_multiplier" field.
+func (m *GroupMutation) ResetContributorRewardMultiplier() {
+	m.contributor_reward_multiplier = nil
+	m.addcontributor_reward_multiplier = nil
 }
 
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
@@ -17704,7 +19488,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 39)
+	fields := make([]string, 0, 40)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17722,6 +19506,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
+	}
+	if m.contributor_reward_multiplier != nil {
+		fields = append(fields, group.FieldContributorRewardMultiplier)
 	}
 	if m.peak_rate_enabled != nil {
 		fields = append(fields, group.FieldPeakRateEnabled)
@@ -17842,6 +19629,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.Description()
 	case group.FieldRateMultiplier:
 		return m.RateMultiplier()
+	case group.FieldContributorRewardMultiplier:
+		return m.ContributorRewardMultiplier()
 	case group.FieldPeakRateEnabled:
 		return m.PeakRateEnabled()
 	case group.FieldPeakStart:
@@ -17929,6 +19718,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDescription(ctx)
 	case group.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
+	case group.FieldContributorRewardMultiplier:
+		return m.OldContributorRewardMultiplier(ctx)
 	case group.FieldPeakRateEnabled:
 		return m.OldPeakRateEnabled(ctx)
 	case group.FieldPeakStart:
@@ -18045,6 +19836,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRateMultiplier(v)
+		return nil
+	case group.FieldContributorRewardMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContributorRewardMultiplier(v)
 		return nil
 	case group.FieldPeakRateEnabled:
 		v, ok := value.(bool)
@@ -18288,6 +20086,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
 	}
+	if m.addcontributor_reward_multiplier != nil {
+		fields = append(fields, group.FieldContributorRewardMultiplier)
+	}
 	if m.addpeak_rate_multiplier != nil {
 		fields = append(fields, group.FieldPeakRateMultiplier)
 	}
@@ -18337,6 +20138,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case group.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case group.FieldContributorRewardMultiplier:
+		return m.AddedContributorRewardMultiplier()
 	case group.FieldPeakRateMultiplier:
 		return m.AddedPeakRateMultiplier()
 	case group.FieldDailyLimitUsd:
@@ -18378,6 +20181,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRateMultiplier(v)
+		return nil
+	case group.FieldContributorRewardMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddContributorRewardMultiplier(v)
 		return nil
 	case group.FieldPeakRateMultiplier:
 		v, ok := value.(float64)
@@ -18583,6 +20393,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRateMultiplier:
 		m.ResetRateMultiplier()
+		return nil
+	case group.FieldContributorRewardMultiplier:
+		m.ResetContributorRewardMultiplier()
 		return nil
 	case group.FieldPeakRateEnabled:
 		m.ResetPeakRateEnabled()
@@ -40552,6 +42365,12 @@ type UserMutation struct {
 	usage_logs                      map[int64]struct{}
 	removedusage_logs               map[int64]struct{}
 	clearedusage_logs               bool
+	contributed_accounts            map[int64]struct{}
+	removedcontributed_accounts     map[int64]struct{}
+	clearedcontributed_accounts     bool
+	contributor_reward_logs         map[int64]struct{}
+	removedcontributor_reward_logs  map[int64]struct{}
+	clearedcontributor_reward_logs  bool
 	attribute_values                map[int64]struct{}
 	removedattribute_values         map[int64]struct{}
 	clearedattribute_values         bool
@@ -42202,6 +44021,114 @@ func (m *UserMutation) ResetUsageLogs() {
 	m.removedusage_logs = nil
 }
 
+// AddContributedAccountIDs adds the "contributed_accounts" edge to the Account entity by ids.
+func (m *UserMutation) AddContributedAccountIDs(ids ...int64) {
+	if m.contributed_accounts == nil {
+		m.contributed_accounts = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.contributed_accounts[ids[i]] = struct{}{}
+	}
+}
+
+// ClearContributedAccounts clears the "contributed_accounts" edge to the Account entity.
+func (m *UserMutation) ClearContributedAccounts() {
+	m.clearedcontributed_accounts = true
+}
+
+// ContributedAccountsCleared reports if the "contributed_accounts" edge to the Account entity was cleared.
+func (m *UserMutation) ContributedAccountsCleared() bool {
+	return m.clearedcontributed_accounts
+}
+
+// RemoveContributedAccountIDs removes the "contributed_accounts" edge to the Account entity by IDs.
+func (m *UserMutation) RemoveContributedAccountIDs(ids ...int64) {
+	if m.removedcontributed_accounts == nil {
+		m.removedcontributed_accounts = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.contributed_accounts, ids[i])
+		m.removedcontributed_accounts[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedContributedAccounts returns the removed IDs of the "contributed_accounts" edge to the Account entity.
+func (m *UserMutation) RemovedContributedAccountsIDs() (ids []int64) {
+	for id := range m.removedcontributed_accounts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ContributedAccountsIDs returns the "contributed_accounts" edge IDs in the mutation.
+func (m *UserMutation) ContributedAccountsIDs() (ids []int64) {
+	for id := range m.contributed_accounts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetContributedAccounts resets all changes to the "contributed_accounts" edge.
+func (m *UserMutation) ResetContributedAccounts() {
+	m.contributed_accounts = nil
+	m.clearedcontributed_accounts = false
+	m.removedcontributed_accounts = nil
+}
+
+// AddContributorRewardLogIDs adds the "contributor_reward_logs" edge to the ContributorRewardLog entity by ids.
+func (m *UserMutation) AddContributorRewardLogIDs(ids ...int64) {
+	if m.contributor_reward_logs == nil {
+		m.contributor_reward_logs = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.contributor_reward_logs[ids[i]] = struct{}{}
+	}
+}
+
+// ClearContributorRewardLogs clears the "contributor_reward_logs" edge to the ContributorRewardLog entity.
+func (m *UserMutation) ClearContributorRewardLogs() {
+	m.clearedcontributor_reward_logs = true
+}
+
+// ContributorRewardLogsCleared reports if the "contributor_reward_logs" edge to the ContributorRewardLog entity was cleared.
+func (m *UserMutation) ContributorRewardLogsCleared() bool {
+	return m.clearedcontributor_reward_logs
+}
+
+// RemoveContributorRewardLogIDs removes the "contributor_reward_logs" edge to the ContributorRewardLog entity by IDs.
+func (m *UserMutation) RemoveContributorRewardLogIDs(ids ...int64) {
+	if m.removedcontributor_reward_logs == nil {
+		m.removedcontributor_reward_logs = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.contributor_reward_logs, ids[i])
+		m.removedcontributor_reward_logs[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedContributorRewardLogs returns the removed IDs of the "contributor_reward_logs" edge to the ContributorRewardLog entity.
+func (m *UserMutation) RemovedContributorRewardLogsIDs() (ids []int64) {
+	for id := range m.removedcontributor_reward_logs {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ContributorRewardLogsIDs returns the "contributor_reward_logs" edge IDs in the mutation.
+func (m *UserMutation) ContributorRewardLogsIDs() (ids []int64) {
+	for id := range m.contributor_reward_logs {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetContributorRewardLogs resets all changes to the "contributor_reward_logs" edge.
+func (m *UserMutation) ResetContributorRewardLogs() {
+	m.contributor_reward_logs = nil
+	m.clearedcontributor_reward_logs = false
+	m.removedcontributor_reward_logs = nil
+}
+
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by ids.
 func (m *UserMutation) AddAttributeValueIDs(ids ...int64) {
 	if m.attribute_values == nil {
@@ -43152,7 +45079,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 15)
+	edges := make([]string, 0, 17)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -43179,6 +45106,12 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.usage_logs != nil {
 		edges = append(edges, user.EdgeUsageLogs)
+	}
+	if m.contributed_accounts != nil {
+		edges = append(edges, user.EdgeContributedAccounts)
+	}
+	if m.contributor_reward_logs != nil {
+		edges = append(edges, user.EdgeContributorRewardLogs)
 	}
 	if m.attribute_values != nil {
 		edges = append(edges, user.EdgeAttributeValues)
@@ -43259,6 +45192,18 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeContributedAccounts:
+		ids := make([]ent.Value, 0, len(m.contributed_accounts))
+		for id := range m.contributed_accounts {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeContributorRewardLogs:
+		ids := make([]ent.Value, 0, len(m.contributor_reward_logs))
+		for id := range m.contributor_reward_logs {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeAttributeValues:
 		ids := make([]ent.Value, 0, len(m.attribute_values))
 		for id := range m.attribute_values {
@@ -43301,7 +45246,7 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 15)
+	edges := make([]string, 0, 17)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -43328,6 +45273,12 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedusage_logs != nil {
 		edges = append(edges, user.EdgeUsageLogs)
+	}
+	if m.removedcontributed_accounts != nil {
+		edges = append(edges, user.EdgeContributedAccounts)
+	}
+	if m.removedcontributor_reward_logs != nil {
+		edges = append(edges, user.EdgeContributorRewardLogs)
 	}
 	if m.removedattribute_values != nil {
 		edges = append(edges, user.EdgeAttributeValues)
@@ -43408,6 +45359,18 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeContributedAccounts:
+		ids := make([]ent.Value, 0, len(m.removedcontributed_accounts))
+		for id := range m.removedcontributed_accounts {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeContributorRewardLogs:
+		ids := make([]ent.Value, 0, len(m.removedcontributor_reward_logs))
+		for id := range m.removedcontributor_reward_logs {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeAttributeValues:
 		ids := make([]ent.Value, 0, len(m.removedattribute_values))
 		for id := range m.removedattribute_values {
@@ -43450,7 +45413,7 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 15)
+	edges := make([]string, 0, 17)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -43477,6 +45440,12 @@ func (m *UserMutation) ClearedEdges() []string {
 	}
 	if m.clearedusage_logs {
 		edges = append(edges, user.EdgeUsageLogs)
+	}
+	if m.clearedcontributed_accounts {
+		edges = append(edges, user.EdgeContributedAccounts)
+	}
+	if m.clearedcontributor_reward_logs {
+		edges = append(edges, user.EdgeContributorRewardLogs)
 	}
 	if m.clearedattribute_values {
 		edges = append(edges, user.EdgeAttributeValues)
@@ -43521,6 +45490,10 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedallowed_groups
 	case user.EdgeUsageLogs:
 		return m.clearedusage_logs
+	case user.EdgeContributedAccounts:
+		return m.clearedcontributed_accounts
+	case user.EdgeContributorRewardLogs:
+		return m.clearedcontributor_reward_logs
 	case user.EdgeAttributeValues:
 		return m.clearedattribute_values
 	case user.EdgePromoCodeUsages:
@@ -43575,6 +45548,12 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeUsageLogs:
 		m.ResetUsageLogs()
+		return nil
+	case user.EdgeContributedAccounts:
+		m.ResetContributedAccounts()
+		return nil
+	case user.EdgeContributorRewardLogs:
+		m.ResetContributorRewardLogs()
 		return nil
 	case user.EdgeAttributeValues:
 		m.ResetAttributeValues()

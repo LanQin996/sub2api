@@ -78,6 +78,16 @@ const (
 	FieldParentAccountID = "parent_account_id"
 	// FieldQuotaDimension holds the string denoting the quota_dimension field in the database.
 	FieldQuotaDimension = "quota_dimension"
+	// FieldOwnerUserID holds the string denoting the owner_user_id field in the database.
+	FieldOwnerUserID = "owner_user_id"
+	// FieldContributionStatus holds the string denoting the contribution_status field in the database.
+	FieldContributionStatus = "contribution_status"
+	// FieldContributionSubmittedAt holds the string denoting the contribution_submitted_at field in the database.
+	FieldContributionSubmittedAt = "contribution_submitted_at"
+	// FieldContributionApprovedAt holds the string denoting the contribution_approved_at field in the database.
+	FieldContributionApprovedAt = "contribution_approved_at"
+	// FieldContributionRevokedAt holds the string denoting the contribution_revoked_at field in the database.
+	FieldContributionRevokedAt = "contribution_revoked_at"
 	// EdgeGroups holds the string denoting the groups edge name in mutations.
 	EdgeGroups = "groups"
 	// EdgeProxy holds the string denoting the proxy edge name in mutations.
@@ -88,6 +98,10 @@ const (
 	EdgeChildren = "children"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
+	// EdgeContributorRewardLogs holds the string denoting the contributor_reward_logs edge name in mutations.
+	EdgeContributorRewardLogs = "contributor_reward_logs"
+	// EdgeOwner holds the string denoting the owner edge name in mutations.
+	EdgeOwner = "owner"
 	// EdgeAccountGroups holds the string denoting the account_groups edge name in mutations.
 	EdgeAccountGroups = "account_groups"
 	// Table holds the table name of the account in the database.
@@ -119,6 +133,20 @@ const (
 	UsageLogsInverseTable = "usage_logs"
 	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
 	UsageLogsColumn = "account_id"
+	// ContributorRewardLogsTable is the table that holds the contributor_reward_logs relation/edge.
+	ContributorRewardLogsTable = "contributor_reward_logs"
+	// ContributorRewardLogsInverseTable is the table name for the ContributorRewardLog entity.
+	// It exists in this package in order to avoid circular dependency with the "contributorrewardlog" package.
+	ContributorRewardLogsInverseTable = "contributor_reward_logs"
+	// ContributorRewardLogsColumn is the table column denoting the contributor_reward_logs relation/edge.
+	ContributorRewardLogsColumn = "account_id"
+	// OwnerTable is the table that holds the owner relation/edge.
+	OwnerTable = "accounts"
+	// OwnerInverseTable is the table name for the User entity.
+	// It exists in this package in order to avoid circular dependency with the "user" package.
+	OwnerInverseTable = "users"
+	// OwnerColumn is the table column denoting the owner relation/edge.
+	OwnerColumn = "owner_user_id"
 	// AccountGroupsTable is the table that holds the account_groups relation/edge.
 	AccountGroupsTable = "account_groups"
 	// AccountGroupsInverseTable is the table name for the AccountGroup entity.
@@ -162,6 +190,11 @@ var Columns = []string{
 	FieldSessionWindowStatus,
 	FieldParentAccountID,
 	FieldQuotaDimension,
+	FieldOwnerUserID,
+	FieldContributionStatus,
+	FieldContributionSubmittedAt,
+	FieldContributionApprovedAt,
+	FieldContributionRevokedAt,
 }
 
 var (
@@ -220,6 +253,10 @@ var (
 	DefaultSchedulable bool
 	// SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	SessionWindowStatusValidator func(string) error
+	// DefaultContributionStatus holds the default value on creation for the "contribution_status" field.
+	DefaultContributionStatus string
+	// ContributionStatusValidator is a validator for the "contribution_status" field. It is called by the builders before save.
+	ContributionStatusValidator func(string) error
 )
 
 // QuotaDimension defines the type for the "quota_dimension" enum field.
@@ -401,6 +438,31 @@ func ByQuotaDimension(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldQuotaDimension, opts...).ToFunc()
 }
 
+// ByOwnerUserID orders the results by the owner_user_id field.
+func ByOwnerUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOwnerUserID, opts...).ToFunc()
+}
+
+// ByContributionStatus orders the results by the contribution_status field.
+func ByContributionStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldContributionStatus, opts...).ToFunc()
+}
+
+// ByContributionSubmittedAt orders the results by the contribution_submitted_at field.
+func ByContributionSubmittedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldContributionSubmittedAt, opts...).ToFunc()
+}
+
+// ByContributionApprovedAt orders the results by the contribution_approved_at field.
+func ByContributionApprovedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldContributionApprovedAt, opts...).ToFunc()
+}
+
+// ByContributionRevokedAt orders the results by the contribution_revoked_at field.
+func ByContributionRevokedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldContributionRevokedAt, opts...).ToFunc()
+}
+
 // ByGroupsCount orders the results by groups count.
 func ByGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -457,6 +519,27 @@ func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByContributorRewardLogsCount orders the results by contributor_reward_logs count.
+func ByContributorRewardLogsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newContributorRewardLogsStep(), opts...)
+	}
+}
+
+// ByContributorRewardLogs orders the results by contributor_reward_logs terms.
+func ByContributorRewardLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newContributorRewardLogsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByOwnerField orders the results by owner field.
+func ByOwnerField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newOwnerStep(), sql.OrderByField(field, opts...))
+	}
+}
+
 // ByAccountGroupsCount orders the results by account_groups count.
 func ByAccountGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -503,6 +586,20 @@ func newUsageLogsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UsageLogsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
+	)
+}
+func newContributorRewardLogsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ContributorRewardLogsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ContributorRewardLogsTable, ContributorRewardLogsColumn),
+	)
+}
+func newOwnerStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(OwnerInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, OwnerTable, OwnerColumn),
 	)
 }
 func newAccountGroupsStep() *sqlgraph.Step {

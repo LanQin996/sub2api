@@ -39,6 +39,14 @@ type UsageBillingCommand struct {
 	APIKeyQuotaCost     float64
 	APIKeyRateLimitCost float64
 	AccountQuotaCost    float64
+
+	ContributorOwnerUserID      int64
+	ContributorRewardAccountID  int64
+	ContributorRewardGroupID    int64
+	ContributorRewardMultiplier float64
+	ContributorRewardTotalCost  float64
+	ContributorRewardActualCost float64
+	ContributorRewardAmount     float64
 }
 
 func (c *UsageBillingCommand) Normalize() {
@@ -56,7 +64,7 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 		return ""
 	}
 	raw := fmt.Sprintf(
-		"%d|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%d|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f",
+		"%d|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%d|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f|%d|%d|%d|%0.10f|%0.10f|%0.10f|%0.10f",
 		c.UserID,
 		c.AccountID,
 		c.APIKeyID,
@@ -77,6 +85,13 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 		c.APIKeyQuotaCost,
 		c.APIKeyRateLimitCost,
 		c.AccountQuotaCost,
+		c.ContributorOwnerUserID,
+		c.ContributorRewardAccountID,
+		c.ContributorRewardGroupID,
+		c.ContributorRewardMultiplier,
+		c.ContributorRewardTotalCost,
+		c.ContributorRewardActualCost,
+		c.ContributorRewardAmount,
 	)
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash
@@ -112,11 +127,14 @@ type AccountQuotaState struct {
 }
 
 type UsageBillingApplyResult struct {
-	Applied              bool
-	APIKeyQuotaExhausted bool
-	NewBalance           *float64           // post-deduction balance (nil = no balance deduction)
-	BalanceOverdrafted   bool               // true when the sufficient-balance guard missed and debt was still recorded
-	QuotaState           *AccountQuotaState // post-increment quota state (nil = no quota increment)
+	Applied                      bool
+	APIKeyQuotaExhausted         bool
+	NewBalance                   *float64           // post-deduction balance (nil = no balance deduction)
+	BalanceOverdrafted           bool               // true when the sufficient-balance guard missed and debt was still recorded
+	QuotaState                   *AccountQuotaState // post-increment quota state (nil = no quota increment)
+	ContributorRewardApplied     bool
+	ContributorRewardOwnerUserID int64
+	ContributorRewardAmount      float64
 }
 
 type UsageBillingRepository interface {

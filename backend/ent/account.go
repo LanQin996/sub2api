@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
 // Account is the model entity for the Account schema.
@@ -81,6 +82,16 @@ type Account struct {
 	ParentAccountID *int64 `json:"parent_account_id,omitempty"`
 	// 'global' (default) or 'spark' (shadow reads codex_bengalfox).
 	QuotaDimension account.QuotaDimension `json:"quota_dimension,omitempty"`
+	// User who contributed this account; NULL = platform/admin-owned account.
+	OwnerUserID *int64 `json:"owner_user_id,omitempty"`
+	// Contribution lifecycle: '' for normal accounts, or pending/approved/rejected/revoked.
+	ContributionStatus string `json:"contribution_status,omitempty"`
+	// ContributionSubmittedAt holds the value of the "contribution_submitted_at" field.
+	ContributionSubmittedAt *time.Time `json:"contribution_submitted_at,omitempty"`
+	// ContributionApprovedAt holds the value of the "contribution_approved_at" field.
+	ContributionApprovedAt *time.Time `json:"contribution_approved_at,omitempty"`
+	// ContributionRevokedAt holds the value of the "contribution_revoked_at" field.
+	ContributionRevokedAt *time.Time `json:"contribution_revoked_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the AccountQuery when eager-loading is set.
 	Edges        AccountEdges `json:"edges"`
@@ -99,11 +110,15 @@ type AccountEdges struct {
 	Children []*Account `json:"children,omitempty"`
 	// UsageLogs holds the value of the usage_logs edge.
 	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
+	// ContributorRewardLogs holds the value of the contributor_reward_logs edge.
+	ContributorRewardLogs []*ContributorRewardLog `json:"contributor_reward_logs,omitempty"`
+	// Owner holds the value of the owner edge.
+	Owner *User `json:"owner,omitempty"`
 	// AccountGroups holds the value of the account_groups edge.
 	AccountGroups []*AccountGroup `json:"account_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [6]bool
+	loadedTypes [8]bool
 }
 
 // GroupsOrErr returns the Groups value or an error if the edge
@@ -155,10 +170,30 @@ func (e AccountEdges) UsageLogsOrErr() ([]*UsageLog, error) {
 	return nil, &NotLoadedError{edge: "usage_logs"}
 }
 
+// ContributorRewardLogsOrErr returns the ContributorRewardLogs value or an error if the edge
+// was not loaded in eager-loading.
+func (e AccountEdges) ContributorRewardLogsOrErr() ([]*ContributorRewardLog, error) {
+	if e.loadedTypes[5] {
+		return e.ContributorRewardLogs, nil
+	}
+	return nil, &NotLoadedError{edge: "contributor_reward_logs"}
+}
+
+// OwnerOrErr returns the Owner value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e AccountEdges) OwnerOrErr() (*User, error) {
+	if e.Owner != nil {
+		return e.Owner, nil
+	} else if e.loadedTypes[6] {
+		return nil, &NotFoundError{label: user.Label}
+	}
+	return nil, &NotLoadedError{edge: "owner"}
+}
+
 // AccountGroupsOrErr returns the AccountGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e AccountEdges) AccountGroupsOrErr() ([]*AccountGroup, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[7] {
 		return e.AccountGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "account_groups"}
@@ -175,11 +210,11 @@ func (*Account) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case account.FieldRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case account.FieldID, account.FieldProxyID, account.FieldProxyFallbackOriginID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority, account.FieldParentAccountID:
+		case account.FieldID, account.FieldProxyID, account.FieldProxyFallbackOriginID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority, account.FieldParentAccountID, account.FieldOwnerUserID:
 			values[i] = new(sql.NullInt64)
-		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus, account.FieldQuotaDimension:
+		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus, account.FieldQuotaDimension, account.FieldContributionStatus:
 			values[i] = new(sql.NullString)
-		case account.FieldCreatedAt, account.FieldUpdatedAt, account.FieldDeletedAt, account.FieldLastUsedAt, account.FieldExpiresAt, account.FieldRateLimitedAt, account.FieldRateLimitResetAt, account.FieldOverloadUntil, account.FieldTempUnschedulableUntil, account.FieldSessionWindowStart, account.FieldSessionWindowEnd:
+		case account.FieldCreatedAt, account.FieldUpdatedAt, account.FieldDeletedAt, account.FieldLastUsedAt, account.FieldExpiresAt, account.FieldRateLimitedAt, account.FieldRateLimitResetAt, account.FieldOverloadUntil, account.FieldTempUnschedulableUntil, account.FieldSessionWindowStart, account.FieldSessionWindowEnd, account.FieldContributionSubmittedAt, account.FieldContributionApprovedAt, account.FieldContributionRevokedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -409,6 +444,40 @@ func (_m *Account) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.QuotaDimension = account.QuotaDimension(value.String)
 			}
+		case account.FieldOwnerUserID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field owner_user_id", values[i])
+			} else if value.Valid {
+				_m.OwnerUserID = new(int64)
+				*_m.OwnerUserID = value.Int64
+			}
+		case account.FieldContributionStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field contribution_status", values[i])
+			} else if value.Valid {
+				_m.ContributionStatus = value.String
+			}
+		case account.FieldContributionSubmittedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field contribution_submitted_at", values[i])
+			} else if value.Valid {
+				_m.ContributionSubmittedAt = new(time.Time)
+				*_m.ContributionSubmittedAt = value.Time
+			}
+		case account.FieldContributionApprovedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field contribution_approved_at", values[i])
+			} else if value.Valid {
+				_m.ContributionApprovedAt = new(time.Time)
+				*_m.ContributionApprovedAt = value.Time
+			}
+		case account.FieldContributionRevokedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field contribution_revoked_at", values[i])
+			} else if value.Valid {
+				_m.ContributionRevokedAt = new(time.Time)
+				*_m.ContributionRevokedAt = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -445,6 +514,16 @@ func (_m *Account) QueryChildren() *AccountQuery {
 // QueryUsageLogs queries the "usage_logs" edge of the Account entity.
 func (_m *Account) QueryUsageLogs() *UsageLogQuery {
 	return NewAccountClient(_m.config).QueryUsageLogs(_m)
+}
+
+// QueryContributorRewardLogs queries the "contributor_reward_logs" edge of the Account entity.
+func (_m *Account) QueryContributorRewardLogs() *ContributorRewardLogQuery {
+	return NewAccountClient(_m.config).QueryContributorRewardLogs(_m)
+}
+
+// QueryOwner queries the "owner" edge of the Account entity.
+func (_m *Account) QueryOwner() *UserQuery {
+	return NewAccountClient(_m.config).QueryOwner(_m)
 }
 
 // QueryAccountGroups queries the "account_groups" edge of the Account entity.
@@ -601,6 +680,29 @@ func (_m *Account) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("quota_dimension=")
 	builder.WriteString(fmt.Sprintf("%v", _m.QuotaDimension))
+	builder.WriteString(", ")
+	if v := _m.OwnerUserID; v != nil {
+		builder.WriteString("owner_user_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("contribution_status=")
+	builder.WriteString(_m.ContributionStatus)
+	builder.WriteString(", ")
+	if v := _m.ContributionSubmittedAt; v != nil {
+		builder.WriteString("contribution_submitted_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.ContributionApprovedAt; v != nil {
+		builder.WriteString("contribution_approved_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.ContributionRevokedAt; v != nil {
+		builder.WriteString("contribution_revoked_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

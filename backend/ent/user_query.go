@@ -13,9 +13,11 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/contributorrewardlog"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -47,6 +49,8 @@ type UserQuery struct {
 	withAnnouncementReads      *AnnouncementReadQuery
 	withAllowedGroups          *GroupQuery
 	withUsageLogs              *UsageLogQuery
+	withContributedAccounts    *AccountQuery
+	withContributorRewardLogs  *ContributorRewardLogQuery
 	withAttributeValues        *UserAttributeValueQuery
 	withPromoCodeUsages        *PromoCodeUsageQuery
 	withPaymentOrders          *PaymentOrderQuery
@@ -282,6 +286,50 @@ func (_q *UserQuery) QueryUsageLogs() *UsageLogQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(usagelog.Table, usagelog.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.UsageLogsTable, user.UsageLogsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryContributedAccounts chains the current query on the "contributed_accounts" edge.
+func (_q *UserQuery) QueryContributedAccounts() *AccountQuery {
+	query := (&AccountClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(account.Table, account.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ContributedAccountsTable, user.ContributedAccountsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryContributorRewardLogs chains the current query on the "contributor_reward_logs" edge.
+func (_q *UserQuery) QueryContributorRewardLogs() *ContributorRewardLogQuery {
+	query := (&ContributorRewardLogClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(contributorrewardlog.Table, contributorrewardlog.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ContributorRewardLogsTable, user.ContributorRewardLogsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -644,6 +692,8 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withAnnouncementReads:      _q.withAnnouncementReads.Clone(),
 		withAllowedGroups:          _q.withAllowedGroups.Clone(),
 		withUsageLogs:              _q.withUsageLogs.Clone(),
+		withContributedAccounts:    _q.withContributedAccounts.Clone(),
+		withContributorRewardLogs:  _q.withContributorRewardLogs.Clone(),
 		withAttributeValues:        _q.withAttributeValues.Clone(),
 		withPromoCodeUsages:        _q.withPromoCodeUsages.Clone(),
 		withPaymentOrders:          _q.withPaymentOrders.Clone(),
@@ -753,6 +803,28 @@ func (_q *UserQuery) WithUsageLogs(opts ...func(*UsageLogQuery)) *UserQuery {
 		opt(query)
 	}
 	_q.withUsageLogs = query
+	return _q
+}
+
+// WithContributedAccounts tells the query-builder to eager-load the nodes that are connected to
+// the "contributed_accounts" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithContributedAccounts(opts ...func(*AccountQuery)) *UserQuery {
+	query := (&AccountClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withContributedAccounts = query
+	return _q
+}
+
+// WithContributorRewardLogs tells the query-builder to eager-load the nodes that are connected to
+// the "contributor_reward_logs" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithContributorRewardLogs(opts ...func(*ContributorRewardLogQuery)) *UserQuery {
+	query := (&ContributorRewardLogClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withContributorRewardLogs = query
 	return _q
 }
 
@@ -911,7 +983,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [16]bool{
+		loadedTypes = [18]bool{
 			_q.withAPIKeys != nil,
 			_q.withRedeemCodes != nil,
 			_q.withRedeemCodeUsages != nil,
@@ -921,6 +993,8 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withAnnouncementReads != nil,
 			_q.withAllowedGroups != nil,
 			_q.withUsageLogs != nil,
+			_q.withContributedAccounts != nil,
+			_q.withContributorRewardLogs != nil,
 			_q.withAttributeValues != nil,
 			_q.withPromoCodeUsages != nil,
 			_q.withPaymentOrders != nil,
@@ -1015,6 +1089,22 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadUsageLogs(ctx, query, nodes,
 			func(n *User) { n.Edges.UsageLogs = []*UsageLog{} },
 			func(n *User, e *UsageLog) { n.Edges.UsageLogs = append(n.Edges.UsageLogs, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withContributedAccounts; query != nil {
+		if err := _q.loadContributedAccounts(ctx, query, nodes,
+			func(n *User) { n.Edges.ContributedAccounts = []*Account{} },
+			func(n *User, e *Account) { n.Edges.ContributedAccounts = append(n.Edges.ContributedAccounts, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withContributorRewardLogs; query != nil {
+		if err := _q.loadContributorRewardLogs(ctx, query, nodes,
+			func(n *User) { n.Edges.ContributorRewardLogs = []*ContributorRewardLog{} },
+			func(n *User, e *ContributorRewardLog) {
+				n.Edges.ContributorRewardLogs = append(n.Edges.ContributorRewardLogs, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -1377,6 +1467,69 @@ func (_q *UserQuery) loadUsageLogs(ctx context.Context, query *UsageLogQuery, no
 		node, ok := nodeids[fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadContributedAccounts(ctx context.Context, query *AccountQuery, nodes []*User, init func(*User), assign func(*User, *Account)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(account.FieldOwnerUserID)
+	}
+	query.Where(predicate.Account(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.ContributedAccountsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.OwnerUserID
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "owner_user_id" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "owner_user_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadContributorRewardLogs(ctx context.Context, query *ContributorRewardLogQuery, nodes []*User, init func(*User), assign func(*User, *ContributorRewardLog)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(contributorrewardlog.FieldOwnerUserID)
+	}
+	query.Where(predicate.ContributorRewardLog(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.ContributorRewardLogsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.OwnerUserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "owner_user_id" returned %v for node %v`, fk, n.ID)
 		}
 		assign(node, n)
 	}

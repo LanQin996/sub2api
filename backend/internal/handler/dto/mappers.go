@@ -173,6 +173,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		Description:                     g.Description,
 		Platform:                        g.Platform,
 		RateMultiplier:                  g.RateMultiplier,
+		ContributorRewardMultiplier:     g.ContributorRewardMultiplier,
 		IsExclusive:                     g.IsExclusive,
 		Status:                          g.Status,
 		SubscriptionType:                g.SubscriptionType,
@@ -206,6 +207,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		return nil
 	}
 	redactedCreds, credsStatus := RedactCredentials(a.Credentials)
+	redactedExtra := RedactAccountExtra(a.Extra)
 	out := &Account{
 		ID:                      a.ID,
 		Name:                    a.Name,
@@ -214,7 +216,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		Type:                    a.Type,
 		Credentials:             redactedCreds,
 		CredentialsStatus:       credsStatus,
-		Extra:                   a.Extra,
+		Extra:                   redactedExtra,
 		ProxyID:                 a.ProxyID,
 		ProxyFallbackOriginID:   a.ProxyFallbackOriginID,
 		ProxyFallbackOriginName: a.ProxyFallbackOriginName,
@@ -229,6 +231,11 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		AutoPauseOnExpired:      a.AutoPauseOnExpired,
 		CreatedAt:               a.CreatedAt,
 		UpdatedAt:               a.UpdatedAt,
+		OwnerUserID:             a.OwnerUserID,
+		ContributionStatus:      a.ContributionStatus,
+		ContributionSubmittedAt: a.ContributionSubmittedAt,
+		ContributionApprovedAt:  a.ContributionApprovedAt,
+		ContributionRevokedAt:   a.ContributionRevokedAt,
 		Schedulable:             a.Schedulable,
 		RateLimitedAt:           a.RateLimitedAt,
 		RateLimitResetAt:        a.RateLimitResetAt,

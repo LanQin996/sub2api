@@ -11,9 +11,11 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/contributorrewardlog"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -488,6 +490,36 @@ func (_c *UserCreate) AddUsageLogs(v ...*UsageLog) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddUsageLogIDs(ids...)
+}
+
+// AddContributedAccountIDs adds the "contributed_accounts" edge to the Account entity by IDs.
+func (_c *UserCreate) AddContributedAccountIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddContributedAccountIDs(ids...)
+	return _c
+}
+
+// AddContributedAccounts adds the "contributed_accounts" edges to the Account entity.
+func (_c *UserCreate) AddContributedAccounts(v ...*Account) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddContributedAccountIDs(ids...)
+}
+
+// AddContributorRewardLogIDs adds the "contributor_reward_logs" edge to the ContributorRewardLog entity by IDs.
+func (_c *UserCreate) AddContributorRewardLogIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddContributorRewardLogIDs(ids...)
+	return _c
+}
+
+// AddContributorRewardLogs adds the "contributor_reward_logs" edges to the ContributorRewardLog entity.
+func (_c *UserCreate) AddContributorRewardLogs(v ...*ContributorRewardLog) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddContributorRewardLogIDs(ids...)
 }
 
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
@@ -1040,6 +1072,38 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ContributedAccountsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributedAccountsTable,
+			Columns: []string{user.ContributedAccountsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ContributorRewardLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ContributorRewardLogsTable,
+			Columns: []string{user.ContributorRewardLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(contributorrewardlog.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
