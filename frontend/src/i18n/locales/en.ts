@@ -1379,6 +1379,27 @@ export default {
       title: 'Contribute OpenAI OAuth Account',
       description: 'After authorization, the account is pending review and only enters scheduling after admin approval.'
     },
+    oauthDialog: {
+      title: 'Authorize OpenAI Account',
+      warning: 'The OpenAI/Codex OAuth client usually only accepts http://localhost:1455/auth/callback. Do not force the current site URL unless it is registered, or OpenAI will reject the request.',
+      redirectURI: 'OAuth redirect URI',
+      redirectURIHint: 'Keep the default unless you know your redirect URI is registered. If the browser shows localhost connection refused after authorization, copy the full address bar URL back here.',
+      generate: 'Generate authorization link',
+      generating: 'Generating...',
+      generated: 'Authorization link generated. Open it to finish login.',
+      openAuthURL: 'Open authorization page',
+      authURL: 'Authorization link',
+      callbackURL: 'Callback URL / code content',
+      callbackPlaceholder: 'Paste the full callback URL, for example: http://localhost:1455/auth/callback?code=...&state=...',
+      submitCallback: 'Submit authorization result',
+      submitting: 'Submitting...',
+      copyFailed: 'Failed to copy authorization link',
+      steps: {
+        line1: '1. Generate the authorization link first, then open it manually.',
+        line2: '2. After OpenAI login and consent, copy the full callback URL from the browser address bar.',
+        line3: '3. Paste the callback URL here and submit. The account will become pending review.'
+      }
+    },
     importJson: {
       title: 'Import OpenAI Account JSON',
       button: 'Import JSON',

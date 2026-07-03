@@ -53,6 +53,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 const SESSION_ID_KEY = 'openai_contribution_session_id'
 const STATE_KEY = 'openai_contribution_state'
 const REDIRECT_URI_KEY = 'openai_contribution_redirect_uri'
+const OPENAI_DEFAULT_REDIRECT_URI = 'http://localhost:1455/auth/callback'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -104,7 +105,7 @@ async function submit(): Promise<void> {
     const state = firstQueryValue(route.query.state)
     const sessionID = sessionStorage.getItem(SESSION_ID_KEY) || ''
     const expectedState = sessionStorage.getItem(STATE_KEY) || ''
-    const redirectURI = sessionStorage.getItem(REDIRECT_URI_KEY) || `${window.location.origin}/account-contributions/callback`
+    const redirectURI = sessionStorage.getItem(REDIRECT_URI_KEY) || OPENAI_DEFAULT_REDIRECT_URI
 
     if (!code) throw new Error(t('accountContributions.callback.missingCode'))
     if (!state) throw new Error(t('accountContributions.callback.missingState'))

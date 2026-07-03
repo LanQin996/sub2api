@@ -1383,6 +1383,27 @@ export default {
       title: '贡献 OpenAI OAuth 账号',
       description: '授权后账号先进入待审核状态，管理员通过后才会进入共享调度池。'
     },
+    oauthDialog: {
+      title: '授权 OpenAI 账号',
+      warning: 'OpenAI/Codex OAuth 客户端通常只接受 http://localhost:1455/auth/callback。不要直接拿当前站点地址硬怼，不然就会出现“授权请求无效”，纯给自己添堵。',
+      redirectURI: 'OAuth 回调地址',
+      redirectURIHint: '默认值建议别改。授权完成后浏览器可能打开 localhost 并显示无法连接，没事，把地址栏里的完整 URL 复制回来即可。',
+      generate: '生成授权链接',
+      generating: '生成中...',
+      generated: '授权链接已生成，请打开链接完成登录',
+      openAuthURL: '打开授权页面',
+      authURL: '授权链接',
+      callbackURL: '回调 URL / code 内容',
+      callbackPlaceholder: '粘贴授权后地址栏里的完整 URL，例如：http://localhost:1455/auth/callback?code=...&state=...',
+      submitCallback: '提交授权结果',
+      submitting: '提交中...',
+      copyFailed: '复制授权链接失败',
+      steps: {
+        line1: '1. 先生成授权链接，再手动打开授权页面。',
+        line2: '2. 登录 OpenAI 并授权后，复制浏览器地址栏里的完整回调 URL。',
+        line3: '3. 把回调 URL 粘贴回来提交，账号会进入待审核。'
+      }
+    },
     importJson: {
       title: '导入 OpenAI 账号 JSON',
       button: '导入 JSON',

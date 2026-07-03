@@ -17,7 +17,7 @@
                 <Icon name="upload" size="sm" />
                 <span>{{ t('accountContributions.importJson.button') }}</span>
               </button>
-              <button class="btn btn-primary" :disabled="startingOAuth" @click="startOpenAIOAuth">
+              <button class="btn btn-primary" :disabled="startingOAuth" @click="openOAuthDialog">
                 <Icon v-if="startingOAuth" name="refresh" size="sm" class="animate-spin" />
                 <Icon v-else name="link" size="sm" />
                 <span>{{ startingOAuth ? t('accountContributions.startingOAuth') : t('accountContributions.startOAuth') }}</span>
@@ -196,6 +196,88 @@
     </div>
 
     <BaseDialog
+      :show="showOAuthDialog"
+      :title="t('accountContributions.oauthDialog.title')"
+      width="wide"
+      close-on-click-outside
+      @close="closeOAuthDialog"
+    >
+      <div class="space-y-5">
+        <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
+          {{ t('accountContributions.oauthDialog.warning') }}
+        </div>
+
+        <div>
+          <label class="input-label">{{ t('accountContributions.oauthDialog.redirectURI') }}</label>
+          <input v-model.trim="oauthRedirectURI" class="input font-mono text-sm" />
+          <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+            {{ t('accountContributions.oauthDialog.redirectURIHint') }}
+          </p>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-primary" :disabled="startingOAuth" @click="generateOAuthLink">
+            <Icon v-if="startingOAuth" name="refresh" size="sm" class="animate-spin" />
+            <Icon v-else name="link" size="sm" />
+            <span>{{ startingOAuth ? t('accountContributions.oauthDialog.generating') : t('accountContributions.oauthDialog.generate') }}</span>
+          </button>
+          <button
+            v-if="oauthAuthURL"
+            class="btn btn-secondary"
+            @click="openOAuthAuthURL"
+          >
+            <Icon name="externalLink" size="sm" />
+            <span>{{ t('accountContributions.oauthDialog.openAuthURL') }}</span>
+          </button>
+        </div>
+
+        <div v-if="oauthAuthURL" class="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+          <div>
+            <label class="input-label">{{ t('accountContributions.oauthDialog.authURL') }}</label>
+            <div class="flex gap-2">
+              <input :value="oauthAuthURL" readonly class="input min-w-0 flex-1 font-mono text-xs" />
+              <button class="btn btn-secondary shrink-0" @click="copyOAuthAuthURL">
+                {{ t('common.copy') }}
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">
+            <p>{{ t('accountContributions.oauthDialog.steps.line1') }}</p>
+            <p>{{ t('accountContributions.oauthDialog.steps.line2') }}</p>
+            <p>{{ t('accountContributions.oauthDialog.steps.line3') }}</p>
+          </div>
+
+          <div>
+            <label class="input-label">{{ t('accountContributions.oauthDialog.callbackURL') }}</label>
+            <textarea
+              v-model.trim="oauthCallbackText"
+              class="input min-h-28 font-mono text-xs"
+              :placeholder="t('accountContributions.oauthDialog.callbackPlaceholder')"
+            />
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" :disabled="submittingOAuthCallback" @click="closeOAuthDialog">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="submittingOAuthCallback || !oauthAuthURL || !oauthCallbackText"
+            @click="submitOAuthCallback"
+          >
+            <Icon v-if="submittingOAuthCallback" name="refresh" size="sm" class="animate-spin" />
+            <span>{{ submittingOAuthCallback ? t('accountContributions.oauthDialog.submitting') : t('accountContributions.oauthDialog.submitCallback') }}</span>
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
       :show="showImportDialog"
       :title="t('accountContributions.importJson.title')"
       width="normal"
@@ -322,6 +404,11 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 
+const OPENAI_DEFAULT_REDIRECT_URI = 'http://localhost:1455/auth/callback'
+const SESSION_ID_KEY = 'openai_contribution_session_id'
+const STATE_KEY = 'openai_contribution_state'
+const REDIRECT_URI_KEY = 'openai_contribution_redirect_uri'
+
 const { t } = useI18n()
 const appStore = useAppStore()
 
@@ -333,12 +420,17 @@ const rewardSummaryLoading = ref(false)
 const startingOAuth = ref(false)
 const revokingId = ref<number | null>(null)
 const showImportDialog = ref(false)
+const showOAuthDialog = ref(false)
 const importingJSON = ref(false)
 const previewingJSON = ref(false)
 const importFiles = ref<File[]>([])
 const importResult = ref<ContributionImportResult | null>(null)
 const importPreview = ref<ContributionImportPreview | null>(null)
 const importFileInput = ref<HTMLInputElement | null>(null)
+const oauthRedirectURI = ref(OPENAI_DEFAULT_REDIRECT_URI)
+const oauthAuthURL = ref('')
+const oauthCallbackText = ref('')
+const submittingOAuthCallback = ref(false)
 
 const accountsPagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const rewardsPagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
@@ -410,8 +502,13 @@ function canRevoke(account: Account): boolean {
   return account.contribution_status === 'pending' || account.contribution_status === 'approved'
 }
 
-function resolveRedirectURI(): string {
-  return `${window.location.origin}/account-contributions/callback`
+function openOAuthDialog(): void {
+  showOAuthDialog.value = true
+}
+
+function closeOAuthDialog(): void {
+  if (startingOAuth.value || submittingOAuthCallback.value) return
+  showOAuthDialog.value = false
 }
 
 function openImportFilePicker(): void {
@@ -523,22 +620,94 @@ async function importJSON(): Promise<void> {
   }
 }
 
-async function startOpenAIOAuth(): Promise<void> {
+async function generateOAuthLink(): Promise<void> {
   if (startingOAuth.value) return
   startingOAuth.value = true
   try {
-    const redirectURI = resolveRedirectURI()
+    const redirectURI = oauthRedirectURI.value || OPENAI_DEFAULT_REDIRECT_URI
     const result = await accountContributionsAPI.generateOpenAIAuthURL({ redirect_uri: redirectURI })
     const parsed = new URL(result.auth_url)
     const state = parsed.searchParams.get('state') || ''
-    sessionStorage.setItem('openai_contribution_session_id', result.session_id)
-    sessionStorage.setItem('openai_contribution_state', state)
-    sessionStorage.setItem('openai_contribution_redirect_uri', redirectURI)
-    window.location.href = result.auth_url
+    oauthAuthURL.value = result.auth_url
+    oauthCallbackText.value = ''
+    sessionStorage.setItem(SESSION_ID_KEY, result.session_id)
+    sessionStorage.setItem(STATE_KEY, state)
+    sessionStorage.setItem(REDIRECT_URI_KEY, redirectURI)
+    appStore.showSuccess(t('accountContributions.oauthDialog.generated'))
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t('accountContributions.errors.startOAuthFailed')))
   } finally {
     startingOAuth.value = false
+  }
+}
+
+function openOAuthAuthURL(): void {
+  if (!oauthAuthURL.value) return
+  window.open(oauthAuthURL.value, '_blank', 'noopener,noreferrer')
+}
+
+async function copyOAuthAuthURL(): Promise<void> {
+  if (!oauthAuthURL.value) return
+  try {
+    await navigator.clipboard.writeText(oauthAuthURL.value)
+    appStore.showSuccess(t('common.copied'))
+  } catch {
+    appStore.showError(t('accountContributions.oauthDialog.copyFailed'))
+  }
+}
+
+function extractOAuthCallbackParams(raw: string): { code: string; state: string } {
+  const trimmed = raw.trim()
+  if (!trimmed) return { code: '', state: '' }
+  const parseSearch = (search: string): { code: string; state: string } => {
+    const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+    return { code: params.get('code') || '', state: params.get('state') || '' }
+  }
+  try {
+    const parsed = new URL(trimmed)
+    return parseSearch(parsed.search)
+  } catch {
+    const queryIndex = trimmed.indexOf('?')
+    if (queryIndex >= 0) return parseSearch(trimmed.slice(queryIndex + 1))
+    return parseSearch(trimmed)
+  }
+}
+
+async function submitOAuthCallback(): Promise<void> {
+  if (submittingOAuthCallback.value) return
+  submittingOAuthCallback.value = true
+  try {
+    const { code, state } = extractOAuthCallbackParams(oauthCallbackText.value)
+    const sessionID = sessionStorage.getItem(SESSION_ID_KEY) || ''
+    const expectedState = sessionStorage.getItem(STATE_KEY) || ''
+    const redirectURI = sessionStorage.getItem(REDIRECT_URI_KEY) || oauthRedirectURI.value || OPENAI_DEFAULT_REDIRECT_URI
+
+    if (!code) throw new Error(t('accountContributions.callback.missingCode'))
+    if (!state) throw new Error(t('accountContributions.callback.missingState'))
+    if (!sessionID) throw new Error(t('accountContributions.callback.missingSession'))
+    if (expectedState && expectedState !== state) {
+      throw new Error(t('accountContributions.callback.stateMismatch'))
+    }
+
+    await accountContributionsAPI.submitOpenAI({
+      session_id: sessionID,
+      code,
+      state,
+      redirect_uri: redirectURI
+    })
+
+    sessionStorage.removeItem(SESSION_ID_KEY)
+    sessionStorage.removeItem(STATE_KEY)
+    sessionStorage.removeItem(REDIRECT_URI_KEY)
+    oauthAuthURL.value = ''
+    oauthCallbackText.value = ''
+    showOAuthDialog.value = false
+    appStore.showSuccess(t('accountContributions.callback.submitted'))
+    await loadAccounts()
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('accountContributions.callback.submitFailed')))
+  } finally {
+    submittingOAuthCallback.value = false
   }
 }
 
