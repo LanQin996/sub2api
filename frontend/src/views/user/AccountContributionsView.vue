@@ -17,7 +17,7 @@
                 <Icon name="upload" size="sm" />
                 <span>{{ t('accountContributions.importJson.button') }}</span>
               </button>
-              <button class="btn btn-primary" :disabled="startingOAuth" @click="openOAuthDialog">
+              <button class="btn btn-primary" :disabled="startingOAuth" @click="showOAuthDialog = true">
                 <Icon v-if="startingOAuth" name="refresh" size="sm" class="animate-spin" />
                 <Icon v-else name="link" size="sm" />
                 <span>{{ startingOAuth ? t('accountContributions.startingOAuth') : t('accountContributions.startOAuth') }}</span>
@@ -527,10 +527,6 @@ function formatMultiplier(value: number): string {
 
 function canRevoke(account: Account): boolean {
   return account.contribution_status === 'pending' || account.contribution_status === 'approved'
-}
-
-function openOAuthDialog(): void {
-  showOAuthDialog.value = true
 }
 
 function closeOAuthDialog(): void {

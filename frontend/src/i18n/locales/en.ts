@@ -1381,7 +1381,7 @@ export default {
     },
     proxy: {
       url: 'Dedicated proxy URL (optional)',
-      placeholder: 'Example: http://user:pass@1.2.3.4:8080 or socks5://1.2.3.4:1080',
+      placeholder: "Example: http://user:pass{'@'}1.2.3.4:8080 or socks5://1.2.3.4:1080",
       hint: 'If provided, a dedicated proxy is created for this contributed account and deleted when the account is revoked.',
       importHint: 'If provided, each imported contribution gets its own dedicated proxy; it is deleted when that account is revoked.'
     },

@@ -21,7 +21,7 @@ var ErrContributionInvalidStatus = infraerrors.Conflict("CONTRIBUTION_INVALID_ST
 var ErrContributionOwnership = infraerrors.NotFound("CONTRIBUTION_NOT_FOUND", "account contribution not found")
 
 type AccountContributionService struct {
-	accountRepo        AccountRepository
+	accountRepo        AccountContributionRepository
 	groupRepo          GroupRepository
 	proxyRepo          ProxyRepository
 	rewardRepo         ContributorRewardRepository
@@ -29,16 +29,30 @@ type AccountContributionService struct {
 	schedulerRefresher SchedulerAccountRefresher
 }
 
+type AccountContributionRepository interface {
+	Create(ctx context.Context, account *Account) error
+	GetByID(ctx context.Context, id int64) (*Account, error)
+	Update(ctx context.Context, account *Account) error
+	BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error
+	FindByExtraField(ctx context.Context, key string, value any) ([]Account, error)
+	ListContributionsByOwner(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
+	ListContributionsByStatus(ctx context.Context, status string, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
+}
+
 type SchedulerAccountRefresher interface {
 	RefreshAccount(ctx context.Context, account *Account, groupIDs []int64, reason string) error
 }
 
-func NewAccountContributionService(accountRepo AccountRepository, groupRepo GroupRepository, rewardRepo ContributorRewardRepository, oauth *OpenAIOAuthService) *AccountContributionService {
+func NewAccountContributionService(accountRepo AccountContributionRepository, groupRepo GroupRepository, rewardRepo ContributorRewardRepository, oauth *OpenAIOAuthService) *AccountContributionService {
 	return &AccountContributionService{accountRepo: accountRepo, groupRepo: groupRepo, rewardRepo: rewardRepo, oauth: oauth}
 }
 
 func ProvideAccountContributionService(accountRepo AccountRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, rewardRepo ContributorRewardRepository, oauth *OpenAIOAuthService, schedulerSnapshot *SchedulerSnapshotService) *AccountContributionService {
-	svc := NewAccountContributionService(accountRepo, groupRepo, rewardRepo, oauth)
+	contributionRepo, ok := accountRepo.(AccountContributionRepository)
+	if !ok {
+		panic("account repository does not implement AccountContributionRepository")
+	}
+	svc := NewAccountContributionService(contributionRepo, groupRepo, rewardRepo, oauth)
 	svc.proxyRepo = proxyRepo
 	svc.SetSchedulerRefresher(schedulerSnapshot)
 	return svc

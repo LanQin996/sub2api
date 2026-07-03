@@ -1385,7 +1385,7 @@ export default {
     },
     proxy: {
       url: '专属代理 URL（可选）',
-      placeholder: '例如：http://user:pass@1.2.3.4:8080 或 socks5://1.2.3.4:1080',
+      placeholder: "例如：http://user:pass{'@'}1.2.3.4:8080 或 socks5://1.2.3.4:1080",
       hint: '填写后会为这个贡献账号创建专属代理；账号撤回/取消共享时会一并删除。',
       importHint: '填写后会给本次导入的每个贡献账号分别创建专属代理；对应账号撤回时自动删除。'
     },
