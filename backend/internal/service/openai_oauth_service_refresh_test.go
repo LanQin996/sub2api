@@ -81,6 +81,7 @@ func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccess
 }
 
 func TestProvideOpenAIOAuthService_RefreshAccountToken_EnrichesSubscriptionExpiry(t *testing.T) {
+	subscriptionExpiresAt := time.Now().AddDate(1, 0, 0).UTC().Format(time.RFC3339)
 	accountCheckServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backend-api/accounts/check/v4-2023-04-27":
@@ -89,7 +90,7 @@ func TestProvideOpenAIOAuthService_RefreshAccountToken_EnrichesSubscriptionExpir
 				"accounts": {
 					"acct_1": {
 						"account": {"plan_type": "plus", "is_default": true},
-						"entitlement": {"expires_at": "2026-06-01T00:00:00Z"}
+						"entitlement": {"expires_at": "` + subscriptionExpiresAt + `"}
 					}
 				}
 			}`))
@@ -127,10 +128,10 @@ func TestProvideOpenAIOAuthService_RefreshAccountToken_EnrichesSubscriptionExpir
 	})
 	require.NoError(t, err)
 	require.Equal(t, "plus", info.PlanType)
-	require.Equal(t, "2026-06-01T00:00:00Z", info.SubscriptionExpiresAt)
+	require.Equal(t, subscriptionExpiresAt, info.SubscriptionExpiresAt)
 
 	creds := svc.BuildAccountCredentials(info)
-	require.Equal(t, "2026-06-01T00:00:00Z", creds["subscription_expires_at"])
+	require.Equal(t, subscriptionExpiresAt, creds["subscription_expires_at"])
 }
 
 func TestOpenAIOAuthService_RefreshAccountToken_PATIgnoresStaleRefreshToken(t *testing.T) {
