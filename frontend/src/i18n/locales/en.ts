@@ -1421,7 +1421,7 @@ export default {
       resultSummary: 'Total {total}, created {created}, failed {failed}',
       errors: 'Errors',
       invalidFile: '{file} is not a valid account import JSON',
-      proxyNotSupported: '{file} contains proxy data; user contribution import does not support proxy import',
+      proxyNotSupported: '{file} contains proxy data; it will be imported as account-owned contribution proxies',
       parseFailed: 'Failed to parse JSON',
       failed: 'Failed to import contributed accounts',
       success: '{created} contributed accounts submitted for review',
@@ -3480,9 +3480,17 @@ export default {
         id: 'ID',
         account: 'Account',
         owner: 'Owner',
+        plan: 'Plan',
         status: 'Status',
         groups: 'Groups',
         submittedAt: 'Submitted At'
+      },
+      planInfo: {
+        plan: 'Plan',
+        email: 'Email',
+        chatgptAccountId: 'ChatGPT Account',
+        expiresAt: 'Expires',
+        unknown: 'Unknown'
       },
       approveDialog: {
         title: 'Approve Contribution',

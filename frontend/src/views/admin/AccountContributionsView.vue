@@ -39,6 +39,19 @@
           <template #cell-owner_user_id="{ value }">
             <span class="font-mono text-xs text-gray-500 dark:text-dark-400">#{{ value || '-' }}</span>
           </template>
+          <template #cell-plan="{ row }">
+            <div class="space-y-1">
+              <span :class="['badge', contributionPlanBadgeClass(row)]">
+                {{ contributionPlanLabel(row) }}
+              </span>
+              <p v-if="contributionAccountEmail(row)" class="max-w-[220px] truncate text-xs text-gray-500 dark:text-dark-400">
+                {{ contributionAccountEmail(row) }}
+              </p>
+              <p v-if="contributionChatGPTAccountID(row)" class="max-w-[220px] truncate font-mono text-xs text-gray-400 dark:text-dark-500">
+                {{ contributionChatGPTAccountID(row) }}
+              </p>
+            </div>
+          </template>
           <template #cell-status="{ row }">
             <div class="flex flex-wrap gap-1">
               <span :class="['badge', row.status === 'active' ? 'badge-success' : 'badge-gray']">
@@ -105,6 +118,26 @@
           <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
             #{{ approvingAccount.id }} · {{ approvingAccount.platform }} / {{ approvingAccount.type }}
           </p>
+          <div class="mt-3 grid gap-2 text-xs text-gray-600 dark:text-dark-300 sm:grid-cols-2">
+            <div>
+              <span class="text-gray-400 dark:text-dark-500">{{ t('admin.accountContributions.planInfo.plan') }}</span>
+              <span :class="['badge ml-2', contributionPlanBadgeClass(approvingAccount)]">
+                {{ contributionPlanLabel(approvingAccount) }}
+              </span>
+            </div>
+            <div v-if="contributionAccountEmail(approvingAccount)" class="truncate">
+              <span class="text-gray-400 dark:text-dark-500">{{ t('admin.accountContributions.planInfo.email') }}</span>
+              <span class="ml-2">{{ contributionAccountEmail(approvingAccount) }}</span>
+            </div>
+            <div v-if="contributionChatGPTAccountID(approvingAccount)" class="truncate">
+              <span class="text-gray-400 dark:text-dark-500">{{ t('admin.accountContributions.planInfo.chatgptAccountId') }}</span>
+              <span class="ml-2 font-mono">{{ contributionChatGPTAccountID(approvingAccount) }}</span>
+            </div>
+            <div v-if="contributionSubscriptionExpiresAt(approvingAccount)" class="truncate">
+              <span class="text-gray-400 dark:text-dark-500">{{ t('admin.accountContributions.planInfo.expiresAt') }}</span>
+              <span class="ml-2">{{ contributionSubscriptionExpiresAt(approvingAccount) }}</span>
+            </div>
+          </div>
         </div>
 
         <div>
@@ -216,6 +249,7 @@ const columns = computed<Column[]>(() => [
   { key: 'id', label: t('admin.accountContributions.columns.id') },
   { key: 'name', label: t('admin.accountContributions.columns.account') },
   { key: 'owner_user_id', label: t('admin.accountContributions.columns.owner') },
+  { key: 'plan', label: t('admin.accountContributions.columns.plan') },
   { key: 'status', label: t('admin.accountContributions.columns.status') },
   { key: 'group_ids', label: t('admin.accountContributions.columns.groups') },
   { key: 'contribution_submitted_at', label: t('admin.accountContributions.columns.submittedAt') },
@@ -245,6 +279,61 @@ function formatMultiplier(value: number): string {
 function formatGroupNames(ids?: number[]): string {
   if (!ids || ids.length === 0) return '-'
   return ids.map(id => groups.value.find(group => group.id === id)?.name || `#${id}`).join(', ')
+}
+
+function contributionMetaValue(account: Account | null | undefined, keys: string[]): string {
+  if (!account) return ''
+  for (const source of [account.credentials, account.extra]) {
+    if (!source) continue
+    for (const key of keys) {
+      const value = source[key]
+      if (typeof value === 'string' && value.trim() !== '') return value.trim()
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+    }
+  }
+  return ''
+}
+
+function contributionPlanType(account: Account | null | undefined): string {
+  return contributionMetaValue(account, [
+    'plan_type',
+    'chatgpt_plan_type',
+    'account_plan',
+    'subscription_plan',
+    'plan'
+  ]).toLowerCase()
+}
+
+function contributionPlanLabel(account: Account | null | undefined): string {
+  const plan = contributionPlanType(account)
+  if (!plan) return t('admin.accountContributions.planInfo.unknown')
+  if (plan.includes('pro')) return 'PRO'
+  if (plan.includes('team') || plan.includes('business')) return 'TEAM'
+  if (plan.includes('plus')) return 'PLUS'
+  if (plan.includes('free')) return 'FREE'
+  if (plan.includes('enterprise')) return 'ENTERPRISE'
+  return plan.replace(/_/g, ' ').toUpperCase()
+}
+
+function contributionPlanBadgeClass(account: Account | null | undefined): string {
+  const plan = contributionPlanType(account)
+  if (plan.includes('pro')) return 'badge-primary'
+  if (plan.includes('team') || plan.includes('business') || plan.includes('enterprise')) return 'badge-success'
+  if (plan.includes('plus')) return 'badge-warning'
+  if (plan.includes('free')) return 'badge-gray'
+  return 'badge-gray'
+}
+
+function contributionAccountEmail(account: Account | null | undefined): string {
+  return contributionMetaValue(account, ['email', 'account_email'])
+}
+
+function contributionChatGPTAccountID(account: Account | null | undefined): string {
+  return contributionMetaValue(account, ['chatgpt_account_id', 'organization_id'])
+}
+
+function contributionSubscriptionExpiresAt(account: Account | null | undefined): string {
+  return contributionMetaValue(account, ['subscription_expires_at'])
 }
 
 function toggleGroup(id: number): void {

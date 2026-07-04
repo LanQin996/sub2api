@@ -1425,7 +1425,7 @@ export default {
       resultSummary: '总计 {total} 个，成功 {created} 个，失败 {failed} 个',
       errors: '失败明细',
       invalidFile: '{file} 不是有效的账号导入 JSON',
-      proxyNotSupported: '{file} 包含代理数据；用户贡献导入暂不支持导入代理',
+      proxyNotSupported: '{file} 包含代理数据；将按账号 proxy_key 导入为用户专属代理',
       parseFailed: 'JSON 解析失败',
       failed: '导入贡献账号失败',
       success: '已提交 {created} 个贡献账号，等待管理员审核',
@@ -3555,9 +3555,17 @@ export default {
         id: 'ID',
         account: '账号',
         owner: '贡献用户',
+        plan: '套餐',
         status: '状态',
         groups: '分组',
         submittedAt: '提交时间'
+      },
+      planInfo: {
+        plan: '套餐',
+        email: '邮箱',
+        chatgptAccountId: 'ChatGPT账号',
+        expiresAt: '到期',
+        unknown: '未知'
       },
       approveDialog: {
         title: '审核通过贡献账号',

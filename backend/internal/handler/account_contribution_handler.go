@@ -44,8 +44,19 @@ type submitOpenAIJSONContributionRequest struct {
 type contributionDataPayload struct {
 	Type     string                    `json:"type,omitempty"`
 	Version  int                       `json:"version,omitempty"`
-	Proxies  []map[string]any          `json:"proxies"`
+	Proxies  []contributionDataProxy   `json:"proxies"`
 	Accounts []contributionDataAccount `json:"accounts"`
+}
+
+type contributionDataProxy struct {
+	ProxyKey string `json:"proxy_key"`
+	Name     string `json:"name"`
+	Protocol string `json:"protocol"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	Status   string `json:"status"`
 }
 
 type contributionDataAccount struct {
@@ -55,6 +66,7 @@ type contributionDataAccount struct {
 	Type               string         `json:"type"`
 	Credentials        map[string]any `json:"credentials"`
 	Extra              map[string]any `json:"extra"`
+	ProxyKey           *string        `json:"proxy_key"`
 	Concurrency        int            `json:"concurrency"`
 	Priority           int            `json:"priority"`
 	ExpiresAt          *int64         `json:"expires_at"`
@@ -81,6 +93,7 @@ func contributionAccountsFromRequest(req submitOpenAIJSONContributionRequest) []
 			Type:               accounts[i].Type,
 			Credentials:        accounts[i].Credentials,
 			Extra:              accounts[i].Extra,
+			ProxyKey:           accounts[i].ProxyKey,
 			Concurrency:        accounts[i].Concurrency,
 			Priority:           accounts[i].Priority,
 			ExpiresAt:          accounts[i].ExpiresAt,
@@ -88,6 +101,24 @@ func contributionAccountsFromRequest(req submitOpenAIJSONContributionRequest) []
 		})
 	}
 	return inputAccounts
+}
+
+func contributionProxiesFromRequest(req submitOpenAIJSONContributionRequest) []service.OpenAIJSONContributionProxy {
+	proxies := req.Data.Proxies
+	inputProxies := make([]service.OpenAIJSONContributionProxy, 0, len(proxies))
+	for i := range proxies {
+		inputProxies = append(inputProxies, service.OpenAIJSONContributionProxy{
+			ProxyKey: proxies[i].ProxyKey,
+			Name:     proxies[i].Name,
+			Protocol: proxies[i].Protocol,
+			Host:     proxies[i].Host,
+			Port:     proxies[i].Port,
+			Username: proxies[i].Username,
+			Password: proxies[i].Password,
+			Status:   proxies[i].Status,
+		})
+	}
+	return inputProxies
 }
 
 func (h *AccountContributionHandler) GenerateOpenAIAuthURL(c *gin.Context) {
@@ -141,12 +172,9 @@ func (h *AccountContributionHandler) SubmitOpenAIJSON(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	if len(req.Data.Proxies) > 0 {
-		response.BadRequest(c, "JSON contribution import does not support proxy import; choose an existing proxy in the request instead")
-		return
-	}
 	result, err := h.service.SubmitOpenAIJSON(c.Request.Context(), subject.UserID, service.SubmitOpenAIJSONContributionInput{
 		Accounts: contributionAccountsFromRequest(req),
+		Proxies:  contributionProxiesFromRequest(req),
 		ProxyID:  req.ProxyID,
 		ProxyURL: req.ProxyURL,
 	})
@@ -168,12 +196,9 @@ func (h *AccountContributionHandler) PreviewOpenAIJSON(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	if len(req.Data.Proxies) > 0 {
-		response.BadRequest(c, "JSON contribution import does not support proxy import; choose an existing proxy in the request instead")
-		return
-	}
 	preview, err := h.service.PreviewOpenAIJSON(c.Request.Context(), subject.UserID, service.SubmitOpenAIJSONContributionInput{
 		Accounts: contributionAccountsFromRequest(req),
+		Proxies:  contributionProxiesFromRequest(req),
 		ProxyID:  req.ProxyID,
 		ProxyURL: req.ProxyURL,
 	})

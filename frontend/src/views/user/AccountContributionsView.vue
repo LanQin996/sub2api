@@ -569,9 +569,6 @@ async function parseContributionPayloadFile(sourceFile: File): Promise<AdminData
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.accounts)) {
     throw new Error(t('accountContributions.importJson.invalidFile', { file: sourceFile.name }))
   }
-  if (payload.proxies && payload.proxies.length > 0) {
-    throw new Error(t('accountContributions.importJson.proxyNotSupported', { file: sourceFile.name }))
-  }
   return {
     ...payload,
     proxies: payload.proxies || []
@@ -582,7 +579,7 @@ function mergeContributionPayloads(payloads: AdminDataPayload[]): AdminDataPaylo
   if (payloads.length === 1) return payloads[0]
   return {
     exported_at: new Date().toISOString(),
-    proxies: [],
+    proxies: payloads.flatMap(payload => payload.proxies || []),
     accounts: payloads.flatMap(payload => payload.accounts)
   }
 }

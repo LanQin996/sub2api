@@ -77,8 +77,20 @@ type SubmitOpenAIContributionInput struct {
 
 type SubmitOpenAIJSONContributionInput struct {
 	Accounts []OpenAIJSONContributionAccount
+	Proxies  []OpenAIJSONContributionProxy
 	ProxyID  *int64
 	ProxyURL string
+}
+
+type OpenAIJSONContributionProxy struct {
+	ProxyKey string
+	Name     string
+	Protocol string
+	Host     string
+	Port     int
+	Username string
+	Password string
+	Status   string
 }
 
 type OpenAIJSONContributionAccount struct {
@@ -88,6 +100,7 @@ type OpenAIJSONContributionAccount struct {
 	Type               string
 	Credentials        map[string]any
 	Extra              map[string]any
+	ProxyKey           *string
 	Concurrency        int
 	Priority           int
 	ExpiresAt          *int64
@@ -229,6 +242,10 @@ func (s *AccountContributionService) PreviewOpenAIJSON(ctx context.Context, user
 			return preview, err
 		}
 	}
+	proxyByKey, err := buildOpenAIContributionProxyMap(input.Proxies)
+	if err != nil {
+		return preview, err
+	}
 
 	seenInPayload := make(map[string]int, len(input.Accounts))
 	for i := range input.Accounts {
@@ -247,6 +264,18 @@ func (s *AccountContributionService) PreviewOpenAIJSON(ctx context.Context, user
 			}
 			preview.Items = append(preview.Items, previewItem)
 			continue
+		}
+		if input.ProxyID == nil && strings.TrimSpace(input.ProxyURL) == "" {
+			proxyKey := contributionAccountProxyKey(item)
+			if proxyKey != "" {
+				if _, ok := proxyByKey[proxyKey]; !ok {
+					previewItem.Invalid = true
+					previewItem.Message = "proxy_key not found"
+					preview.Invalid++
+					preview.Items = append(preview.Items, previewItem)
+					continue
+				}
+			}
 		}
 
 		enrichOpenAIContributionCredentialsFromIDToken(item.Credentials)
@@ -303,6 +332,10 @@ func (s *AccountContributionService) SubmitOpenAIJSON(ctx context.Context, userI
 	if len(input.Accounts) > 100 {
 		return result, infraerrors.BadRequest("CONTRIBUTION_IMPORT_TOO_MANY", "too many accounts in one import")
 	}
+	proxyByKey, err := buildOpenAIContributionProxyMap(input.Proxies)
+	if err != nil {
+		return result, err
+	}
 
 	for i := range input.Accounts {
 		item := input.Accounts[i]
@@ -337,6 +370,27 @@ func (s *AccountContributionService) SubmitOpenAIJSON(ctx context.Context, userI
 		}
 		if ownedProxyID != nil {
 			proxyID = ownedProxyID
+		}
+		if proxyID == nil {
+			proxyKey := contributionAccountProxyKey(item)
+			if proxyKey != "" {
+				importedProxy, ok := proxyByKey[proxyKey]
+				if !ok {
+					err := infraerrors.BadRequest("CONTRIBUTION_IMPORT_PROXY_KEY_NOT_FOUND", "proxy_key not found")
+					result.Failed++
+					result.Items = append(result.Items, ContributionImportItem{Index: i, Name: name, Action: "failed", Message: err.Error()})
+					result.Errors = append(result.Errors, ContributionImportError{Index: i, Name: name, Message: err.Error()})
+					continue
+				}
+				ownedProxyID, err = s.createContributionOwnedProxyFromImport(ctx, userID, name, importedProxy)
+				if err != nil {
+					result.Failed++
+					result.Items = append(result.Items, ContributionImportItem{Index: i, Name: name, Action: "failed", Message: err.Error()})
+					result.Errors = append(result.Errors, ContributionImportError{Index: i, Name: name, Message: err.Error()})
+					continue
+				}
+				proxyID = ownedProxyID
+			}
 		}
 		markContributionOwnedProxyExtra(extra, ownedProxyID)
 
@@ -683,6 +737,55 @@ func (s *AccountContributionService) Reject(ctx context.Context, accountID int64
 	return updated, nil
 }
 
+func buildOpenAIContributionProxyMap(proxies []OpenAIJSONContributionProxy) (map[string]OpenAIJSONContributionProxy, error) {
+	out := make(map[string]OpenAIJSONContributionProxy, len(proxies))
+	for i := range proxies {
+		item := proxies[i]
+		key := strings.TrimSpace(item.ProxyKey)
+		if key == "" {
+			key = buildContributionProxyKey(item.Protocol, item.Host, item.Port, item.Username, item.Password)
+		}
+		if key == "" {
+			return nil, infraerrors.BadRequest("CONTRIBUTION_IMPORT_PROXY_KEY_REQUIRED", "proxy_key is required")
+		}
+		if err := validateOpenAIJSONContributionProxy(item); err != nil {
+			return nil, err
+		}
+		out[key] = item
+	}
+	return out, nil
+}
+
+func contributionAccountProxyKey(item OpenAIJSONContributionAccount) string {
+	if item.ProxyKey == nil {
+		return ""
+	}
+	return strings.TrimSpace(*item.ProxyKey)
+}
+
+func buildContributionProxyKey(protocol, host string, port int, username, password string) string {
+	return fmt.Sprintf("%s|%s|%d|%s|%s", strings.TrimSpace(protocol), strings.TrimSpace(host), port, strings.TrimSpace(username), strings.TrimSpace(password))
+}
+
+func validateOpenAIJSONContributionProxy(item OpenAIJSONContributionProxy) error {
+	protocol := strings.ToLower(strings.TrimSpace(item.Protocol))
+	switch protocol {
+	case "http", "https", "socks5", "socks5h":
+	default:
+		return infraerrors.BadRequest("CONTRIBUTION_IMPORT_PROXY_PROTOCOL_UNSUPPORTED", "proxy protocol must be http, https, socks5 or socks5h")
+	}
+	if strings.TrimSpace(item.Host) == "" {
+		return infraerrors.BadRequest("CONTRIBUTION_IMPORT_PROXY_HOST_REQUIRED", "proxy host is required")
+	}
+	if item.Port <= 0 || item.Port > 65535 {
+		return infraerrors.BadRequest("CONTRIBUTION_IMPORT_PROXY_PORT_INVALID", "proxy port is invalid")
+	}
+	if len(item.Username) > 100 || len(item.Password) > 100 {
+		return infraerrors.BadRequest("CONTRIBUTION_IMPORT_PROXY_AUTH_TOO_LONG", "proxy username/password is too long")
+	}
+	return nil
+}
+
 func (s *AccountContributionService) createContributionOwnedProxy(ctx context.Context, userID int64, accountName, rawProxyURL string) (*int64, error) {
 	trimmed := strings.TrimSpace(rawProxyURL)
 	if trimmed == "" {
@@ -709,6 +812,43 @@ func (s *AccountContributionService) createContributionOwnedProxy(ctx context.Co
 	proxy.Status = StatusActive
 	proxy.FallbackMode = FallbackModeNone
 	proxy.ExpiryWarnDays = 7
+	if err := s.proxyRepo.Create(ctx, proxy); err != nil {
+		return nil, err
+	}
+	return &proxy.ID, nil
+}
+
+func (s *AccountContributionService) createContributionOwnedProxyFromImport(ctx context.Context, userID int64, accountName string, item OpenAIJSONContributionProxy) (*int64, error) {
+	if s == nil || s.proxyRepo == nil {
+		return nil, infraerrors.BadRequest("CONTRIBUTION_PROXY_UNAVAILABLE", "contribution proxy is not available")
+	}
+	if err := validateOpenAIJSONContributionProxy(item); err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(accountName)
+	if name == "" {
+		name = strings.TrimSpace(item.Name)
+	}
+	if name == "" {
+		name = "OpenAI Contribution"
+	}
+	if len(name) > 40 {
+		name = name[:40]
+	}
+	proxy := &Proxy{
+		Name:           fmt.Sprintf("User Contribution #%d %s", userID, name),
+		Protocol:       strings.ToLower(strings.TrimSpace(item.Protocol)),
+		Host:           strings.TrimSpace(item.Host),
+		Port:           item.Port,
+		Username:       item.Username,
+		Password:       item.Password,
+		Status:         StatusActive,
+		FallbackMode:   FallbackModeNone,
+		ExpiryWarnDays: 7,
+	}
+	if len(proxy.Name) > 100 {
+		proxy.Name = proxy.Name[:100]
+	}
 	if err := s.proxyRepo.Create(ctx, proxy); err != nil {
 		return nil, err
 	}
