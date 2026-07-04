@@ -195,7 +195,7 @@ describe('useRoutePrefetch', () => {
 
     it('用户预加载映射表应该包含正确的路由', () => {
       expect(_userPrefetchMap).toHaveProperty('/dashboard')
-      expect(_userPrefetchMap['/dashboard']).toHaveLength(2)
+      expect(_userPrefetchMap['/dashboard']).toEqual(['/keys', '/usage', '/models'])
     })
   })
 

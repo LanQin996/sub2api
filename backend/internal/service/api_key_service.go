@@ -71,6 +71,7 @@ type APIKeyRepository interface {
 	CountByGroupID(ctx context.Context, groupID int64) (int64, error)
 	ListKeysByUserID(ctx context.Context, userID int64) ([]string, error)
 	ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error)
+	SetRouteGroupIDs(ctx context.Context, apiKeyID int64, groupIDs []int64) error
 
 	// Quota methods
 	IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error)
@@ -152,11 +153,12 @@ type APIKeyAuthCacheInvalidator interface {
 
 // CreateAPIKeyRequest 创建API Key请求
 type CreateAPIKeyRequest struct {
-	Name        string   `json:"name"`
-	GroupID     *int64   `json:"group_id"`
-	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
-	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
-	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
+	Name          string   `json:"name"`
+	GroupID       *int64   `json:"group_id"`
+	RouteGroupIDs []int64  `json:"group_ids"`
+	CustomKey     *string  `json:"custom_key"`   // 可选的自定义key
+	IPWhitelist   []string `json:"ip_whitelist"` // IP 白名单
+	IPBlacklist   []string `json:"ip_blacklist"` // IP 黑名单
 
 	// Quota fields
 	Quota         float64 `json:"quota"`           // Quota limit in USD (0 = unlimited)
@@ -170,11 +172,12 @@ type CreateAPIKeyRequest struct {
 
 // UpdateAPIKeyRequest 更新API Key请求
 type UpdateAPIKeyRequest struct {
-	Name        *string  `json:"name"`
-	GroupID     *int64   `json:"group_id"`
-	Status      *string  `json:"status"`
-	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单（空数组清空）
-	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单（空数组清空）
+	Name          *string  `json:"name"`
+	GroupID       *int64   `json:"group_id"`
+	RouteGroupIDs *[]int64 `json:"group_ids"`
+	Status        *string  `json:"status"`
+	IPWhitelist   []string `json:"ip_whitelist"` // IP 白名单（空数组清空）
+	IPBlacklist   []string `json:"ip_blacklist"` // IP 黑名单（空数组清空）
 
 	// Quota fields
 	Quota           *float64   `json:"quota"`       // Quota limit in USD (nil = no change, 0 = unlimited)
@@ -328,6 +331,60 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 	return user.CanBindGroup(group.ID, group.IsExclusive)
 }
 
+func normalizeAPIKeyRouteGroupIDs(groupID *int64, routeGroupIDs []int64) ([]int64, error) {
+	ids := make([]int64, 0, len(routeGroupIDs)+1)
+	seen := make(map[int64]struct{}, len(routeGroupIDs)+1)
+	appendID := func(id int64) error {
+		if id <= 0 {
+			return infraerrors.BadRequest("INVALID_GROUP_ID", "group id must be positive")
+		}
+		if _, ok := seen[id]; ok {
+			return nil
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+		return nil
+	}
+	if len(routeGroupIDs) > 0 {
+		for _, id := range routeGroupIDs {
+			if err := appendID(id); err != nil {
+				return nil, err
+			}
+		}
+		return ids, nil
+	}
+	if groupID != nil {
+		if err := appendID(*groupID); err != nil {
+			return nil, err
+		}
+	}
+	return ids, nil
+}
+
+func (s *APIKeyService) validateRouteGroups(ctx context.Context, user *User, groupIDs []int64) ([]*Group, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	groups := make([]*Group, 0, len(groupIDs))
+	basePlatform := ""
+	for _, gid := range groupIDs {
+		group, err := s.groupRepo.GetByID(ctx, gid)
+		if err != nil {
+			return nil, fmt.Errorf("get group: %w", err)
+		}
+		if !s.canUserBindGroup(ctx, user, group) {
+			return nil, ErrGroupNotAllowed
+		}
+		if basePlatform == "" {
+			basePlatform = group.Platform
+		} else if group.Platform != basePlatform {
+			return nil, infraerrors.BadRequest("ROUTE_GROUP_PLATFORM_MISMATCH", "route groups must use the same platform")
+		}
+		groups = append(groups, group)
+	}
+	return groups, nil
+}
+
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
 	// 验证用户存在
@@ -350,17 +407,17 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		}
 	}
 
-	// 验证分组权限（如果指定了分组）
-	if req.GroupID != nil {
-		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
-		if err != nil {
-			return nil, fmt.Errorf("get group: %w", err)
-		}
-
-		// 检查用户是否可以绑定该分组
-		if !s.canUserBindGroup(ctx, user, group) {
-			return nil, ErrGroupNotAllowed
-		}
+	// 验证分组权限与多分组路由队列。group_ids 优先；未传时兼容旧的 group_id。
+	routeGroupIDs, err := normalizeAPIKeyRouteGroupIDs(req.GroupID, req.RouteGroupIDs)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.validateRouteGroups(ctx, user, routeGroupIDs); err != nil {
+		return nil, err
+	}
+	if len(routeGroupIDs) > 0 {
+		primaryGroupID := routeGroupIDs[0]
+		req.GroupID = &primaryGroupID
 	}
 
 	var key string
@@ -400,18 +457,19 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         key,
-		Name:        html.EscapeString(req.Name),
-		GroupID:     req.GroupID,
-		Status:      StatusActive,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		QuotaUsed:   0,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
+		UserID:        userID,
+		Key:           key,
+		Name:          html.EscapeString(req.Name),
+		GroupID:       req.GroupID,
+		RouteGroupIDs: routeGroupIDs,
+		Status:        StatusActive,
+		IPWhitelist:   req.IPWhitelist,
+		IPBlacklist:   req.IPBlacklist,
+		Quota:         req.Quota,
+		QuotaUsed:     0,
+		RateLimit5h:   req.RateLimit5h,
+		RateLimit1d:   req.RateLimit1d,
+		RateLimit7d:   req.RateLimit7d,
 	}
 
 	// Set expiration time if specified
@@ -544,23 +602,32 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		apiKey.Name = html.EscapeString(*req.Name)
 	}
 
-	if req.GroupID != nil {
+	var routeGroupIDs []int64
+	if req.RouteGroupIDs != nil || req.GroupID != nil {
 		// 验证分组权限
 		user, err := s.userRepo.GetByID(ctx, userID)
 		if err != nil {
 			return nil, fmt.Errorf("get user: %w", err)
 		}
 
-		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
-		if err != nil {
-			return nil, fmt.Errorf("get group: %w", err)
+		inputRouteGroupIDs := []int64(nil)
+		if req.RouteGroupIDs != nil {
+			inputRouteGroupIDs = *req.RouteGroupIDs
 		}
-
-		if !s.canUserBindGroup(ctx, user, group) {
-			return nil, ErrGroupNotAllowed
+		var normErr error
+		routeGroupIDs, normErr = normalizeAPIKeyRouteGroupIDs(req.GroupID, inputRouteGroupIDs)
+		if normErr != nil {
+			return nil, normErr
 		}
-
-		apiKey.GroupID = req.GroupID
+		if len(routeGroupIDs) == 0 {
+			return nil, infraerrors.BadRequest("ROUTE_GROUP_REQUIRED", "at least one route group is required")
+		}
+		if _, err := s.validateRouteGroups(ctx, user, routeGroupIDs); err != nil {
+			return nil, err
+		}
+		primaryGroupID := routeGroupIDs[0]
+		apiKey.GroupID = &primaryGroupID
+		apiKey.RouteGroupIDs = routeGroupIDs
 	}
 
 	if req.Status != nil {
@@ -737,6 +804,14 @@ func (s *APIKeyService) IncrementUsage(ctx context.Context, keyID int64) error {
 		_ = s.cache.SetDailyUsageExpiry(ctx, cacheKey, 24*time.Hour)
 	}
 	return nil
+}
+
+// GetActiveSubscriptionForGroup 获取用户在指定分组上的有效订阅，用于 API Key 多分组路由切换后的计费校验。
+func (s *APIKeyService) GetActiveSubscriptionForGroup(ctx context.Context, userID, groupID int64) (*UserSubscription, error) {
+	if s == nil || s.userSubRepo == nil {
+		return nil, fmt.Errorf("subscription repository unavailable")
+	}
+	return s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
 }
 
 // GetAvailableGroups 获取用户有权限绑定的分组列表

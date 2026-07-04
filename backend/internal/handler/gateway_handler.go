@@ -360,12 +360,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			accountReleaseFunc := selection.ReleaseFunc
 			if !selection.Acquired {
 				if selection.WaitPlan == nil {
-					markOpsRoutingCapacityLimited(c)
 					reqLog.Warn("gateway.select_account_no_slot_no_wait_plan",
 						zap.Int64("account_id", account.ID),
 						zap.String("model", reqModel),
 						zap.String("platform", platform),
 					)
+					markOpsRoutingCapacityLimited(c)
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 					return
 				}
@@ -553,9 +553,53 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	currentAPIKey := apiKey
 	currentSubscription := subscription
+	routeGroupIDs := apiKeyEffectiveRouteGroupIDs(apiKey)
+	routeGroupIndex := routeGroupIndex(routeGroupIDs, apiKey.GroupID)
 	var fallbackGroupID *int64
 	if apiKey.Group != nil {
 		fallbackGroupID = apiKey.Group.FallbackGroupIDOnInvalidRequest
+	}
+	switchToNextRouteGroup := func(reason string) bool {
+		for routeGroupIndex+1 < len(routeGroupIDs) {
+			routeGroupIndex++
+			nextGroupID := routeGroupIDs[routeGroupIndex]
+			nextGroup, resolveErr := h.gatewayService.ResolveGroupByID(c.Request.Context(), nextGroupID)
+			if resolveErr != nil {
+				reqLog.Warn("gateway.route_group_resolve_failed", zap.Int64("group_id", nextGroupID), zap.String("reason", reason), zap.Error(resolveErr))
+				continue
+			}
+			if !nextGroup.IsActive() {
+				reqLog.Warn("gateway.route_group_unavailable", zap.Int64("group_id", nextGroupID), zap.String("status", nextGroup.Status), zap.String("reason", reason))
+				continue
+			}
+			routeCtx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
+			nextAPIKey := cloneAPIKeyWithGroup(apiKey, nextGroup)
+			var nextSubscription *service.UserSubscription
+			if nextGroup.IsSubscriptionType() {
+				sub, subErr := h.apiKeyService.GetActiveSubscriptionForGroup(routeCtx, nextAPIKey.UserID, nextGroup.ID)
+				if subErr != nil {
+					reqLog.Warn("gateway.route_group_subscription_ineligible", zap.Int64("group_id", nextGroupID), zap.String("reason", reason), zap.Error(subErr))
+					continue
+				}
+				nextSubscription = sub
+			}
+			if err := h.billingCacheService.CheckBillingEligibility(routeCtx, nextAPIKey.User, nextAPIKey, nextGroup, nextSubscription, service.QuotaPlatform(routeCtx, nextAPIKey)); err != nil {
+				reqLog.Warn("gateway.route_group_billing_ineligible", zap.Int64("group_id", nextGroupID), zap.String("reason", reason), zap.Error(err))
+				continue
+			}
+			c.Request = c.Request.WithContext(routeCtx)
+			sessionBoundAccountID = 0
+			hasBoundSession = false
+			currentAPIKey = nextAPIKey
+			currentSubscription = nextSubscription
+			platform = nextGroup.Platform
+			fallbackGroupID = nextGroup.FallbackGroupIDOnInvalidRequest
+			channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), nextAPIKey.GroupID, reqModel)
+			parsedReq.GroupID = nextAPIKey.GroupID
+			reqLog.Info("gateway.route_group_circuit_break", zap.Int64("next_group_id", nextGroupID), zap.String("reason", reason))
+			return true
+		}
+		return false
 	}
 	fallbackUsed := false
 
@@ -570,6 +614,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
 		retryWithFallback := false
 
+	attemptLoop:
 		for {
 			attemptParsedReq, err := parsedReq.CloneForBody(body)
 			if err != nil {
@@ -603,6 +648,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					if !cls.ModelNotFound {
 						message = "No available accounts: " + err.Error()
 					}
+					if switchToNextRouteGroup("selection_no_available") {
+						retryWithFallback = true
+						break attemptLoop
+					}
 					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 					return
 				}
@@ -615,6 +664,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				case FailoverCanceled:
 					return
 				default: // FailoverExhausted
+					if switchToNextRouteGroup("selection_exhausted") {
+						retryWithFallback = true
+						break attemptLoop
+					}
 					if fs.LastFailoverErr != nil {
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, platform, streamStarted)
 					} else {
@@ -656,12 +709,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			accountReleaseFunc := selection.ReleaseFunc
 			if !selection.Acquired {
 				if selection.WaitPlan == nil {
-					markOpsRoutingCapacityLimited(c)
 					reqLog.Warn("gateway.select_account_no_slot_no_wait_plan",
 						zap.Int64("account_id", account.ID),
 						zap.String("model", reqModel),
 						zap.String("platform", platform),
 					)
+					if switchToNextRouteGroup("account_no_slot") {
+						retryWithFallback = true
+						break attemptLoop
+					}
+					markOpsRoutingCapacityLimited(c)
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 					return
 				}
@@ -674,6 +731,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.Int64("account_id", account.ID),
 						zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
 					)
+					if switchToNextRouteGroup("account_wait_queue_full") {
+						retryWithFallback = true
+						break attemptLoop
+					}
 					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
 					return
 				}
@@ -775,7 +836,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 			// Bedrock CC 兼容：清理 body 专有字段 + 过滤 anthropic-beta header，适用于所有转发路径
-			if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, apiKey.GroupID)); err != nil {
+			if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, currentAPIKey.GroupID)); err != nil {
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 				return
 			}
@@ -873,6 +934,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					case FailoverContinue:
 						continue
 					case FailoverExhausted:
+						if switchToNextRouteGroup("upstream_failover_exhausted") {
+							retryWithFallback = true
+							break attemptLoop
+						}
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
 						return
 					case FailoverCanceled:
@@ -1178,11 +1243,56 @@ func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
 	})
 }
 
+func apiKeyEffectiveRouteGroupIDs(apiKey *service.APIKey) []int64 {
+	if apiKey == nil {
+		return nil
+	}
+	ids := make([]int64, 0, len(apiKey.RouteGroupIDs)+1)
+	seen := make(map[int64]struct{}, len(apiKey.RouteGroupIDs)+1)
+	appendID := func(id int64) {
+		if id <= 0 {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	for _, id := range apiKey.RouteGroupIDs {
+		appendID(id)
+	}
+	if len(ids) == 0 && apiKey.GroupID != nil {
+		appendID(*apiKey.GroupID)
+	}
+	return ids
+}
+
+func routeGroupIndex(groupIDs []int64, currentGroupID *int64) int {
+	if currentGroupID == nil {
+		return -1
+	}
+	for i, id := range groupIDs {
+		if id == *currentGroupID {
+			return i
+		}
+	}
+	return -1
+}
+
 func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service.APIKey {
 	if apiKey == nil || group == nil {
 		return apiKey
 	}
 	cloned := *apiKey
+	if apiKey.User != nil {
+		user := *apiKey.User
+		// UserGroupRPMOverride in the auth snapshot belongs to the original
+		// (user, group) pair. When routing to a different group, force the
+		// billing layer to resolve the correct override for the new group.
+		user.UserGroupRPMOverride = nil
+		cloned.User = &user
+	}
 	groupID := group.ID
 	cloned.GroupID = &groupID
 	cloned.Group = group

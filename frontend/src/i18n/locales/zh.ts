@@ -865,6 +865,12 @@ export default {
     groupChangedSuccess: '分组更换成功',
     failedToChangeGroup: '更换分组失败',
     groupRequired: '请选择分组',
+    multiGroupRouting: {
+      title: '支持多分组路由',
+      description: '启用后按队列顺序选择可用分组，首个分组作为默认计费分组。',
+      circuitBreakerHint: '智能路由熔断：当前分组无可用账号或上游连续失败时，会自动尝试队列中的下一个分组。所有分组必须属于同一平台。',
+      queueLabel: '分组队列：',
+    },
     usage: '用量',
     today: '今日',
     total: '近30天',

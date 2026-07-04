@@ -489,6 +489,75 @@
           </Select>
         </div>
 
+        <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <label class="input-label mb-0">{{ t('keys.multiGroupRouting.title') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('keys.multiGroupRouting.description') }}</p>
+            </div>
+            <button
+              type="button"
+              @click="toggleMultiGroupRouting"
+              :class="[
+                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                formData.enable_multi_group_routing ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  formData.enable_multi_group_routing ? 'translate-x-4' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="formData.enable_multi_group_routing" class="mt-4 space-y-3">
+            <div class="rounded-lg bg-gray-50 p-3 text-xs text-gray-500 dark:bg-dark-700 dark:text-gray-400">
+              {{ t('keys.multiGroupRouting.circuitBreakerHint') }}
+            </div>
+            <div class="max-h-52 space-y-2 overflow-y-auto pr-1">
+              <label
+                v-for="option in groupOptions"
+                :key="option.value"
+                class="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
+              >
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  :checked="formData.route_group_ids.includes(option.value as number)"
+                  @change="toggleRouteGroup(option.value as number)"
+                />
+                <span class="min-w-0 flex-1">
+                  <GroupOptionItem
+                    :name="(option as unknown as GroupOption).label"
+                    :platform="(option as unknown as GroupOption).platform"
+                    :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                    :rate-multiplier="(option as unknown as GroupOption).rate"
+                    :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                    :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
+                    :peak-start="(option as unknown as GroupOption).peakStart"
+                    :peak-end="(option as unknown as GroupOption).peakEnd"
+                    :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                    :description="(option as unknown as GroupOption).description"
+                    :selected="formData.route_group_ids.includes(option.value as number)"
+                  />
+                </span>
+              </label>
+            </div>
+            <div v-if="formData.route_group_ids.length > 0" class="flex flex-wrap gap-2 text-xs">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('keys.multiGroupRouting.queueLabel') }}</span>
+              <span
+                v-for="(groupId, index) in formData.route_group_ids"
+                :key="groupId"
+                class="rounded-full bg-primary-50 px-2 py-1 font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+              >
+                {{ index + 1 }}. {{ groupNameById(groupId) }}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <!-- Custom Key Section (only for create) -->
         <div v-if="!showEditModal" class="space-y-3">
           <div class="flex items-center justify-between">
@@ -1099,7 +1168,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, reactive, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
+	import { ref, reactive, computed, watch, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
 	import { useOnboardingStore } from '@/stores/onboarding'
@@ -1292,6 +1361,8 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
 const formData = ref({
   name: '',
   group_id: null as number | null,
+  enable_multi_group_routing: false,
+  route_group_ids: [] as number[],
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
   custom_key: '',
@@ -1388,6 +1459,49 @@ const groupOptions = computed(() =>
 
 // Group dropdown search
 const groupSearchQuery = ref('')
+const groupNameById = (groupId: number) => groups.value.find((g) => g.id === groupId)?.name || `#${groupId}`
+
+const syncPrimaryGroupFromRouteQueue = () => {
+  if (formData.value.enable_multi_group_routing && formData.value.route_group_ids.length > 0) {
+    formData.value.group_id = formData.value.route_group_ids[0]
+  }
+}
+
+watch(
+  () => formData.value.group_id,
+  (groupId) => {
+    if (!formData.value.enable_multi_group_routing || groupId === null) return
+    if (formData.value.route_group_ids[0] === groupId) return
+    formData.value.route_group_ids = [
+      groupId,
+      ...formData.value.route_group_ids.filter((id) => id !== groupId)
+    ]
+  }
+)
+
+const toggleMultiGroupRouting = () => {
+  formData.value.enable_multi_group_routing = !formData.value.enable_multi_group_routing
+  if (formData.value.enable_multi_group_routing) {
+    if (formData.value.group_id && !formData.value.route_group_ids.includes(formData.value.group_id)) {
+      formData.value.route_group_ids.unshift(formData.value.group_id)
+    }
+  } else {
+    formData.value.route_group_ids = []
+  }
+}
+
+const toggleRouteGroup = (groupId: number) => {
+  const current = [...formData.value.route_group_ids]
+  const idx = current.indexOf(groupId)
+  if (idx >= 0) {
+    current.splice(idx, 1)
+  } else {
+    current.push(groupId)
+  }
+  formData.value.route_group_ids = current
+  syncPrimaryGroupFromRouteQueue()
+}
+
 const filteredGroupOptions = computed(() => {
   const query = groupSearchQuery.value.trim().toLowerCase()
   if (!query) return groupOptions.value
@@ -1526,6 +1640,8 @@ const editKey = (key: ApiKey) => {
   formData.value = {
     name: key.name,
     group_id: key.group_id,
+    enable_multi_group_routing: (key.group_ids?.length ?? 0) > 1,
+    route_group_ids: key.group_ids?.length ? [...key.group_ids] : (key.group_id ? [key.group_id] : []),
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
     use_custom_key: false,
     custom_key: '',
@@ -1621,6 +1737,14 @@ const confirmDelete = (key: ApiKey) => {
 }
 
 const handleSubmit = async () => {
+  if (formData.value.enable_multi_group_routing) {
+    syncPrimaryGroupFromRouteQueue()
+    if (formData.value.route_group_ids.length === 0) {
+      appStore.showError(t('keys.groupRequired'))
+      return
+    }
+  }
+
   // Validate group_id is required
   if (formData.value.group_id === null) {
     appStore.showError(t('keys.groupRequired'))
@@ -1638,6 +1762,10 @@ const handleSubmit = async () => {
       return
     }
   }
+
+  const submitGroupIds = formData.value.enable_multi_group_routing
+    ? [...formData.value.route_group_ids]
+    : (formData.value.group_id !== null ? [formData.value.group_id] : [])
 
   // Parse IP lists only if IP restriction is enabled
   const parseIPList = (text: string): string[] =>
@@ -1680,6 +1808,7 @@ const handleSubmit = async () => {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
         group_id: formData.value.group_id,
+        group_ids: submitGroupIds,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -1703,7 +1832,8 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        submitGroupIds
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1749,6 +1879,8 @@ const closeModals = () => {
   formData.value = {
     name: '',
     group_id: null,
+    enable_multi_group_routing: false,
+    route_group_ids: [],
     status: 'active',
     use_custom_key: false,
     custom_key: '',

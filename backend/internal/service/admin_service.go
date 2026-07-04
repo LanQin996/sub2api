@@ -2465,10 +2465,13 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 
 	result := &AdminUpdateAPIKeyGroupIDResult{}
 
+	var routeGroupIDs []int64
 	if *groupID == 0 {
 		// 0 表示解绑分组（不修改 user_allowed_groups，避免影响用户其他 Key）
+		routeGroupIDs = []int64{}
 		apiKey.GroupID = nil
 		apiKey.Group = nil
+		apiKey.RouteGroupIDs = routeGroupIDs
 	} else {
 		// 验证目标分组存在且状态为 active
 		group, err := s.groupRepo.GetByID(ctx, *groupID)
@@ -2492,8 +2495,10 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		}
 
 		gid := *groupID
+		routeGroupIDs = []int64{gid}
 		apiKey.GroupID = &gid
 		apiKey.Group = group
+		apiKey.RouteGroupIDs = routeGroupIDs
 
 		// 专属标准分组：使用事务保证「添加分组权限」与「更新 API Key」的原子性
 		if group.IsExclusive && !group.IsSubscriptionType() {
@@ -2537,7 +2542,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		}
 	}
 
-	// 非专属分组 / 解绑：无需事务，单步更新即可
+	// 非专属分组 / 解绑：同步单分组队列，避免旧多分组队列继续生效。
 	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
 		return nil, fmt.Errorf("update api key: %w", err)
 	}

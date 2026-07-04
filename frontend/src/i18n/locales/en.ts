@@ -867,6 +867,12 @@ export default {
     groupChangedSuccess: 'Group changed successfully',
     failedToChangeGroup: 'Failed to change group',
     groupRequired: 'Please select a group',
+    multiGroupRouting: {
+      title: 'Enable multi-group routing',
+      description: 'When enabled, available groups are selected in queue order. The first group is used as the default billing group.',
+      circuitBreakerHint: 'Smart route circuit breaker: when the current group has no available accounts or upstream failures are exhausted, the next group in the queue is tried automatically. All groups must use the same platform.',
+      queueLabel: 'Group queue:',
+    },
     usage: 'Usage',
     today: 'Today',
     total: 'Last 30d',
