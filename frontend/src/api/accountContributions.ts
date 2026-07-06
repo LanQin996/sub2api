@@ -1,5 +1,15 @@
 import { apiClient } from './client'
-import type { Account, AdminDataAccount, AdminDataPayload, ContributorRewardLog, ContributorRewardSummary, PaginatedResponse } from '@/types'
+import type {
+  Account,
+  AccountUsageInfo,
+  AdminDataAccount,
+  AdminDataPayload,
+  ContributorRewardLog,
+  ContributorRewardSummary,
+  PaginatedResponse,
+  TempUnschedulableRule,
+  WindowStats
+} from '@/types'
 
 export interface ContributionAuthURLRequest {
   proxy_id?: number | null
@@ -70,6 +80,25 @@ export interface ContributionImportPreview {
   items?: ContributionImportPreviewItem[]
 }
 
+export interface ContributionAccountConfigRequest {
+  name?: string
+  notes?: string | null
+  concurrency?: number
+  load_factor?: number | null
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+  temp_unschedulable_enabled?: boolean
+  temp_unschedulable_rules?: TempUnschedulableRule[]
+  auto_pause_5h_threshold?: number | null
+  auto_pause_7d_threshold?: number | null
+  auto_pause_5h_disabled?: boolean
+  auto_pause_7d_disabled?: boolean
+}
+
+export interface ContributionBatchTodayStatsResponse {
+  stats: Record<string, WindowStats>
+}
+
 export async function generateOpenAIContributionAuthURL(
   payload: ContributionAuthURLRequest = {}
 ): Promise<ContributionAuthURLResult> {
@@ -126,6 +155,47 @@ export async function revokeContribution(id: number): Promise<Account> {
   return data
 }
 
+export async function republishContribution(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/account-contributions/${id}/republish`)
+  return data
+}
+
+export async function updateContributionConfig(
+  id: number,
+  payload: ContributionAccountConfigRequest
+): Promise<Account> {
+  const { data } = await apiClient.put<Account>(`/account-contributions/${id}/config`, payload)
+  return data
+}
+
+export async function getContributionUsage(
+  id: number,
+  source?: 'passive' | 'active',
+  force?: boolean
+): Promise<AccountUsageInfo> {
+  const params: Record<string, string> = {}
+  if (source) params.source = source
+  if (force) params.force = 'true'
+  const { data } = await apiClient.get<AccountUsageInfo>(`/account-contributions/${id}/usage`, {
+    params: Object.keys(params).length > 0 ? params : undefined
+  })
+  return data
+}
+
+export async function getContributionTodayStats(id: number): Promise<WindowStats> {
+  const { data } = await apiClient.get<WindowStats>(`/account-contributions/${id}/today-stats`)
+  return data
+}
+
+export async function getContributionBatchTodayStats(
+  accountIds: number[]
+): Promise<ContributionBatchTodayStatsResponse> {
+  const { data } = await apiClient.post<ContributionBatchTodayStatsResponse>(
+    '/account-contributions/today-stats/batch',
+    { account_ids: accountIds }
+  )
+  return data
+}
 
 export async function getContributionRewardSummary(): Promise<ContributorRewardSummary> {
   const { data } = await apiClient.get<ContributorRewardSummary>(
@@ -152,6 +222,11 @@ export const accountContributionsAPI = {
   submitOpenAIJSON: submitOpenAIJSONContribution,
   listMine: listMyContributions,
   revoke: revokeContribution,
+  republish: republishContribution,
+  updateConfig: updateContributionConfig,
+  getUsage: getContributionUsage,
+  getTodayStats: getContributionTodayStats,
+  getBatchTodayStats: getContributionBatchTodayStats,
   getRewardSummary: getContributionRewardSummary,
   listRewards: listContributionRewards
 }

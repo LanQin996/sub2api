@@ -155,6 +155,21 @@ type ApproveContributionInput struct {
 	Priority    *int
 }
 
+type ContributionAccountConfigInput struct {
+	Name                     *string
+	Notes                    *string
+	Concurrency              *int
+	LoadFactor               *int
+	ExpiresAt                *int64
+	AutoPauseOnExpired       *bool
+	TempUnschedulableEnabled *bool
+	TempUnschedulableRules   *[]TempUnschedulableRule
+	AutoPause5hThreshold     *float64
+	AutoPause7dThreshold     *float64
+	AutoPause5hDisabled      *bool
+	AutoPause7dDisabled      *bool
+}
+
 func (s *AccountContributionService) GenerateOpenAIAuthURL(ctx context.Context, _ int64, proxyID *int64, redirectURI string) (*OpenAIAuthURLResult, error) {
 	return s.oauth.GenerateAuthURL(ctx, proxyID, redirectURI, PlatformOpenAI)
 }
@@ -598,6 +613,129 @@ func (s *AccountContributionService) ListMine(ctx context.Context, userID int64,
 	return s.accountRepo.ListContributionsByOwner(ctx, userID, params)
 }
 
+func (s *AccountContributionService) GetMine(ctx context.Context, userID, accountID int64) (*Account, error) {
+	if userID <= 0 {
+		return nil, ErrUserNotFound
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if account.OwnerUserID == nil || *account.OwnerUserID != userID || account.ContributionStatus == "" {
+		return nil, ErrContributionOwnership
+	}
+	return account, nil
+}
+
+func (s *AccountContributionService) UpdateMineConfig(ctx context.Context, userID, accountID int64, input ContributionAccountConfigInput) (*Account, error) {
+	account, err := s.GetMine(ctx, userID, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if account.ContributionStatus != ContributionStatusPending && account.ContributionStatus != ContributionStatusApproved {
+		return nil, ErrContributionInvalidStatus
+	}
+
+	if input.Name != nil {
+		name := strings.TrimSpace(*input.Name)
+		if name == "" {
+			return nil, infraerrors.BadRequest("CONTRIBUTION_NAME_REQUIRED", "name is required")
+		}
+		account.Name = name
+	}
+	if input.Notes != nil {
+		account.Notes = normalizeAccountNotes(input.Notes)
+	}
+	if input.Concurrency != nil {
+		if *input.Concurrency < 0 {
+			return nil, infraerrors.BadRequest("CONTRIBUTION_INVALID_CONCURRENCY", "concurrency must be >= 0")
+		}
+		account.Concurrency = normalizeAccountConcurrency(account.Platform, account.Type, *input.Concurrency)
+	}
+	if input.LoadFactor != nil {
+		if *input.LoadFactor <= 0 {
+			account.LoadFactor = nil
+		} else if *input.LoadFactor > 10000 {
+			return nil, infraerrors.BadRequest("CONTRIBUTION_INVALID_LOAD_FACTOR", "load_factor must be <= 10000")
+		} else {
+			loadFactor := *input.LoadFactor
+			account.LoadFactor = &loadFactor
+		}
+	}
+	if input.ExpiresAt != nil {
+		if *input.ExpiresAt <= 0 {
+			account.ExpiresAt = nil
+		} else {
+			expiresAt := time.Unix(*input.ExpiresAt, 0)
+			account.ExpiresAt = &expiresAt
+		}
+	}
+	if input.AutoPauseOnExpired != nil {
+		account.AutoPauseOnExpired = *input.AutoPauseOnExpired
+	}
+
+	if input.TempUnschedulableEnabled != nil || input.TempUnschedulableRules != nil {
+		credentials := cloneContributionMap(account.Credentials)
+		if credentials == nil {
+			credentials = map[string]any{}
+		}
+		if input.TempUnschedulableEnabled != nil {
+			credentials["temp_unschedulable_enabled"] = *input.TempUnschedulableEnabled
+		}
+		if input.TempUnschedulableRules != nil {
+			rules, err := sanitizeContributionTempUnschedulableRules(*input.TempUnschedulableRules)
+			if err != nil {
+				return nil, err
+			}
+			credentials["temp_unschedulable_rules"] = rules
+		}
+		account.Credentials = credentials
+	}
+
+	if input.AutoPause5hThreshold != nil || input.AutoPause7dThreshold != nil || input.AutoPause5hDisabled != nil || input.AutoPause7dDisabled != nil {
+		extra := cloneContributionMap(account.Extra)
+		if extra == nil {
+			extra = map[string]any{}
+		}
+		if input.AutoPause5hThreshold != nil {
+			threshold, err := normalizeContributionAutoPauseThreshold(*input.AutoPause5hThreshold, "auto_pause_5h_threshold")
+			if err != nil {
+				return nil, err
+			}
+			setOrDeleteContributionThreshold(extra, "auto_pause_5h_threshold", threshold)
+		}
+		if input.AutoPause7dThreshold != nil {
+			threshold, err := normalizeContributionAutoPauseThreshold(*input.AutoPause7dThreshold, "auto_pause_7d_threshold")
+			if err != nil {
+				return nil, err
+			}
+			setOrDeleteContributionThreshold(extra, "auto_pause_7d_threshold", threshold)
+		}
+		if input.AutoPause5hDisabled != nil {
+			setOrDeleteContributionBool(extra, "auto_pause_5h_disabled", *input.AutoPause5hDisabled)
+		}
+		if input.AutoPause7dDisabled != nil {
+			setOrDeleteContributionBool(extra, "auto_pause_7d_disabled", *input.AutoPause7dDisabled)
+		}
+		account.Extra = extra
+	}
+
+	previousGroupIDs := append([]int64(nil), account.GroupIDs...)
+	if err := s.accountRepo.Update(ctx, account); err != nil {
+		return nil, err
+	}
+	updated, err := s.accountRepo.GetByID(ctx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	if s.schedulerRefresher != nil {
+		if err := s.schedulerRefresher.RefreshAccount(ctx, updated, previousGroupIDs, "contribution_config_update"); err != nil {
+			return nil, err
+		}
+	}
+	return updated, nil
+}
+
 func (s *AccountContributionService) Revoke(ctx context.Context, userID, accountID int64) (*Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
@@ -636,6 +774,39 @@ func (s *AccountContributionService) Revoke(ctx context.Context, userID, account
 	}
 	if err := s.deleteContributionOwnedProxy(ctx, ownedProxyID); err != nil {
 		return nil, err
+	}
+	return updated, nil
+}
+
+func (s *AccountContributionService) Republish(ctx context.Context, userID, accountID int64) (*Account, error) {
+	account, err := s.GetMine(ctx, userID, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if account.ContributionStatus != ContributionStatusRevoked {
+		return nil, ErrContributionInvalidStatus
+	}
+
+	now := time.Now()
+	account.ContributionStatus = ContributionStatusPending
+	account.ContributionSubmittedAt = &now
+	account.ContributionApprovedAt = nil
+	account.ContributionRevokedAt = nil
+	account.Status = StatusDisabled
+	account.Schedulable = false
+
+	previousGroupIDs := append([]int64(nil), account.GroupIDs...)
+	if err := s.accountRepo.Update(ctx, account); err != nil {
+		return nil, err
+	}
+	updated, err := s.accountRepo.GetByID(ctx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	if s.schedulerRefresher != nil {
+		if err := s.schedulerRefresher.RefreshAccount(ctx, updated, previousGroupIDs, "contribution_republish"); err != nil {
+			return nil, err
+		}
 	}
 	return updated, nil
 }
@@ -735,6 +906,86 @@ func (s *AccountContributionService) Reject(ctx context.Context, accountID int64
 		return nil, err
 	}
 	return updated, nil
+}
+
+func cloneContributionMap(input map[string]any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
+}
+
+func sanitizeContributionTempUnschedulableRules(input []TempUnschedulableRule) ([]map[string]any, error) {
+	const maxRules = 50
+	if len(input) > maxRules {
+		return nil, infraerrors.BadRequest("CONTRIBUTION_TEMP_UNSCHED_RULES_TOO_MANY", "temp unschedulable rules must be <= 50")
+	}
+	out := make([]map[string]any, 0, len(input))
+	for i := range input {
+		rule := input[i]
+		if rule.ErrorCode <= 0 {
+			return nil, infraerrors.BadRequest("CONTRIBUTION_TEMP_UNSCHED_RULE_INVALID", "error_code must be > 0")
+		}
+		if rule.DurationMinutes <= 0 {
+			return nil, infraerrors.BadRequest("CONTRIBUTION_TEMP_UNSCHED_RULE_INVALID", "duration_minutes must be > 0")
+		}
+		keywords := make([]string, 0, len(rule.Keywords))
+		seen := map[string]struct{}{}
+		for _, keyword := range rule.Keywords {
+			trimmed := strings.TrimSpace(keyword)
+			if trimmed == "" {
+				continue
+			}
+			if _, ok := seen[trimmed]; ok {
+				continue
+			}
+			seen[trimmed] = struct{}{}
+			keywords = append(keywords, trimmed)
+		}
+		if len(keywords) == 0 {
+			return nil, infraerrors.BadRequest("CONTRIBUTION_TEMP_UNSCHED_RULE_INVALID", "keywords is required")
+		}
+		out = append(out, map[string]any{
+			"error_code":       rule.ErrorCode,
+			"keywords":         keywords,
+			"duration_minutes": rule.DurationMinutes,
+			"description":      strings.TrimSpace(rule.Description),
+		})
+	}
+	return out, nil
+}
+
+func normalizeContributionAutoPauseThreshold(value float64, field string) (*float64, error) {
+	if value <= 0 {
+		return nil, nil
+	}
+	if value > 1 {
+		if value > 100 {
+			return nil, infraerrors.BadRequest("CONTRIBUTION_INVALID_AUTO_PAUSE_THRESHOLD", field+" must be between 0 and 1, or 0 and 100 when using percent")
+		}
+		value = value / 100
+	}
+	return &value, nil
+}
+
+func setOrDeleteContributionThreshold(extra map[string]any, key string, threshold *float64) {
+	if threshold == nil {
+		delete(extra, key)
+		return
+	}
+	extra[key] = *threshold
+}
+
+func setOrDeleteContributionBool(extra map[string]any, key string, enabled bool) {
+	if enabled {
+		extra[key] = true
+		return
+	}
+	delete(extra, key)
 }
 
 func buildOpenAIContributionProxyMap(proxies []OpenAIJSONContributionProxy) (map[string]OpenAIJSONContributionProxy, error) {

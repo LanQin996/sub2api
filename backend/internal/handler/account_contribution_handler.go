@@ -12,11 +12,12 @@ import (
 )
 
 type AccountContributionHandler struct {
-	service *service.AccountContributionService
+	service             *service.AccountContributionService
+	accountUsageService *service.AccountUsageService
 }
 
-func NewAccountContributionHandler(service *service.AccountContributionService) *AccountContributionHandler {
-	return &AccountContributionHandler{service: service}
+func NewAccountContributionHandler(service *service.AccountContributionService, accountUsageService *service.AccountUsageService) *AccountContributionHandler {
+	return &AccountContributionHandler{service: service, accountUsageService: accountUsageService}
 }
 
 type contributionAuthURLRequest struct {
@@ -77,6 +78,25 @@ type approveContributionRequest struct {
 	GroupIDs    []int64 `json:"group_ids" binding:"required"`
 	Concurrency *int    `json:"concurrency"`
 	Priority    *int    `json:"priority"`
+}
+
+type updateContributionConfigRequest struct {
+	Name                     *string                          `json:"name"`
+	Notes                    *string                          `json:"notes"`
+	Concurrency              *int                             `json:"concurrency"`
+	LoadFactor               *int                             `json:"load_factor"`
+	ExpiresAt                *int64                           `json:"expires_at"`
+	AutoPauseOnExpired       *bool                            `json:"auto_pause_on_expired"`
+	TempUnschedulableEnabled *bool                            `json:"temp_unschedulable_enabled"`
+	TempUnschedulableRules   *[]service.TempUnschedulableRule `json:"temp_unschedulable_rules"`
+	AutoPause5hThreshold     *float64                         `json:"auto_pause_5h_threshold"`
+	AutoPause7dThreshold     *float64                         `json:"auto_pause_7d_threshold"`
+	AutoPause5hDisabled      *bool                            `json:"auto_pause_5h_disabled"`
+	AutoPause7dDisabled      *bool                            `json:"auto_pause_7d_disabled"`
+}
+
+type contributionBatchTodayStatsRequest struct {
+	AccountIDs []int64 `json:"account_ids" binding:"required"`
 }
 
 func contributionAccountsFromRequest(req submitOpenAIJSONContributionRequest) []service.OpenAIJSONContributionAccount {
@@ -245,6 +265,154 @@ func (h *AccountContributionHandler) Revoke(c *gin.Context) {
 		return
 	}
 	response.Success(c, dto.AccountFromService(account))
+}
+
+func (h *AccountContributionHandler) Republish(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	account, err := h.service.Republish(c.Request.Context(), subject.UserID, id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.AccountFromService(account))
+}
+
+func (h *AccountContributionHandler) UpdateConfig(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	var req updateContributionConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	account, err := h.service.UpdateMineConfig(c.Request.Context(), subject.UserID, id, service.ContributionAccountConfigInput{
+		Name:                     req.Name,
+		Notes:                    req.Notes,
+		Concurrency:              req.Concurrency,
+		LoadFactor:               req.LoadFactor,
+		ExpiresAt:                req.ExpiresAt,
+		AutoPauseOnExpired:       req.AutoPauseOnExpired,
+		TempUnschedulableEnabled: req.TempUnschedulableEnabled,
+		TempUnschedulableRules:   req.TempUnschedulableRules,
+		AutoPause5hThreshold:     req.AutoPause5hThreshold,
+		AutoPause7dThreshold:     req.AutoPause7dThreshold,
+		AutoPause5hDisabled:      req.AutoPause5hDisabled,
+		AutoPause7dDisabled:      req.AutoPause7dDisabled,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.AccountFromService(account))
+}
+
+func (h *AccountContributionHandler) GetUsage(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if _, err := h.service.GetMine(c.Request.Context(), subject.UserID, id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	source := c.DefaultQuery("source", "active")
+	force := c.Query("force") == "true"
+	var usage *service.UsageInfo
+	if source == "passive" {
+		usage, err = h.accountUsageService.GetPassiveUsage(c.Request.Context(), id)
+	} else {
+		usage, err = h.accountUsageService.GetUsage(c.Request.Context(), id, force)
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, usage)
+}
+
+func (h *AccountContributionHandler) GetTodayStats(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if _, err := h.service.GetMine(c.Request.Context(), subject.UserID, id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	stats, err := h.accountUsageService.GetTodayStats(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, stats)
+}
+
+func (h *AccountContributionHandler) GetBatchTodayStats(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req contributionBatchTodayStatsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	seen := make(map[int64]struct{}, len(req.AccountIDs))
+	accountIDs := make([]int64, 0, len(req.AccountIDs))
+	for _, id := range req.AccountIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		if _, err := h.service.GetMine(c.Request.Context(), subject.UserID, id); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		seen[id] = struct{}{}
+		accountIDs = append(accountIDs, id)
+	}
+	if len(accountIDs) == 0 {
+		response.Success(c, gin.H{"stats": map[string]any{}})
+		return
+	}
+	stats, err := h.accountUsageService.GetTodayStatsBatch(c.Request.Context(), accountIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"stats": stats})
 }
 
 func (h *AccountContributionHandler) ListRewards(c *gin.Context) {

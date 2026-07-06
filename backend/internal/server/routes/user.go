@@ -123,6 +123,11 @@ func RegisterUserRoutes(
 			contributions.GET("", h.AccountContribution.ListMine)
 			contributions.GET("/rewards/summary", h.AccountContribution.GetRewardSummary)
 			contributions.GET("/rewards", h.AccountContribution.ListRewards)
+			contributions.POST("/today-stats/batch", h.AccountContribution.GetBatchTodayStats)
+			contributions.POST("/:id/republish", h.AccountContribution.Republish)
+			contributions.PUT("/:id/config", h.AccountContribution.UpdateConfig)
+			contributions.GET("/:id/usage", h.AccountContribution.GetUsage)
+			contributions.GET("/:id/today-stats", h.AccountContribution.GetTodayStats)
 			contributions.DELETE("/:id", h.AccountContribution.Revoke)
 		}
 

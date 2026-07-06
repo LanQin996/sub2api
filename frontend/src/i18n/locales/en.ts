@@ -1379,7 +1379,9 @@ export default {
     startOAuth: 'Authorize OpenAI Account',
     startingOAuth: 'Redirecting...',
     revoke: 'Revoke',
+    republish: 'Republish',
     revoked: 'Contribution revoked',
+    republished: 'Contribution submitted for review',
     backToList: 'Back to Contributions',
     contributeOpenAI: {
       title: 'Contribute OpenAI OAuth Account',
@@ -1445,7 +1447,7 @@ export default {
     rules: {
       title: 'Read this before clicking like a maniac',
       line1: '1. Pending, rejected, and revoked accounts are never scheduled.',
-      line2: '2. The same OpenAI / ChatGPT identity is reserved once submitted; contact an admin if you need to contribute it again after rejection or revocation.',
+      line2: '2. Revoked accounts can be republished for review; rejected accounts still require admin help before contributing again.',
       line3: '3. Approved accounts earn balance rewards in real time based on the group reward multiplier.'
     },
     stats: {
@@ -1471,8 +1473,35 @@ export default {
         id: 'ID',
         account: 'Account',
         status: 'Status',
+        groups: 'Groups',
+        todayStats: 'Today',
+        usage: 'Usage',
         timeline: 'Timeline'
       }
+    },
+    settings: {
+      title: 'Contribution Account Settings',
+      button: 'Settings',
+      saved: 'Settings saved',
+      accountLevel: 'Account level',
+      groups: 'Groups',
+      name: 'Name',
+      notes: 'Notes',
+      concurrency: 'Concurrency',
+      loadFactor: 'Load factor',
+      expiresAt: 'Expires at',
+      autoPauseOnExpired: 'Auto pause when expired',
+      tempUnschedulable: 'Temporary unschedulable rules',
+      addRule: 'Add rule',
+      errorCode: 'Code',
+      keywords: 'Keywords',
+      durationMinutes: 'Minutes',
+      ruleDescription: 'Description',
+      codexProtection: 'Codex limit protection',
+      threshold5h: '5h threshold (%)',
+      threshold7d: '7d threshold (%)',
+      disable5h: 'Disable 5h protection',
+      disable7d: 'Disable 7d protection'
     },
     rewards: {
       title: 'Reward Logs',
@@ -1508,7 +1537,11 @@ export default {
       loadAccountsFailed: 'Failed to load contributed accounts',
       loadRewardsFailed: 'Failed to load reward logs',
       loadRewardSummaryFailed: 'Failed to load reward summary',
-      revokeFailed: 'Failed to revoke contribution'
+      loadTodayStatsFailed: 'Failed to load today stats',
+      loadUsageFailed: 'Failed to load usage',
+      saveSettingsFailed: 'Failed to save account settings',
+      revokeFailed: 'Failed to revoke contribution',
+      republishFailed: 'Failed to republish contribution'
     }
   },
 

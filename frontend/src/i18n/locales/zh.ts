@@ -1383,7 +1383,9 @@ export default {
     startOAuth: '授权 OpenAI 账号',
     startingOAuth: '正在跳转...',
     revoke: '撤回',
+    republish: '重新发布',
     revoked: '贡献账号已撤回',
+    republished: '贡献账号已重新提交审核',
     backToList: '返回贡献列表',
     contributeOpenAI: {
       title: '贡献 OpenAI OAuth 账号',
@@ -1449,7 +1451,7 @@ export default {
     rules: {
       title: '别急着猛点，规矩先看明白',
       line1: '1. 待审核、拒绝、撤回的账号不会参与调度。',
-      line2: '2. 同一个 OpenAI / ChatGPT 账号提交后会占用身份；撤回/拒绝后如需重新贡献请联系管理员。',
+      line2: '2. 已撤回账号可重新发布进入审核；已拒绝账号如需重新贡献仍需联系管理员。',
       line3: '3. 审核通过后按分组贡献结算倍率实时发放余额奖励。'
     },
     stats: {
@@ -1475,8 +1477,35 @@ export default {
         id: 'ID',
         account: '账号',
         status: '状态',
+        groups: '分组',
+        todayStats: '今日',
+        usage: '用量',
         timeline: '时间线'
       }
+    },
+    settings: {
+      title: '共享账号配置',
+      button: '设置',
+      saved: '账号配置已保存',
+      accountLevel: '账号等级',
+      groups: '分组',
+      name: '名称',
+      notes: '备注',
+      concurrency: '并发数',
+      loadFactor: '负载因子',
+      expiresAt: '过期时间',
+      autoPauseOnExpired: '过期后自动暂停',
+      tempUnschedulable: '临时不可调度规则',
+      addRule: '添加规则',
+      errorCode: '状态码',
+      keywords: '关键词',
+      durationMinutes: '分钟',
+      ruleDescription: '描述',
+      codexProtection: 'Codex 限额保护',
+      threshold5h: '5h 阈值 (%)',
+      threshold7d: '7d 阈值 (%)',
+      disable5h: '禁用 5h 保护',
+      disable7d: '禁用 7d 保护'
     },
     rewards: {
       title: '贡献收益明细',
@@ -1512,7 +1541,11 @@ export default {
       loadAccountsFailed: '加载贡献账号失败',
       loadRewardsFailed: '加载收益明细失败',
       loadRewardSummaryFailed: '加载收益统计失败',
-      revokeFailed: '撤回贡献账号失败'
+      loadTodayStatsFailed: '加载今日统计失败',
+      loadUsageFailed: '加载用量失败',
+      saveSettingsFailed: '保存账号配置失败',
+      revokeFailed: '撤回贡献账号失败',
+      republishFailed: '重新发布贡献账号失败'
     }
   },
 

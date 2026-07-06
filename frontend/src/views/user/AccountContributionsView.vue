@@ -97,6 +97,12 @@
             <div>
               <p class="font-medium text-gray-900 dark:text-white">{{ row.name || '-' }}</p>
               <p class="text-xs text-gray-500 dark:text-dark-400">{{ row.platform }} / {{ row.type }}</p>
+              <span
+                v-if="accountLevelLabel(row) !== '-'"
+                class="mt-1 inline-flex rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-300"
+              >
+                {{ accountLevelLabel(row) }}
+              </span>
             </div>
           </template>
           <template #cell-status="{ row }">
@@ -109,6 +115,28 @@
               </span>
             </div>
           </template>
+          <template #cell-groups="{ row }">
+            <div class="flex max-w-[220px] flex-wrap gap-1">
+              <span
+                v-for="group in row.groups || []"
+                :key="group.id"
+                class="rounded bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+              >
+                {{ group.name }}
+              </span>
+              <span v-if="!row.groups?.length" class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            </div>
+          </template>
+          <template #cell-today_stats="{ row }">
+            <AccountTodayStatsCell
+              :stats="todayStatsFor(row.id)"
+              :loading="todayStatsLoading"
+              :error="todayStatsError"
+            />
+          </template>
+          <template #cell-usage="{ row }">
+            <ContributionAccountUsageCell :account="row" :refresh-token="usageRefreshToken" />
+          </template>
           <template #cell-submitted_at="{ row }">
             <div class="space-y-1 text-xs text-gray-500 dark:text-dark-400">
               <p>{{ t('accountContributions.accounts.submitted') }}：{{ formatDateTime(row.contribution_submitted_at) || '-' }}</p>
@@ -117,17 +145,37 @@
             </div>
           </template>
           <template #cell-actions="{ row }">
-            <button
-              v-if="canRevoke(row)"
-              class="btn btn-secondary btn-sm text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-              :disabled="revokingId === row.id"
-              @click="revoke(row.id)"
-            >
-              <Icon v-if="revokingId === row.id" name="refresh" size="sm" class="animate-spin" />
-              <Icon v-else name="x" size="sm" />
-              <span>{{ t('accountContributions.revoke') }}</span>
-            </button>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-if="canConfigure(row)"
+                class="btn btn-secondary btn-sm"
+                @click="openSettings(row)"
+              >
+                <Icon name="cog" size="sm" />
+                <span>{{ t('accountContributions.settings.button') }}</span>
+              </button>
+              <button
+                v-if="canRevoke(row)"
+                class="btn btn-secondary btn-sm text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                :disabled="revokingId === row.id"
+                @click="revoke(row.id)"
+              >
+                <Icon v-if="revokingId === row.id" name="refresh" size="sm" class="animate-spin" />
+                <Icon v-else name="x" size="sm" />
+                <span>{{ t('accountContributions.revoke') }}</span>
+              </button>
+              <button
+                v-if="canRepublish(row)"
+                class="btn btn-primary btn-sm"
+                :disabled="republishingId === row.id"
+                @click="republish(row.id)"
+              >
+                <Icon v-if="republishingId === row.id" name="refresh" size="sm" class="animate-spin" />
+                <Icon v-else name="upload" size="sm" />
+                <span>{{ t('accountContributions.republish') }}</span>
+              </button>
+              <span v-if="!canConfigure(row) && !canRevoke(row) && !canRepublish(row)" class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            </div>
           </template>
         </DataTable>
 
@@ -410,6 +458,14 @@
         </div>
       </template>
     </BaseDialog>
+
+    <ContributionAccountSettingsModal
+      :show="!!settingsAccount"
+      :account="settingsAccount"
+      :saving="savingSettings"
+      @close="settingsAccount = null"
+      @save="saveSettings"
+    />
   </AppLayout>
 </template>
 
@@ -421,9 +477,12 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
+import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
+import ContributionAccountSettingsModal from '@/components/account/ContributionAccountSettingsModal.vue'
+import ContributionAccountUsageCell from '@/components/account/ContributionAccountUsageCell.vue'
 import type { Column } from '@/components/common/types'
-import accountContributionsAPI, { type ContributionImportPreview, type ContributionImportPreviewItem, type ContributionImportResult } from '@/api/accountContributions'
-import type { Account, AdminDataPayload, ContributorRewardLog, ContributorRewardSummary } from '@/types'
+import accountContributionsAPI, { type ContributionAccountConfigRequest, type ContributionImportPreview, type ContributionImportPreviewItem, type ContributionImportResult } from '@/api/accountContributions'
+import type { Account, AdminDataPayload, ContributorRewardLog, ContributorRewardSummary, WindowStats } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -442,8 +501,14 @@ const rewards = ref<ContributorRewardLog[]>([])
 const accountsLoading = ref(false)
 const rewardsLoading = ref(false)
 const rewardSummaryLoading = ref(false)
+const todayStatsLoading = ref(false)
+const todayStatsError = ref<string | null>(null)
 const startingOAuth = ref(false)
 const revokingId = ref<number | null>(null)
+const republishingId = ref<number | null>(null)
+const settingsAccount = ref<Account | null>(null)
+const savingSettings = ref(false)
+const usageRefreshToken = ref(0)
 const showImportDialog = ref(false)
 const showOAuthDialog = ref(false)
 const importingJSON = ref(false)
@@ -462,11 +527,15 @@ const submittingOAuthCallback = ref(false)
 const accountsPagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const rewardsPagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const rewardSummary = reactive<ContributorRewardSummary>({ total_reward: 0, today_reward: 0, last_7d_reward: 0 })
+const todayStatsByAccount = ref<Record<string, WindowStats>>({})
 
 const accountColumns = computed<Column[]>(() => [
   { key: 'id', label: t('accountContributions.accounts.columns.id') },
   { key: 'name', label: t('accountContributions.accounts.columns.account') },
   { key: 'status', label: t('accountContributions.accounts.columns.status') },
+  { key: 'groups', label: t('accountContributions.accounts.columns.groups') },
+  { key: 'today_stats', label: t('accountContributions.accounts.columns.todayStats') },
+  { key: 'usage', label: t('accountContributions.accounts.columns.usage') },
   { key: 'submitted_at', label: t('accountContributions.accounts.columns.timeline') },
   { key: 'actions', label: t('common.actions') }
 ])
@@ -527,6 +596,40 @@ function formatMultiplier(value: number): string {
 
 function canRevoke(account: Account): boolean {
   return account.contribution_status === 'pending' || account.contribution_status === 'approved'
+}
+
+function canRepublish(account: Account): boolean {
+  return account.contribution_status === 'revoked'
+}
+
+function canConfigure(account: Account): boolean {
+  return account.contribution_status === 'pending' || account.contribution_status === 'approved'
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function readString(record: Record<string, unknown>, key: string): string {
+  const value = record[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function accountLevelLabel(account: Account): string {
+  const credentials = asRecord(account.credentials)
+  const extra = asRecord(account.extra)
+  return (
+    readString(credentials, 'plan_type') ||
+    readString(credentials, 'account_plan') ||
+    readString(extra, 'plan_type') ||
+    readString(extra, 'subscription_tier_raw') ||
+    readString(extra, 'subscription_tier') ||
+    '-'
+  )
+}
+
+function todayStatsFor(accountID: number): WindowStats | null {
+  return todayStatsByAccount.value[String(accountID)] || null
 }
 
 function closeOAuthDialog(): void {
@@ -745,10 +848,30 @@ async function loadAccounts(): Promise<void> {
     )
     accounts.value = response.items
     accountsPagination.total = response.total
+    await loadTodayStats()
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t('accountContributions.errors.loadAccountsFailed')))
   } finally {
     accountsLoading.value = false
+  }
+}
+
+async function loadTodayStats(): Promise<void> {
+  const accountIds = accounts.value.map(account => account.id)
+  if (accountIds.length === 0) {
+    todayStatsByAccount.value = {}
+    todayStatsError.value = null
+    return
+  }
+  todayStatsLoading.value = true
+  todayStatsError.value = null
+  try {
+    const response = await accountContributionsAPI.getBatchTodayStats(accountIds)
+    todayStatsByAccount.value = response.stats || {}
+  } catch (error) {
+    todayStatsError.value = extractApiErrorMessage(error, t('accountContributions.errors.loadTodayStatsFailed'))
+  } finally {
+    todayStatsLoading.value = false
   }
 }
 
@@ -786,6 +909,27 @@ async function loadRewardData(): Promise<void> {
   await Promise.all([loadRewards(), loadRewardSummary()])
 }
 
+function openSettings(account: Account): void {
+  settingsAccount.value = account
+}
+
+async function saveSettings(payload: ContributionAccountConfigRequest): Promise<void> {
+  if (!settingsAccount.value || savingSettings.value) return
+  savingSettings.value = true
+  try {
+    const updated = await accountContributionsAPI.updateConfig(settingsAccount.value.id, payload)
+    accounts.value = accounts.value.map(account => account.id === updated.id ? updated : account)
+    settingsAccount.value = null
+    usageRefreshToken.value += 1
+    await loadTodayStats()
+    appStore.showSuccess(t('accountContributions.settings.saved'))
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('accountContributions.errors.saveSettingsFailed')))
+  } finally {
+    savingSettings.value = false
+  }
+}
+
 async function revoke(id: number): Promise<void> {
   if (revokingId.value !== null) return
   revokingId.value = id
@@ -797,6 +941,21 @@ async function revoke(id: number): Promise<void> {
     appStore.showError(extractApiErrorMessage(error, t('accountContributions.errors.revokeFailed')))
   } finally {
     revokingId.value = null
+  }
+}
+
+async function republish(id: number): Promise<void> {
+  if (republishingId.value !== null) return
+  republishingId.value = id
+  try {
+    await accountContributionsAPI.republish(id)
+    appStore.showSuccess(t('accountContributions.republished'))
+    usageRefreshToken.value += 1
+    await loadAccounts()
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('accountContributions.errors.republishFailed')))
+  } finally {
+    republishingId.value = null
   }
 }
 
