@@ -3672,6 +3672,7 @@ export default {
       status: {
         active: 'Active',
         inactive: 'Inactive',
+        disabled: 'Disabled',
         error: 'Error',
         cooldown: 'Cooldown',
         paused: 'Paused',

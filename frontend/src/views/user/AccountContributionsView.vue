@@ -579,14 +579,18 @@ function contributionStatusClass(status: Account['contribution_status']): string
 }
 
 function accountStatusLabel(status: Account['status']): string {
-  if (status === 'active') return t('common.active')
-  if (status === 'inactive') return t('common.inactive')
-  return status || '-'
+  const normalized = String(status || '').replace(/^admin\.accounts\.status\./, '')
+  if (normalized === 'active') return t('common.active')
+  if (normalized === 'inactive') return t('common.inactive')
+  if (normalized === 'disabled') return t('admin.accounts.status.disabled')
+  if (normalized === 'error') return t('admin.accounts.status.error')
+  return normalized || '-'
 }
 
 function accountStatusClass(status: Account['status']): string {
-  if (status === 'active') return 'badge-success'
-  if (status === 'inactive') return 'badge-gray'
+  const normalized = String(status || '').replace(/^admin\.accounts\.status\./, '')
+  if (normalized === 'active') return 'badge-success'
+  if (normalized === 'inactive' || normalized === 'disabled') return 'badge-gray'
   return 'badge-danger'
 }
 
