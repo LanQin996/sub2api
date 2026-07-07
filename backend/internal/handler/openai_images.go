@@ -401,6 +401,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}
 		})
 
+		routeRuntime.reportSuccess()
 		reqLog.Debug("openai.images.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),

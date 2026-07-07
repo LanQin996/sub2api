@@ -157,5 +157,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 
 	if err := h.gatewayService.ForwardCountTokensAsAnthropic(c.Request.Context(), c, account, forwardBody, defaultMappedModel); err != nil {
 		reqLog.Error("openai_count_tokens.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		return
 	}
+	routeRuntime.reportSuccess()
 }
