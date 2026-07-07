@@ -74,17 +74,21 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 
 	reqModel := parsedReq.Model
 	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
-	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", parsedReq.Stream))
 
 	setOpsRequestContext(c, reqModel, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(false, false)))
 
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-	mappedBodyForMessages := newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
-
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+	routeRuntime := newOpenAIRouteGroupRuntime(h, c, reqLog, apiKey, subscription, reqModel, body, h.gatewayService.ReplaceModelInBody)
+	if err := h.billingCacheService.CheckBillingEligibility(
+		c.Request.Context(),
+		routeRuntime.currentAPIKey.User,
+		routeRuntime.currentAPIKey,
+		routeRuntime.currentAPIKey.Group,
+		routeRuntime.currentSubscription,
+		service.QuotaPlatform(c.Request.Context(), routeRuntime.currentAPIKey),
+	); err != nil {
 		reqLog.Info("openai_count_tokens.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -96,39 +100,52 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 
 	requestStart := time.Now()
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
-	currentRoutingModel := routingModel
-	if preferredMappedModel != "" {
-		currentRoutingModel = preferredMappedModel
-	}
-	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-		c.Request.Context(),
-		apiKey.GroupID,
-		"",
-		sessionHash,
-		currentRoutingModel,
-		nil,
-		service.OpenAIUpstreamTransportAny,
-		service.OpenAIEndpointCapabilityChatCompletions,
-		false,
-		openAICompatibleRequestPlatform(apiKey),
-	)
-	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
-	if err != nil {
-		reqLog.Warn("openai_count_tokens.account_select_failed", zap.Error(err))
-		cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel, service.PlatformOpenAI)
-		if !cls.ModelNotFound {
-			markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+	var selection *service.AccountSelectionResult
+	defaultMappedModel := ""
+	for {
+		currentRoutingModel := routingModel
+		defaultMappedModel = resolveOpenAIMessagesDispatchMappedModel(routeRuntime.currentAPIKey, reqModel)
+		if defaultMappedModel != "" {
+			currentRoutingModel = defaultMappedModel
 		}
-		h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
-		return
-	}
-	if selection == nil || selection.Account == nil {
-		cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel, service.PlatformOpenAI)
-		if !cls.ModelNotFound {
-			markOpsRoutingCapacityLimited(c)
+		var err error
+		selection, _, err = h.gatewayService.SelectAccountWithSchedulerForCapability(
+			c.Request.Context(),
+			routeRuntime.currentAPIKey.GroupID,
+			"",
+			sessionHash,
+			currentRoutingModel,
+			nil,
+			service.OpenAIUpstreamTransportAny,
+			service.OpenAIEndpointCapabilityChatCompletions,
+			false,
+			routeRuntime.requestPlatform,
+		)
+		service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
+		if err != nil {
+			reqLog.Warn("openai_count_tokens.account_select_failed", zap.Error(err))
+			if routeRuntime.switchToNext("selection_no_available") {
+				continue
+			}
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, routeRuntime.currentAPIKey, currentRoutingModel, reqModel, routeRuntime.requestPlatform)
+			if !cls.ModelNotFound {
+				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+			}
+			h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
+			return
 		}
-		h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
-		return
+		if selection == nil || selection.Account == nil {
+			if routeRuntime.switchToNext("selection_empty") {
+				continue
+			}
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, routeRuntime.currentAPIKey, currentRoutingModel, reqModel, routeRuntime.requestPlatform)
+			if !cls.ModelNotFound {
+				markOpsRoutingCapacityLimited(c)
+			}
+			h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
+			return
+		}
+		break
 	}
 
 	account := selection.Account
@@ -136,8 +153,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	if selection.Acquired && selection.ReleaseFunc != nil {
 		defer selection.ReleaseFunc()
 	}
-	forwardBody := mappedBodyForMessages(channelMapping.Mapped, channelMapping.MappedModel)
-	defaultMappedModel := preferredMappedModel
+	forwardBody := routeRuntime.forwardBody
 
 	if err := h.gatewayService.ForwardCountTokensAsAnthropic(c.Request.Context(), c, account, forwardBody, defaultMappedModel); err != nil {
 		reqLog.Error("openai_count_tokens.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))

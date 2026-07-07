@@ -74,9 +74,8 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
 
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+	routeRuntime := newOpenAIRouteGroupRuntime(h, c, reqLog, apiKey, subscription, reqModel, body, h.gatewayService.ReplaceModelInBody)
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 
 	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, false, &streamStarted, reqLog)
@@ -87,7 +86,14 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+	if err := h.billingCacheService.CheckBillingEligibility(
+		c.Request.Context(),
+		routeRuntime.currentAPIKey.User,
+		routeRuntime.currentAPIKey,
+		routeRuntime.currentAPIKey.Group,
+		routeRuntime.currentSubscription,
+		service.QuotaPlatform(c.Request.Context(), routeRuntime.currentAPIKey),
+	); err != nil {
 		reqLog.Info("openai_embeddings.billing_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -109,7 +115,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	for {
 		selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
 			c.Request.Context(),
-			apiKey.GroupID,
+			routeRuntime.currentAPIKey.GroupID,
 			"",
 			"",
 			reqModel,
@@ -117,6 +123,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			service.OpenAIUpstreamTransportHTTPSSE,
 			service.OpenAIEndpointCapabilityEmbeddings,
 			false,
+			routeRuntime.requestPlatform,
 		)
 		if err != nil {
 			reqLog.Warn("openai_embeddings.account_select_failed",
@@ -124,12 +131,20 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformOpenAI)
+				if routeRuntime.switchToNext("selection_no_available") {
+					routeRuntime.resetFailoverState(&switchCount, &failedAccountIDs, nil, &lastFailoverErr)
+					continue
+				}
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, routeRuntime.currentAPIKey, reqModel, reqModel, routeRuntime.requestPlatform)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
 				h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
 				return
+			}
+			if routeRuntime.switchToNext("selection_exhausted") {
+				routeRuntime.resetFailoverState(&switchCount, &failedAccountIDs, nil, &lastFailoverErr)
+				continue
 			}
 			if lastFailoverErr != nil {
 				h.handleFailoverExhausted(c, lastFailoverErr, false)
@@ -139,7 +154,11 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
-			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformOpenAI)
+			if routeRuntime.switchToNext("selection_empty") {
+				routeRuntime.resetFailoverState(&switchCount, &failedAccountIDs, nil, &lastFailoverErr)
+				continue
+			}
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, routeRuntime.currentAPIKey, reqModel, reqModel, routeRuntime.requestPlatform)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
 			}
@@ -149,7 +168,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		accountReleaseFunc, accountAcquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, false, &streamStarted, reqLog)
+		accountReleaseFunc, accountAcquired := h.acquireResponsesAccountSlot(c, routeRuntime.currentAPIKey.GroupID, "", selection, false, &streamStarted, reqLog)
 		if !accountAcquired {
 			return
 		}
@@ -157,10 +176,6 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 
-		forwardBody := body
-		if channelMapping.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
-		}
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -168,7 +183,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardEmbeddings(c.Request.Context(), c, account, forwardBody, "")
+			return h.gatewayService.ForwardEmbeddings(c.Request.Context(), c, account, routeRuntime.forwardBody, "")
 		}()
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -191,6 +206,10 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 				failedAccountIDs[account.ID] = struct{}{}
 				lastFailoverErr = failoverErr
 				if switchCount >= maxAccountSwitches {
+					if routeRuntime.switchToNext("upstream_failover_exhausted") {
+						routeRuntime.resetFailoverState(&switchCount, &failedAccountIDs, nil, &lastFailoverErr)
+						continue
+					}
 					h.handleFailoverExhausted(c, failoverErr, false)
 					return
 				}
@@ -219,28 +238,28 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		clientIP := ip.GetClientIP(c)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
-		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		quotaPlatform := service.QuotaPlatform(c.Request.Context(), routeRuntime.currentAPIKey)
 
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
-				APIKey:             apiKey,
-				User:               apiKey.User,
+				APIKey:             routeRuntime.currentAPIKey,
+				User:               routeRuntime.currentAPIKey.User,
 				Account:            account,
-				Subscription:       subscription,
+				Subscription:       routeRuntime.currentSubscription,
 				InboundEndpoint:    inboundEndpoint,
 				UpstreamEndpoint:   upstreamEndpoint,
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
-				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				ChannelUsageFields: routeRuntime.channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.embeddings"),
 					zap.Int64("user_id", subject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),
-					zap.Any("group_id", apiKey.GroupID),
+					zap.Any("group_id", routeRuntime.currentAPIKey.GroupID),
 					zap.String("model", reqModel),
 					zap.Int64("account_id", account.ID),
 				).Error("openai_embeddings.record_usage_failed", zap.Error(err))

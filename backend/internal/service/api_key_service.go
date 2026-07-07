@@ -814,6 +814,14 @@ func (s *APIKeyService) GetActiveSubscriptionForGroup(ctx context.Context, userI
 	return s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
 }
 
+// ResolveRouteGroupByID loads a route group for gateway-side multi-group failover.
+func (s *APIKeyService) ResolveRouteGroupByID(ctx context.Context, groupID int64) (*Group, error) {
+	if s == nil || s.groupRepo == nil {
+		return nil, fmt.Errorf("group repository unavailable")
+	}
+	return s.groupRepo.GetByIDLite(ctx, groupID)
+}
+
 // GetAvailableGroups 获取用户有权限绑定的分组列表
 // 返回用户可以选择的分组：
 // - 标准类型分组：公开的（非专属）或用户被明确允许的
