@@ -77,6 +77,14 @@ func TestOpenAIRouteGroupRuntimeSkipsUnavailableGroupAcrossRequests(t *testing.T
 		Group:         plusGroup,
 		RouteGroupIDs: []int64{plusID, proID},
 	}
+	otherAPIKey := &service.APIKey{
+		ID:            101,
+		UserID:        43,
+		User:          &service.User{ID: 43, Status: service.StatusActive},
+		GroupID:       &plusID,
+		Group:         plusGroup,
+		RouteGroupIDs: []int64{plusID, proID},
+	}
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -110,6 +118,10 @@ func TestOpenAIRouteGroupRuntimeSkipsUnavailableGroupAcrossRequests(t *testing.T
 	nextRequest := newOpenAIRouteGroupRuntime(h, c, zap.NewNop(), apiKey, nil, "gpt-5", body, service.ReplaceModelInBody)
 	require.Equal(t, proID, *nextRequest.currentAPIKey.GroupID)
 	require.Same(t, proGroup, nextRequest.currentAPIKey.Group)
+
+	otherUserRequest := newOpenAIRouteGroupRuntime(h, c, zap.NewNop(), otherAPIKey, nil, "gpt-5", body, service.ReplaceModelInBody)
+	require.Equal(t, proID, *otherUserRequest.currentAPIKey.GroupID)
+	require.Same(t, proGroup, otherUserRequest.currentAPIKey.Group)
 }
 
 func TestOpenAIRouteGroupRuntimeProbesPrimaryAfterCooldown(t *testing.T) {
@@ -123,6 +135,14 @@ func TestOpenAIRouteGroupRuntimeProbesPrimaryAfterCooldown(t *testing.T) {
 		ID:            100,
 		UserID:        42,
 		User:          &service.User{ID: 42, Status: service.StatusActive},
+		GroupID:       &plusID,
+		Group:         plusGroup,
+		RouteGroupIDs: []int64{plusID, proID},
+	}
+	otherAPIKey := &service.APIKey{
+		ID:            101,
+		UserID:        43,
+		User:          &service.User{ID: 43, Status: service.StatusActive},
 		GroupID:       &plusID,
 		Group:         plusGroup,
 		RouteGroupIDs: []int64{plusID, proID},
@@ -159,7 +179,7 @@ func TestOpenAIRouteGroupRuntimeProbesPrimaryAfterCooldown(t *testing.T) {
 	require.Equal(t, plusID, *probeRequest.currentAPIKey.GroupID)
 	require.Same(t, plusGroup, probeRequest.currentAPIKey.Group)
 
-	concurrentRequest := newOpenAIRouteGroupRuntime(h, c, zap.NewNop(), apiKey, nil, "gpt-5", body, service.ReplaceModelInBody)
+	concurrentRequest := newOpenAIRouteGroupRuntime(h, c, zap.NewNop(), otherAPIKey, nil, "gpt-5", body, service.ReplaceModelInBody)
 	require.Equal(t, proID, *concurrentRequest.currentAPIKey.GroupID)
 	require.Same(t, proGroup, concurrentRequest.currentAPIKey.Group)
 

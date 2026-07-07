@@ -17,7 +17,6 @@ const (
 )
 
 type openAIRouteGroupCircuitKey struct {
-	apiKeyID int64
 	groupID  int64
 	platform string
 	model    string
@@ -388,7 +387,6 @@ func (rt *openAIRouteGroupRuntime) routeGroupCircuitKey(groupID int64) openAIRou
 		return key
 	}
 	if rt.originalAPIKey != nil {
-		key.apiKeyID = rt.originalAPIKey.ID
 		key.platform = openAICompatibleRequestPlatform(rt.originalAPIKey)
 	}
 	key.model = strings.ToLower(strings.TrimSpace(rt.reqModel))
