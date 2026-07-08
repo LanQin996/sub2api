@@ -434,12 +434,6 @@ func parseRankingTimeRange(c *gin.Context) (string, time.Time, time.Time, time.T
 	case "monthly", "month":
 		period = "monthly"
 		startTime = startOfMonthInLocation(now)
-	case "yearly", "year":
-		period = "yearly"
-		startTime = startOfYearInLocation(now)
-	case "all", "all_time", "all-time":
-		period = "all"
-		startTime = time.Time{}
 	default:
 		return "", time.Time{}, time.Time{}, time.Time{}, time.Time{}, false
 	}
@@ -479,10 +473,6 @@ func previousStartForRankingPeriod(period string, startTime, endTime time.Time) 
 		return startTime.AddDate(0, 0, -7)
 	case "monthly":
 		return startTime.AddDate(0, -1, 0)
-	case "yearly":
-		return startTime.AddDate(-1, 0, 0)
-	case "all":
-		return time.Time{}
 	default:
 		duration := endTime.Sub(startTime)
 		if duration <= 0 {
@@ -607,7 +597,7 @@ func (h *UsageHandler) Ranking(c *gin.Context) {
 
 	period, startTime, endTime, _, _, ok := parseRankingTimeRange(c)
 	if !ok {
-		response.BadRequest(c, "Invalid period, use daily, weekly, monthly, yearly, or all")
+		response.BadRequest(c, "Invalid period, use daily, weekly, or monthly")
 		return
 	}
 
@@ -663,7 +653,7 @@ func (h *UsageHandler) TokenRanking(c *gin.Context) {
 
 	period, startTime, endTime, _, _, ok := parseRankingTimeRange(c)
 	if !ok {
-		response.BadRequest(c, "Invalid period, use daily, weekly, monthly, yearly, or all")
+		response.BadRequest(c, "Invalid period, use daily, weekly, or monthly")
 		return
 	}
 
@@ -713,7 +703,7 @@ func (h *UsageHandler) TokenRanking(c *gin.Context) {
 func (h *UsageHandler) ModelRanking(c *gin.Context) {
 	period, startTime, endTime, previousStart, previousEnd, ok := parseRankingTimeRange(c)
 	if !ok {
-		response.BadRequest(c, "Invalid period, use daily, weekly, monthly, yearly, or all")
+		response.BadRequest(c, "Invalid period, use daily, weekly, or monthly")
 		return
 	}
 

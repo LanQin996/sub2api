@@ -330,9 +330,7 @@ const rankingCache = new Map<string, { expiresAt: number, data: RankingCacheValu
 const periodOptions = computed(() => [
   { value: 'daily' as RankingPeriod, label: t('ranking.daily') },
   { value: 'weekly' as RankingPeriod, label: t('ranking.weekly') },
-  { value: 'monthly' as RankingPeriod, label: t('ranking.monthly') },
-  { value: 'yearly' as RankingPeriod, label: t('ranking.yearly') },
-  { value: 'all' as RankingPeriod, label: t('ranking.allTime') }
+  { value: 'monthly' as RankingPeriod, label: t('ranking.monthly') }
 ])
 
 const rankingTabs = computed(() => [

@@ -1626,7 +1626,7 @@ export interface UserSpendingRankingResponse {
   end_date: string
 }
 
-export type RankingPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'all'
+export type RankingPeriod = 'daily' | 'weekly' | 'monthly'
 
 
 export interface ModelUsageRankingItem {
