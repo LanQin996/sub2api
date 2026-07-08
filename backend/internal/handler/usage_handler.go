@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 type userUsageFilters struct {
@@ -50,6 +51,7 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	opsService     *service.OpsService
 	settingService *service.SettingService
+	rankingRedis   *redis.Client
 }
 
 // NewUsageHandler creates a new UsageHandler
@@ -64,6 +66,13 @@ func NewUsageHandler(
 		apiKeyService:  apiKeyService,
 		opsService:     opsService,
 		settingService: settingService,
+	}
+}
+
+// SetRankingRedisClient enables cross-instance Redis cache for hot ranking endpoints.
+func (h *UsageHandler) SetRankingRedisClient(redisClient *redis.Client) {
+	if h != nil {
+		h.rankingRedis = redisClient
 	}
 }
 
@@ -604,7 +613,25 @@ func (h *UsageHandler) Ranking(c *gin.Context) {
 
 	limit := parseRankingLimit(c)
 	cacheKey := buildUsageRankingCacheKey("spending", subject.UserID, period, startTime, limit)
+	if ranking, status, ok := getUsageRankingCached[usagestats.PublicUserSpendingRankingResponse](
+		c.Request.Context(),
+		usageRankingCache,
+		h.rankingRedis,
+		cacheKey,
+	); ok {
+		c.Header("X-Snapshot-Cache", status)
+		response.Success(c, clonePublicUserSpendingRankingResponse(ranking))
+		return
+	}
+
 	entry, hit, err := usageRankingCache.GetOrLoad(cacheKey, func() (any, error) {
+		if ranking, ok := getUsageRankingFromRedis[usagestats.PublicUserSpendingRankingResponse](
+			c.Request.Context(),
+			h.rankingRedis,
+			cacheKey,
+		); ok {
+			return ranking, nil
+		}
 		return h.usageService.GetPublicUserSpendingRanking(
 			c.Request.Context(),
 			subject.UserID,
@@ -620,6 +647,7 @@ func (h *UsageHandler) Ranking(c *gin.Context) {
 	}
 
 	ranking, _ := entry.Payload.(*usagestats.PublicUserSpendingRankingResponse)
+	setUsageRankingRedis(c.Request.Context(), h.rankingRedis, cacheKey, ranking)
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
 	response.Success(c, clonePublicUserSpendingRankingResponse(ranking))
 }
@@ -641,7 +669,25 @@ func (h *UsageHandler) TokenRanking(c *gin.Context) {
 
 	limit := parseRankingLimit(c)
 	cacheKey := buildUsageRankingCacheKey("tokens", subject.UserID, period, startTime, limit)
+	if ranking, status, ok := getUsageRankingCached[usagestats.PublicUserTokenRankingResponse](
+		c.Request.Context(),
+		usageRankingCache,
+		h.rankingRedis,
+		cacheKey,
+	); ok {
+		c.Header("X-Snapshot-Cache", status)
+		response.Success(c, clonePublicUserTokenRankingResponse(ranking))
+		return
+	}
+
 	entry, hit, err := usageRankingCache.GetOrLoad(cacheKey, func() (any, error) {
+		if ranking, ok := getUsageRankingFromRedis[usagestats.PublicUserTokenRankingResponse](
+			c.Request.Context(),
+			h.rankingRedis,
+			cacheKey,
+		); ok {
+			return ranking, nil
+		}
 		return h.usageService.GetPublicUserTokenRanking(
 			c.Request.Context(),
 			subject.UserID,
@@ -657,6 +703,7 @@ func (h *UsageHandler) TokenRanking(c *gin.Context) {
 	}
 
 	ranking, _ := entry.Payload.(*usagestats.PublicUserTokenRankingResponse)
+	setUsageRankingRedis(c.Request.Context(), h.rankingRedis, cacheKey, ranking)
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
 	response.Success(c, clonePublicUserTokenRankingResponse(ranking))
 }
@@ -675,7 +722,25 @@ func (h *UsageHandler) ModelRanking(c *gin.Context) {
 		limit = 50
 	}
 	cacheKey := buildUsageModelRankingCacheKey(period, startTime, limit)
+	if ranking, status, ok := getUsageRankingCached[usagestats.ModelUsageRankingResponse](
+		c.Request.Context(),
+		usageModelRankingCache,
+		h.rankingRedis,
+		cacheKey,
+	); ok {
+		c.Header("X-Snapshot-Cache", status)
+		response.Success(c, cloneModelUsageRankingResponse(ranking))
+		return
+	}
+
 	entry, hit, err := usageModelRankingCache.GetOrLoad(cacheKey, func() (any, error) {
+		if ranking, ok := getUsageRankingFromRedis[usagestats.ModelUsageRankingResponse](
+			c.Request.Context(),
+			h.rankingRedis,
+			cacheKey,
+		); ok {
+			return ranking, nil
+		}
 		return h.usageService.GetModelUsageRanking(
 			c.Request.Context(),
 			startTime,
@@ -692,6 +757,7 @@ func (h *UsageHandler) ModelRanking(c *gin.Context) {
 	}
 
 	ranking, _ := entry.Payload.(*usagestats.ModelUsageRankingResponse)
+	setUsageRankingRedis(c.Request.Context(), h.rankingRedis, cacheKey, ranking)
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
 	response.Success(c, cloneModelUsageRankingResponse(ranking))
 }

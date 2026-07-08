@@ -1,11 +1,17 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/redis/go-redis/v9"
 )
+
+const usageRankingRedisTTL = 5 * time.Minute
 
 var (
 	usageRankingCache      = newSnapshotCache(5 * time.Minute)
@@ -42,6 +48,64 @@ func buildUsageModelRankingCacheKey(period string, startTime time.Time, limit in
 		Limit:  limit,
 	})
 	return string(keyRaw)
+}
+
+func usageRankingRedisKey(cacheKey string) string {
+	return "usage:ranking:v1:" + cacheKey
+}
+
+func getUsageRankingCached[T any](
+	ctx context.Context,
+	localCache *snapshotCache,
+	redisClient *redis.Client,
+	cacheKey string,
+) (*T, string, bool) {
+	if entry, ok := localCache.Get(cacheKey); ok {
+		if ranking, ok := entry.Payload.(*T); ok {
+			return ranking, "hit", true
+		}
+	}
+	ranking, ok := getUsageRankingFromRedis[T](ctx, redisClient, cacheKey)
+	if !ok {
+		return nil, "", false
+	}
+	if localCache != nil {
+		localCache.Set(cacheKey, ranking)
+	}
+	return ranking, "redis-hit", true
+}
+
+func getUsageRankingFromRedis[T any](ctx context.Context, redisClient *redis.Client, cacheKey string) (*T, bool) {
+	if redisClient == nil || cacheKey == "" {
+		return nil, false
+	}
+	raw, err := redisClient.Get(ctx, usageRankingRedisKey(cacheKey)).Bytes()
+	if err != nil {
+		if !errors.Is(err, redis.Nil) {
+			slog.Warn("usage ranking redis get failed", "err", err)
+		}
+		return nil, false
+	}
+	var ranking T
+	if err := json.Unmarshal(raw, &ranking); err != nil {
+		slog.Warn("usage ranking redis unmarshal failed", "err", err)
+		return nil, false
+	}
+	return &ranking, true
+}
+
+func setUsageRankingRedis(ctx context.Context, redisClient *redis.Client, cacheKey string, payload any) {
+	if redisClient == nil || cacheKey == "" || payload == nil {
+		return
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		slog.Warn("usage ranking redis marshal failed", "err", err)
+		return
+	}
+	if err := redisClient.Set(ctx, usageRankingRedisKey(cacheKey), raw, usageRankingRedisTTL).Err(); err != nil {
+		slog.Warn("usage ranking redis set failed", "err", err)
+	}
 }
 
 func clonePublicUserSpendingRankingResponse(

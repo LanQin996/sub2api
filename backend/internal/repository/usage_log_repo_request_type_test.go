@@ -791,42 +791,29 @@ func TestUsageLogRepositoryGetModelUsageRanking(t *testing.T) {
 	limit := 5
 
 	modelRows := sqlmock.NewRows([]string{
+		"row_type",
 		"rank",
 		"model_name",
 		"vendor",
 		"vendor_icon",
 		"model_tokens",
 		"requests",
+		"models_count",
+		"top_model",
 		"previous_tokens",
 		"previous_rank",
 		"all_tokens",
 		"total_requests",
 		"total_models",
 	}).
-		AddRow(int64(1), "gpt-5.4", "OpenAI", "OpenAI", int64(900), int64(9), int64(300), int64(2), int64(1000), int64(12), int64(2)).
-		AddRow(int64(2), "claude-sonnet", "Anthropic", "Claude", int64(100), int64(3), int64(0), nil, int64(1000), int64(12), int64(2))
+		AddRow("model", int64(1), "gpt-5.4", "OpenAI", "OpenAI", int64(900), int64(9), nil, nil, int64(300), int64(2), int64(1000), int64(12), int64(2)).
+		AddRow("model", int64(2), "claude-sonnet", "Anthropic", "Claude", int64(100), int64(3), nil, nil, int64(0), nil, int64(1000), int64(12), int64(2)).
+		AddRow("vendor", int64(1), nil, "OpenAI", "OpenAI", int64(900), int64(9), int64(1), "gpt-5.4", int64(300), nil, int64(1000), nil, nil).
+		AddRow("vendor", int64(2), nil, "Anthropic", "Claude", int64(100), int64(3), int64(1), "claude-sonnet", int64(0), nil, int64(1000), nil, nil)
 
 	mock.ExpectQuery("WITH").
 		WithArgs(currentStart, currentEnd, previousStart, previousEnd, limit).
 		WillReturnRows(modelRows)
-
-	vendorRows := sqlmock.NewRows([]string{
-		"rank",
-		"vendor",
-		"vendor_icon",
-		"total_tokens",
-		"requests",
-		"models_count",
-		"top_model",
-		"previous_tokens",
-		"all_tokens",
-	}).
-		AddRow(int64(1), "OpenAI", "OpenAI", int64(900), int64(9), int64(1), "gpt-5.4", int64(300), int64(1000)).
-		AddRow(int64(2), "Anthropic", "Claude", int64(100), int64(3), int64(1), "claude-sonnet", int64(0), int64(1000))
-
-	mock.ExpectQuery("WITH").
-		WithArgs(currentStart, currentEnd, previousStart, previousEnd, limit).
-		WillReturnRows(vendorRows)
 
 	got, err := repo.GetModelUsageRanking(context.Background(), currentStart, currentEnd, previousStart, previousEnd, limit)
 	require.NoError(t, err)

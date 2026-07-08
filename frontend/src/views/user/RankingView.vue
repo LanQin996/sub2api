@@ -27,7 +27,7 @@
             type="button"
             class="btn btn-secondary inline-flex items-center justify-center gap-2"
             :disabled="loading"
-            @click="loadRanking"
+            @click="loadRanking(true)"
           >
             <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
             {{ t('common.refresh') }}
@@ -308,6 +308,10 @@ import type {
 
 type RankingTab = 'users' | 'tokens' | 'models'
 type UserRankingRow = PublicUserSpendingRankingItem | PublicUserTokenRankingItem
+type RankingCacheValue =
+  | PublicUserSpendingRankingResponse
+  | PublicUserTokenRankingResponse
+  | ModelUsageRankingResponse
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -319,6 +323,9 @@ const tokenRanking = ref<PublicUserTokenRankingResponse | null>(null)
 const modelRanking = ref<ModelUsageRankingResponse | null>(null)
 const loading = ref(false)
 let loadSeq = 0
+
+const rankingCacheTTL = 5 * 60 * 1000
+const rankingCache = new Map<string, { expiresAt: number, data: RankingCacheValue }>()
 
 const periodOptions = computed(() => [
   { value: 'daily' as RankingPeriod, label: t('ranking.daily') },
@@ -373,26 +380,69 @@ const periodText = computed(() => {
   })
 })
 
-const loadRanking = async () => {
+const rankingCacheKey = (tab: RankingTab, period: RankingPeriod): string => `${tab}:${period}`
+
+const applyRankingData = (tab: RankingTab, data: RankingCacheValue) => {
+  if (tab === 'models') {
+    modelRanking.value = data as ModelUsageRankingResponse
+  } else if (tab === 'tokens') {
+    tokenRanking.value = data as PublicUserTokenRankingResponse
+  } else {
+    userRanking.value = data as PublicUserSpendingRankingResponse
+  }
+}
+
+const getCachedRanking = (tab: RankingTab, period: RankingPeriod): RankingCacheValue | null => {
+  const cached = rankingCache.get(rankingCacheKey(tab, period))
+  if (!cached) return null
+  if (cached.expiresAt <= Date.now()) {
+    rankingCache.delete(rankingCacheKey(tab, period))
+    return null
+  }
+  return cached.data
+}
+
+const setCachedRanking = (tab: RankingTab, period: RankingPeriod, data: RankingCacheValue) => {
+  rankingCache.set(rankingCacheKey(tab, period), {
+    data,
+    expiresAt: Date.now() + rankingCacheTTL
+  })
+}
+
+const loadRanking = async (force = false) => {
   const currentSeq = ++loadSeq
+  const requestedTab = activeTab.value
+  const requestedPeriod = activePeriod.value
+
+  if (!force) {
+    const cached = getCachedRanking(requestedTab, requestedPeriod)
+    if (cached) {
+      applyRankingData(requestedTab, cached)
+      return
+    }
+  }
+
   loading.value = true
   try {
     const params = {
-      period: activePeriod.value,
+      period: requestedPeriod,
       limit: 20
     }
-    if (activeTab.value === 'models') {
+    if (requestedTab === 'models') {
       const data = await usageAPI.getModelRanking(params)
       if (currentSeq !== loadSeq) return
-      modelRanking.value = data
-    } else if (activeTab.value === 'tokens') {
+      setCachedRanking(requestedTab, requestedPeriod, data)
+      applyRankingData(requestedTab, data)
+    } else if (requestedTab === 'tokens') {
       const data = await usageAPI.getTokenRanking(params)
       if (currentSeq !== loadSeq) return
-      tokenRanking.value = data
+      setCachedRanking(requestedTab, requestedPeriod, data)
+      applyRankingData(requestedTab, data)
     } else {
       const data = await usageAPI.getRanking(params)
       if (currentSeq !== loadSeq) return
-      userRanking.value = data
+      setCachedRanking(requestedTab, requestedPeriod, data)
+      applyRankingData(requestedTab, data)
     }
   } catch (error) {
     if (currentSeq !== loadSeq) return

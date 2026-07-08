@@ -2614,24 +2614,61 @@ func (r *usageLogRepository) GetPublicUserSpendingRanking(ctx context.Context, s
 
 	query := `
 		WITH ` + userSpendingRollupCTE + `,
-		ranked AS (
+		top_ranked AS (
 			SELECT
-				ROW_NUMBER() OVER (ORDER BY user_spend.actual_cost DESC, user_spend.tokens DESC, user_spend.user_id ASC) AS rank,
-				user_spend.user_id,
+				ROW_NUMBER() OVER (ORDER BY top_spend.actual_cost DESC, top_spend.tokens DESC, top_spend.user_id ASC) AS rank,
+				top_spend.user_id,
 				COALESCE(users.email, '') AS email,
 				COALESCE(users.username, '') AS username,
 				COALESCE(user_avatars.url, '') AS avatar_url,
-				user_spend.actual_cost,
-				user_spend.requests,
-				user_spend.tokens
-			FROM user_spend
-			LEFT JOIN users ON user_spend.user_id = users.id
-			LEFT JOIN user_avatars ON user_spend.user_id = user_avatars.user_id
+				top_spend.actual_cost,
+				top_spend.requests,
+				top_spend.tokens
+			FROM (
+				SELECT user_id, actual_cost, requests, tokens
+				FROM user_spend
+				ORDER BY actual_cost DESC, tokens DESC, user_id ASC
+				LIMIT $3
+			) top_spend
+			LEFT JOIN users ON top_spend.user_id = users.id
+			LEFT JOIN user_avatars ON top_spend.user_id = user_avatars.user_id
+		),
+		current_ranked AS (
+			SELECT
+				(
+					SELECT COUNT(*) + 1
+					FROM user_spend better
+					WHERE better.actual_cost > current_spend.actual_cost
+					   OR (
+						better.actual_cost = current_spend.actual_cost
+						AND (
+							better.tokens > current_spend.tokens
+							OR (better.tokens = current_spend.tokens AND better.user_id < current_spend.user_id)
+						)
+					   )
+				)::bigint AS rank,
+				current_spend.user_id,
+				COALESCE(users.email, '') AS email,
+				COALESCE(users.username, '') AS username,
+				COALESCE(user_avatars.url, '') AS avatar_url,
+				current_spend.actual_cost,
+				current_spend.requests,
+				current_spend.tokens
+			FROM user_spend current_spend
+			LEFT JOIN users ON current_spend.user_id = users.id
+			LEFT JOIN user_avatars ON current_spend.user_id = user_avatars.user_id
+			WHERE current_spend.user_id = $4
 		),
 		selected AS (
+			SELECT * FROM top_ranked
+			UNION ALL
 			SELECT *
-			FROM ranked
-			WHERE rank <= $3 OR user_id = $4
+			FROM current_ranked
+			WHERE NOT EXISTS (
+				SELECT 1
+				FROM top_ranked
+				WHERE top_ranked.user_id = current_ranked.user_id
+			)
 		),
 		totals AS (
 			SELECT
@@ -2712,23 +2749,59 @@ func (r *usageLogRepository) GetPublicUserTokenRanking(ctx context.Context, star
 
 	query := `
 		WITH ` + userSpendingRollupCTE + `,
-		ranked AS (
+		top_ranked AS (
 			SELECT
-				ROW_NUMBER() OVER (ORDER BY user_spend.tokens DESC, user_spend.requests DESC, user_spend.user_id ASC) AS rank,
-				user_spend.user_id,
+				ROW_NUMBER() OVER (ORDER BY top_spend.tokens DESC, top_spend.requests DESC, top_spend.user_id ASC) AS rank,
+				top_spend.user_id,
 				COALESCE(users.email, '') AS email,
 				COALESCE(users.username, '') AS username,
 				COALESCE(user_avatars.url, '') AS avatar_url,
-				user_spend.requests,
-				user_spend.tokens
-			FROM user_spend
-			LEFT JOIN users ON user_spend.user_id = users.id
-			LEFT JOIN user_avatars ON user_spend.user_id = user_avatars.user_id
+				top_spend.requests,
+				top_spend.tokens
+			FROM (
+				SELECT user_id, requests, tokens
+				FROM user_spend
+				ORDER BY tokens DESC, requests DESC, user_id ASC
+				LIMIT $3
+			) top_spend
+			LEFT JOIN users ON top_spend.user_id = users.id
+			LEFT JOIN user_avatars ON top_spend.user_id = user_avatars.user_id
+		),
+		current_ranked AS (
+			SELECT
+				(
+					SELECT COUNT(*) + 1
+					FROM user_spend better
+					WHERE better.tokens > current_spend.tokens
+					   OR (
+						better.tokens = current_spend.tokens
+						AND (
+							better.requests > current_spend.requests
+							OR (better.requests = current_spend.requests AND better.user_id < current_spend.user_id)
+						)
+					   )
+				)::bigint AS rank,
+				current_spend.user_id,
+				COALESCE(users.email, '') AS email,
+				COALESCE(users.username, '') AS username,
+				COALESCE(user_avatars.url, '') AS avatar_url,
+				current_spend.requests,
+				current_spend.tokens
+			FROM user_spend current_spend
+			LEFT JOIN users ON current_spend.user_id = users.id
+			LEFT JOIN user_avatars ON current_spend.user_id = user_avatars.user_id
+			WHERE current_spend.user_id = $4
 		),
 		selected AS (
+			SELECT * FROM top_ranked
+			UNION ALL
 			SELECT *
-			FROM ranked
-			WHERE rank <= $3 OR user_id = $4
+			FROM current_ranked
+			WHERE NOT EXISTS (
+				SELECT 1
+				FROM top_ranked
+				WHERE top_ranked.user_id = current_ranked.user_id
+			)
 		),
 		totals AS (
 			SELECT
@@ -2855,8 +2928,12 @@ func modelUsageRankingCTE() string {
 				$3::timestamptz AS previous_start,
 				$4::timestamptz AS previous_end
 		),
-		current_usage AS (
+		raw_usage AS (
 			SELECT
+				CASE
+					WHEN ul.created_at >= b.current_start AND ul.created_at < b.current_end THEN 'current'
+					ELSE 'previous'
+				END AS usage_period,
 				TRIM(%s)::text AS model_name,
 				COALESCE(NULLIF(g.platform, ''), a.platform, '') AS platform,
 				COUNT(*)::bigint AS requests,
@@ -2865,22 +2942,26 @@ func modelUsageRankingCTE() string {
 			CROSS JOIN bounds b
 			LEFT JOIN groups g ON g.id = ul.group_id
 			LEFT JOIN accounts a ON a.id = ul.account_id
-			WHERE ul.created_at >= b.current_start
+			WHERE ul.created_at >= LEAST(b.current_start, b.previous_start)
 			  AND ul.created_at < b.current_end
-			GROUP BY TRIM(%s), COALESCE(NULLIF(g.platform, ''), a.platform, '')
+			GROUP BY 1, 2, 3
+		),
+		current_usage AS (
+			SELECT
+				model_name,
+				platform,
+				requests,
+				total_tokens
+			FROM raw_usage
+			WHERE usage_period = 'current'
 		),
 		previous_usage AS (
 			SELECT
-				TRIM(%s)::text AS model_name,
-				COALESCE(NULLIF(g.platform, ''), a.platform, '') AS platform,
-				COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0)::bigint AS total_tokens
-			FROM usage_logs ul
-			CROSS JOIN bounds b
-			LEFT JOIN groups g ON g.id = ul.group_id
-			LEFT JOIN accounts a ON a.id = ul.account_id
-			WHERE ul.created_at >= b.previous_start
-			  AND ul.created_at < b.previous_end
-			GROUP BY TRIM(%s), COALESCE(NULLIF(g.platform, ''), a.platform, '')
+				model_name,
+				platform,
+				total_tokens
+			FROM raw_usage
+			WHERE usage_period = 'previous'
 		),
 		current_by_model AS (
 			SELECT
@@ -2926,7 +3007,7 @@ func modelUsageRankingCTE() string {
 			FROM current_by_model cbm
 			LEFT JOIN previous_ranked pr ON pr.model_name = cbm.model_name AND pr.vendor = cbm.vendor
 			WHERE cbm.total_tokens > 0
-		)`, modelExpr, modelExpr, modelExpr, modelExpr, vendorExpr, vendorExpr, vendorExpr, vendorExpr, vendorIconExpr)
+		)`, modelExpr, vendorExpr, vendorExpr, vendorExpr, vendorExpr, vendorIconExpr)
 }
 
 // GetModelUsageRanking returns model and vendor leaderboards based on token usage.
@@ -2936,22 +3017,102 @@ func (r *usageLogRepository) GetModelUsageRanking(ctx context.Context, currentSt
 	}
 
 	query := `
-		WITH ` + modelUsageRankingCTE() + `
+		WITH ` + modelUsageRankingCTE() + `,
+		model_rows AS (
+			SELECT
+				'model'::text AS row_type,
+				rank,
+				model_name,
+				vendor,
+				vendor_icon,
+				model_tokens,
+				requests,
+				NULL::bigint AS models_count,
+				NULL::text AS top_model,
+				previous_tokens,
+				previous_rank,
+				all_tokens,
+				total_requests,
+				total_models
+			FROM ranked
+			WHERE rank <= $5
+		),
+		vendor_current AS (
+			SELECT
+				vendor,
+				MAX(` + modelRankingVendorIconSQLExpr("vendor") + `) AS vendor_icon,
+				SUM(total_tokens)::bigint AS total_tokens,
+				SUM(requests)::bigint AS requests,
+				COUNT(*)::bigint AS models_count,
+				(ARRAY_AGG(model_name ORDER BY total_tokens DESC, model_name ASC))[1] AS top_model,
+				COALESCE(SUM(SUM(total_tokens)) OVER (), 0)::bigint AS all_tokens
+			FROM current_by_model
+			WHERE total_tokens > 0
+			GROUP BY vendor
+		),
+		vendor_previous AS (
+			SELECT
+				vendor,
+				SUM(total_tokens)::bigint AS total_tokens
+			FROM previous_by_model
+			WHERE total_tokens > 0
+			GROUP BY vendor
+		),
+		vendor_rows AS (
+			SELECT
+				'vendor'::text AS row_type,
+				ROW_NUMBER() OVER (ORDER BY vc.total_tokens DESC, vc.vendor ASC)::bigint AS rank,
+				NULL::text AS model_name,
+				vc.vendor,
+				vc.vendor_icon,
+				vc.total_tokens AS model_tokens,
+				vc.requests,
+				vc.models_count,
+				vc.top_model,
+				COALESCE(vp.total_tokens, 0)::bigint AS previous_tokens,
+				NULL::bigint AS previous_rank,
+				vc.all_tokens,
+				NULL::bigint AS total_requests,
+				NULL::bigint AS total_models
+			FROM vendor_current vc
+			LEFT JOIN vendor_previous vp ON vp.vendor = vc.vendor
+			ORDER BY vc.total_tokens DESC, vc.vendor ASC
+			LIMIT $5
+		)
 		SELECT
+			row_type,
 			rank,
 			model_name,
 			vendor,
 			vendor_icon,
 			model_tokens,
 			requests,
+			models_count,
+			top_model,
 			previous_tokens,
 			previous_rank,
 			all_tokens,
 			total_requests,
 			total_models
-		FROM ranked
-		WHERE rank <= $5
-		ORDER BY rank ASC
+		FROM model_rows
+		UNION ALL
+		SELECT
+			row_type,
+			rank,
+			model_name,
+			vendor,
+			vendor_icon,
+			model_tokens,
+			requests,
+			models_count,
+			top_model,
+			previous_tokens,
+			previous_rank,
+			all_tokens,
+			total_requests,
+			total_models
+		FROM vendor_rows
+		ORDER BY row_type ASC, rank ASC
 	`
 
 	rows, err := r.sql.QueryContext(ctx, query, currentStart, currentEnd, previousStart, previousEnd, limit)
@@ -2966,28 +3127,84 @@ func (r *usageLogRepository) GetModelUsageRanking(ctx context.Context, currentSt
 	}()
 
 	rawModels := make([]modelUsageRankingRow, 0)
+	vendors := make([]usagestats.VendorUsageRankingItem, 0)
 	totalTokens := int64(0)
 	totalRequests := int64(0)
 	totalModels := int64(0)
 	for rows.Next() {
-		var row modelUsageRankingRow
+		var rowType string
 		var rank int64
+		var modelName sql.NullString
+		var vendor string
+		var vendorIcon string
+		var totalTokensForRow int64
+		var requests int64
+		var modelsCount sql.NullInt64
+		var topModel sql.NullString
+		var previousTokens int64
+		var previousRank sql.NullInt64
+		var allTokens int64
+		var totalRequestsRow sql.NullInt64
+		var totalModelsRow sql.NullInt64
 		if err = rows.Scan(
+			&rowType,
 			&rank,
-			&row.ModelName,
-			&row.Vendor,
-			&row.VendorIcon,
-			&row.TotalTokens,
-			&row.Requests,
-			&row.PreviousTokens,
-			&row.PreviousRank,
-			&totalTokens,
-			&totalRequests,
-			&totalModels,
+			&modelName,
+			&vendor,
+			&vendorIcon,
+			&totalTokensForRow,
+			&requests,
+			&modelsCount,
+			&topModel,
+			&previousTokens,
+			&previousRank,
+			&allTokens,
+			&totalRequestsRow,
+			&totalModelsRow,
 		); err != nil {
 			return nil, err
 		}
-		rawModels = append(rawModels, row)
+		switch rowType {
+		case "model":
+			var previousRankPtr *int64
+			if previousRank.Valid {
+				value := previousRank.Int64
+				previousRankPtr = &value
+			}
+			if totalTokens == 0 {
+				totalTokens = allTokens
+			}
+			if totalRequests == 0 && totalRequestsRow.Valid {
+				totalRequests = totalRequestsRow.Int64
+			}
+			if totalModels == 0 && totalModelsRow.Valid {
+				totalModels = totalModelsRow.Int64
+			}
+			rawModels = append(rawModels, modelUsageRankingRow{
+				ModelName:      modelName.String,
+				Vendor:         vendor,
+				VendorIcon:     vendorIcon,
+				TotalTokens:    totalTokensForRow,
+				Requests:       requests,
+				PreviousTokens: previousTokens,
+				PreviousRank:   previousRankPtr,
+			})
+		case "vendor":
+			item := usagestats.VendorUsageRankingItem{
+				Rank:        rank,
+				Vendor:      normalizeRankingVendor(vendor),
+				VendorIcon:  vendorIcon,
+				TotalTokens: totalTokensForRow,
+				Requests:    requests,
+				ModelsCount: modelsCount.Int64,
+				TopModel:    topModel.String,
+				GrowthPct:   growthPercentage(totalTokensForRow, previousTokens),
+			}
+			if allTokens > 0 {
+				item.Share = float64(totalTokensForRow) / float64(allTokens)
+			}
+			vendors = append(vendors, item)
+		}
 	}
 	if err = rows.Err(); err != nil {
 		return nil, err
@@ -3019,10 +3236,6 @@ func (r *usageLogRepository) GetModelUsageRanking(ctx context.Context, currentSt
 		})
 	}
 
-	vendors, err := r.getVendorUsageRanking(ctx, currentStart, currentEnd, previousStart, previousEnd, limit)
-	if err != nil {
-		return nil, err
-	}
 	topMovers, topDroppers := buildModelRankingMovers(models, 5)
 
 	return &usagestats.ModelUsageRankingResponse{
