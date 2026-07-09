@@ -32,7 +32,7 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       - name: Verify Go version
-        run: test "$(go env GOVERSION)" = "go1.26.4"
+        run: test "$(go env GOVERSION)" = "go1.26.5"
 
       - name: Download Go modules
         working-directory: backend
@@ -62,7 +62,7 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       - name: Verify Go version
-        run: test "$(go env GOVERSION)" = "go1.26.4"
+        run: test "$(go env GOVERSION)" = "go1.26.5"
 
       - name: Run unit tests
         working-directory: backend
@@ -84,7 +84,7 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       - name: Verify Go version
-        run: test "$(go env GOVERSION)" = "go1.26.4"
+        run: test "$(go env GOVERSION)" = "go1.26.5"
 
       - name: Run integration tests
         working-directory: backend
@@ -106,7 +106,7 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       - name: Verify Go version
-        run: test "$(go env GOVERSION)" = "go1.26.4"
+        run: test "$(go env GOVERSION)" = "go1.26.5"
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9

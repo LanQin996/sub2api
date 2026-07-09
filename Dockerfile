@@ -8,12 +8,13 @@
 # =============================================================================
 
 ARG NODE_IMAGE=node:24-alpine
-ARG GOLANG_IMAGE=golang:1.26.4-alpine
+ARG GOLANG_IMAGE=golang:1.26.5-alpine
 ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG PNPM_VERSION=9.15.9
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
+ARG NPM_CONFIG_REGISTRY=
 
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
@@ -21,6 +22,7 @@ ARG GOSUMDB=sum.golang.google.cn
 FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS frontend-builder
 
 ARG PNPM_VERSION
+ARG NPM_CONFIG_REGISTRY
 
 WORKDIR /app/frontend
 
@@ -31,6 +33,7 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store && \
+    if [ -n "${NPM_CONFIG_REGISTRY}" ]; then pnpm config set registry "${NPM_CONFIG_REGISTRY}"; fi && \
     pnpm install --frozen-lockfile --prefer-offline --reporter=append-only
 
 # Copy frontend source and build.

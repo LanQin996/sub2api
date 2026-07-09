@@ -7,7 +7,7 @@
 # =============================================================================
 
 ARG NODE_IMAGE=node:24-alpine
-ARG GOLANG_IMAGE=golang:1.26.4-alpine
+ARG GOLANG_IMAGE=golang:1.26.5-alpine
 ARG ALPINE_IMAGE=alpine:3.20
 ARG PNPM_VERSION=9.15.9
 ARG GOPROXY=https://goproxy.cn,direct
@@ -21,8 +21,10 @@ FROM ${NODE_IMAGE} AS frontend-builder
 ARG PNPM_VERSION
 
 WORKDIR /app/frontend
+ENV NODE_OPTIONS=--max-old-space-size=1536
 
-# Install pnpm
+# Install pnpm. Keep this pinned to the lockfile-compatible major version so
+# Docker builds remain reproducible when pnpm changes config validation rules.
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 # Install dependencies first (better caching)
