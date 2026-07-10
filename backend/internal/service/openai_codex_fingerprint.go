@@ -8,7 +8,7 @@ import (
 
 const (
 	defaultOpenAICodexOriginator = "codex_cli_rs"
-	defaultOpenAICodexVersion    = "0.128.0"
+	defaultOpenAICodexVersion    = "0.144.1"
 	defaultOpenAICodexUserAgent  = defaultOpenAICodexOriginator + "/" + defaultOpenAICodexVersion + " (Ubuntu 24.04.2; x86_64) xterm-256color"
 )
 
