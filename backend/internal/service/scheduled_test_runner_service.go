@@ -12,6 +12,12 @@ import (
 
 const scheduledTestDefaultMaxWorkers = 10
 
+const (
+	scheduledTestStartDelay = 10 * time.Second
+	scheduledTestRunTimeout = 5 * time.Minute
+	scheduledTestClaimLease = scheduledTestRunTimeout + time.Minute
+)
+
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
 	planRepo       ScheduledTestPlanRepository
@@ -23,6 +29,15 @@ type ScheduledTestRunnerService struct {
 	cron      *cron.Cron
 	startOnce sync.Once
 	stopOnce  sync.Once
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	lifecycleMu sync.Mutex
+	stopping    bool
+	running     bool
+	runWG       sync.WaitGroup
+	startDelay  time.Duration
 }
 
 // NewScheduledTestRunnerService creates a new runner.
@@ -33,12 +48,16 @@ func NewScheduledTestRunnerService(
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &ScheduledTestRunnerService{
 		planRepo:       planRepo,
 		scheduledSvc:   scheduledSvc,
 		accountTestSvc: accountTestSvc,
 		rateLimitSvc:   rateLimitSvc,
 		cfg:            cfg,
+		ctx:            ctx,
+		cancel:         cancel,
+		startDelay:     scheduledTestStartDelay,
 	}
 }
 
@@ -61,8 +80,15 @@ func (s *ScheduledTestRunnerService) Start() {
 			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] not started (invalid schedule): %v", err)
 			return
 		}
+
+		s.lifecycleMu.Lock()
+		if s.stopping {
+			s.lifecycleMu.Unlock()
+			return
+		}
 		s.cron = c
 		s.cron.Start()
+		s.lifecycleMu.Unlock()
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] started (tick=every minute)")
 	})
 }
@@ -73,28 +99,45 @@ func (s *ScheduledTestRunnerService) Stop() {
 		return
 	}
 	s.stopOnce.Do(func() {
-		if s.cron != nil {
-			ctx := s.cron.Stop()
-			select {
-			case <-ctx.Done():
-			case <-time.After(3 * time.Second):
-				logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] cron stop timed out")
-			}
+		s.lifecycleMu.Lock()
+		s.stopping = true
+		if s.cancel != nil {
+			s.cancel()
 		}
+		c := s.cron
+		s.lifecycleMu.Unlock()
+
+		if c != nil {
+			<-c.Stop().Done()
+		}
+		s.runWG.Wait()
 	})
 }
 
 func (s *ScheduledTestRunnerService) runScheduled() {
-	// Delay 10s so execution lands at ~:10 of each minute instead of :00.
-	time.Sleep(10 * time.Second)
+	if !s.beginRun() {
+		return
+	}
+	defer s.endRun()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// Delay 10s so execution lands at ~:10 of each minute instead of :00.
+	timer := time.NewTimer(s.startDelay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-s.ctx.Done():
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(s.ctx, scheduledTestRunTimeout)
 	defer cancel()
 
 	now := time.Now()
-	plans, err := s.planRepo.ListDue(ctx, now)
+	plans, err := s.planRepo.ClaimDue(ctx, now, now.Add(scheduledTestClaimLease), scheduledTestDefaultMaxWorkers)
 	if err != nil {
-		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] ListDue error: %v", err)
+		if ctx.Err() == nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] ClaimDue error: %v", err)
+		}
 		return
 	}
 	if len(plans) == 0 {
@@ -103,15 +146,15 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 
 	logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] found %d due plans", len(plans))
 
-	sem := make(chan struct{}, scheduledTestDefaultMaxWorkers)
 	var wg sync.WaitGroup
 
 	for _, plan := range plans {
-		sem <- struct{}{}
+		if ctx.Err() != nil {
+			break
+		}
 		wg.Add(1)
 		go func(p *ScheduledTestPlan) {
 			defer wg.Done()
-			defer func() { <-sem }()
 			s.runOnePlan(ctx, p)
 		}(plan)
 	}
@@ -119,7 +162,32 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 	wg.Wait()
 }
 
+func (s *ScheduledTestRunnerService) beginRun() bool {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+
+	if s.stopping || s.running {
+		return false
+	}
+	s.running = true
+	s.runWG.Add(1)
+	return true
+}
+
+func (s *ScheduledTestRunnerService) endRun() {
+	s.lifecycleMu.Lock()
+	s.running = false
+	s.lifecycleMu.Unlock()
+	s.runWG.Done()
+}
+
 func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *ScheduledTestPlan) {
+	if plan.NextRunAt == nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d missing claim lease", plan.ID)
+		return
+	}
+	leaseUntil := *plan.NextRunAt
+
 	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d RunTestBackground error: %v", plan.ID, err)
@@ -141,8 +209,11 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		return
 	}
 
-	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
-		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
+	completed, err := s.planRepo.CompleteClaim(ctx, plan.ID, leaseUntil, time.Now(), nextRun)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d CompleteClaim error: %v", plan.ID, err)
+	} else if !completed {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d claim no longer current", plan.ID)
 	}
 }
 

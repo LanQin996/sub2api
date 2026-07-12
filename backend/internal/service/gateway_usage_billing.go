@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"io"
 	"log/slog"
+	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -358,43 +361,69 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
 
 	// Platform quota 累加：仅在 standard（余额）模式生效；订阅模式豁免；仅对有 limit 的用户写
-	// Redis 同步写 + DB 异步持久化（flag=false 降级）或 flusher 异步刷（flag=true）:
+	// Redis 同步写 + DB 有界 worker 直写（flag=false 降级）或 flusher 批量刷（flag=true）:
 	//   - HasUserPlatformQuotaLimit 守卫:无 limit 的公司跳过,避免无效写入 + 浪费 Redis 容量
 	//   - Redis 同步:确保下次 preflight 立即看到最新 usage,把 TOCTOU 超支窗口
 	//     限制在并发 in-flight 请求数量内（旧实现的异步入队会让超支无限累积直到 worker 处理）
-	//   - DB 异步(flusher_enabled=false):在独立 goroutine 中走 detached context,失败用 ALERT log 触发 oncall 对账
+	//   - DB 直写(flusher_enabled=false):留在 UsageRecordWorkerPool 内形成有界回压,失败用 ALERT log 触发 oncall 对账
 	//   - flusher_enabled=true:不直写 DB,由 flusher 异步批量刷（markDirty 已在 IncrementUserPlatformQuotaUsage 内部完成）
 	if !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil {
 		if deps.billingCacheService.HasUserPlatformQuotaLimit(ctx, p.User.ID, p.Platform) {
 			deps.billingCacheService.IncrementUserPlatformQuotaUsage(p.User.ID, p.Platform, p.Cost.ActualCost)
 			if deps.cfg == nil || !deps.cfg.Database.UserPlatformQuotaFlusherEnabled {
-				// 降级路径:flusher 未启用时保留原有异步直写 DB
-				dbCtx, dbCancel := detachUpstreamContext(ctx)
+				// Usage recording already runs in the bounded UsageRecordWorkerPool.
+				// Keep this fallback in that worker so a stalled DB cannot create one
+				// additional goroutine per request and bypass the pool's backpressure.
 				userID, platform, cost := p.User.ID, p.Platform, p.Cost.ActualCost
-				go func() {
-					defer func() {
-						if r := recover(); r != nil {
-							logger.LegacyPrintf("service.gateway", "ALERT: panic in user platform quota incr goroutine user=%d platform=%s: %v", userID, platform, r)
-						}
-					}()
-					defer dbCancel()
-					if err := deps.userPlatformQuotaRepo.IncrementUsageWithReset(dbCtx, userID, platform, cost, time.Now().UTC()); err != nil {
-						// 失败计数器:暴露给 GatewayUserPlatformQuotaIncrStats(),由 ops 面板做斜率告警。
-						userPlatformQuotaDBIncrErrorTotal.Add(1)
-						// ALERT 级别:DB 持久化失败意味着 Redis cache 失效后该笔 cost 永久丢失,
-						// 用户配额视图与实际消费会偏差,oncall 需要据此对账或人工补录。
-						logger.LegacyPrintf("service.gateway", "ALERT: incr user platform quota DB failed user=%d platform=%s cost=%f: %v", userID, platform, cost, err)
-					}
-				}()
+				if err := persistUserPlatformQuotaUsage(ctx, deps.userPlatformQuotaRepo, userID, platform, cost); err != nil {
+					// 失败计数器:暴露给 GatewayUserPlatformQuotaIncrStats(),由 ops 面板做斜率告警。
+					userPlatformQuotaDBIncrErrorTotal.Add(1)
+					// ALERT 级别:DB 持久化失败意味着 Redis cache 失效后该笔 cost 永久丢失,
+					// 用户配额视图与实际消费会偏差,oncall 需要据此对账或人工补录。
+					logger.LegacyPrintf("service.gateway", "ALERT: incr user platform quota DB failed user=%d platform=%s cost=%f: %v", userID, platform, cost, err)
+				}
 			}
 			// flusher_enabled=true:不直写 DB,flusher 异步批量刷
 		}
 	}
 
-	// Notification checks run async — all parameters are already captured,
-	// no dependency on the request context or upstream connection.
-	go notifyBalanceLow(p, deps, result)
-	go notifyAccountQuota(p, deps, result)
+	// Usage recording already runs in UsageRecordWorkerPool. Keep notification
+	// checks and delivery in that bounded execution path instead of escaping it
+	// with one or more goroutines per request.
+	if shouldCheckBalanceLowNotification(ctx, p, deps) {
+		notifyBalanceLow(p, deps, result)
+	}
+	if shouldCheckAccountQuotaNotification(ctx, p, deps) {
+		notifyAccountQuota(p, deps, result)
+	}
+}
+
+func persistUserPlatformQuotaUsage(ctx context.Context, repo UserPlatformQuotaRepository, userID int64, platform string, cost float64) error {
+	if repo == nil {
+		return nil
+	}
+	dbCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+	return repo.IncrementUsageWithReset(dbCtx, userID, platform, cost, time.Now().UTC())
+}
+
+func shouldCheckBalanceLowNotification(ctx context.Context, p *postUsageBillingParams, deps *billingDeps) bool {
+	return p != nil && p.Cost != nil && !p.IsSubscriptionBill && p.Cost.ActualCost > 0 &&
+		p.User != nil && p.User.BalanceNotifyEnabled && deps != nil && deps.balanceNotifyService != nil &&
+		deps.balanceNotifyService.balanceLowNotificationCandidate(ctx, p.User)
+}
+
+func shouldCheckAccountQuotaNotification(ctx context.Context, p *postUsageBillingParams, deps *billingDeps) bool {
+	if p == nil || p.Cost == nil || p.Cost.TotalCost <= 0 || p.Account == nil ||
+		!p.Account.IsAPIKeyOrBedrock() || deps == nil || deps.balanceNotifyService == nil {
+		return false
+	}
+	for _, dim := range buildQuotaDims(p.Account) {
+		if dim.enabled && dim.threshold > 0 {
+			return deps.balanceNotifyService.accountQuotaNotificationsEnabled(ctx)
+		}
+	}
+	return false
 }
 
 func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
@@ -443,7 +472,9 @@ func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *Usag
 		"threshold", p.User.BalanceNotifyThreshold,
 		"result_has_new_balance", result != nil && result.NewBalance != nil,
 	)
-	deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, oldBalance, p.Cost.ActualCost)
+	notifyCtx, cancel := context.WithTimeout(context.Background(), postUsageBillingTimeout)
+	defer cancel()
+	deps.balanceNotifyService.CheckBalanceAfterDeduction(notifyCtx, p.User, oldBalance, p.Cost.ActualCost)
 }
 
 // resolveOldBalance returns the pre-deduction balance.
@@ -484,7 +515,9 @@ func notifyAccountQuota(p *postUsageBillingParams, deps *billingDeps, result *Us
 		"account_cost", accountCost,
 		"has_quota_state", quotaState != nil,
 	)
-	deps.balanceNotifyService.CheckAccountQuotaAfterIncrement(context.Background(), p.Account, accountCost, quotaState)
+	notifyCtx, cancel := context.WithTimeout(context.Background(), postUsageBillingTimeout)
+	defer cancel()
+	deps.balanceNotifyService.CheckAccountQuotaAfterIncrement(notifyCtx, p.Account, accountCost, quotaState)
 }
 
 func detachedBillingContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -496,20 +529,98 @@ func detachedBillingContext(ctx context.Context) (context.Context, context.Cance
 }
 
 func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Context, context.CancelFunc) {
-	if ctx == nil {
-		return context.Background(), func() {}
-	}
 	if !stream {
+		if ctx == nil {
+			return context.Background(), func() {}
+		}
 		return ctx, func() {}
 	}
-	return context.WithoutCancel(ctx), func() {}
+	return detachUpstreamContextWithGrace(ctx, upstreamDisconnectDrainGrace)
 }
 
 func detachUpstreamContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	if ctx == nil {
-		return context.Background(), func() {}
+	return detachUpstreamContextWithGrace(ctx, upstreamDisconnectDrainGrace)
+}
+
+// detachUpstreamContextWithGrace keeps request values while allowing a short
+// post-disconnect drain window for usage collection. The returned release must
+// be called after the response body has finished, not merely after request construction.
+func detachUpstreamContextWithGrace(parent context.Context, grace time.Duration) (context.Context, context.CancelFunc) {
+	base := context.Background()
+	if parent != nil {
+		base = context.WithoutCancel(parent)
 	}
-	return context.WithoutCancel(ctx), func() {}
+	detached, cancel := context.WithCancel(base)
+
+	var (
+		drainTimerMu sync.Mutex
+		drainTimer   *time.Timer
+	)
+	stopParentWatch := func() bool { return true }
+	if parent != nil && parent.Done() != nil {
+		stopParentWatch = context.AfterFunc(parent, func() {
+			if grace <= 0 {
+				cancel()
+				return
+			}
+			drainTimerMu.Lock()
+			defer drainTimerMu.Unlock()
+			if detached.Err() == nil {
+				drainTimer = time.AfterFunc(grace, cancel)
+			}
+		})
+	}
+
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			stopParentWatch()
+			drainTimerMu.Lock()
+			if drainTimer != nil {
+				drainTimer.Stop()
+			}
+			drainTimerMu.Unlock()
+			cancel()
+		})
+	}
+	return detached, release
+}
+
+type releaseOnCloseReadCloser struct {
+	io.ReadCloser
+	release func()
+	once    sync.Once
+}
+
+func (b *releaseOnCloseReadCloser) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil {
+		b.releaseOnce()
+	}
+	return n, err
+}
+
+func (b *releaseOnCloseReadCloser) Close() error {
+	err := b.ReadCloser.Close()
+	b.releaseOnce()
+	return err
+}
+
+func (b *releaseOnCloseReadCloser) releaseOnce() {
+	if b.release != nil {
+		b.once.Do(b.release)
+	}
+}
+
+func bindUpstreamContextToResponse(resp *http.Response, release context.CancelFunc) *http.Response {
+	if resp == nil || resp.Body == nil {
+		if release != nil {
+			release()
+		}
+		return resp
+	}
+	resp.Body = &releaseOnCloseReadCloser{ReadCloser: resp.Body, release: release}
+	return resp
 }
 
 // billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）

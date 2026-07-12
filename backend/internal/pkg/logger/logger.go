@@ -32,6 +32,13 @@ type Sink interface {
 	WriteLogEvent(event *LogEvent)
 }
 
+// IndexedEventsOnlySink opts a sink into pre-encoding filtering for the
+// low-volume event classes persisted by the ops system-log index.
+type IndexedEventsOnlySink interface {
+	Sink
+	IndexedEventsOnly() bool
+}
+
 type LogEvent struct {
 	Time       time.Time
 	Level      string
@@ -382,6 +389,9 @@ func (s *sinkCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	if sink == nil {
 		return nil
 	}
+	if indexedSink, ok := sink.(IndexedEventsOnlySink); ok && indexedSink.IndexedEventsOnly() && !shouldForwardToSink(entry, s.fields, fields) {
+		return nil
+	}
 
 	enc := zapcore.NewMapObjectEncoder()
 	for _, f := range s.fields {
@@ -401,6 +411,39 @@ func (s *sinkCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	}
 	sink.WriteLogEvent(event)
 	return nil
+}
+
+func shouldForwardToSink(entry zapcore.Entry, inherited, fields []zapcore.Field) bool {
+	if entry.Level >= zapcore.WarnLevel || isIndexedLogComponent(entry.LoggerName) {
+		return true
+	}
+	component := ""
+	foundComponent := false
+	dynamicComponent := false
+	for _, group := range [][]zapcore.Field{inherited, fields} {
+		for _, field := range group {
+			if field.Key != "component" {
+				continue
+			}
+			foundComponent = true
+			if field.Type == zapcore.StringType {
+				component = field.String
+				dynamicComponent = false
+				continue
+			}
+			dynamicComponent = true
+		}
+	}
+	if !foundComponent {
+		return false
+	}
+	// A dynamic final value cannot be resolved without running the encoder.
+	return dynamicComponent || isIndexedLogComponent(component)
+}
+
+func isIndexedLogComponent(component string) bool {
+	component = strings.ToLower(strings.TrimSpace(component))
+	return strings.Contains(component, "http.access") || strings.Contains(component, "audit")
 }
 
 func (s *sinkCore) Sync() error {

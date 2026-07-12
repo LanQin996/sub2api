@@ -1,14 +1,33 @@
 package main
 
 import (
+	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+type cleanupHTTPUpstream struct {
+	closed atomic.Bool
+}
+
+func (*cleanupHTTPUpstream) Do(*http.Request, string, int64, int) (*http.Response, error) {
+	return nil, nil
+}
+
+func (*cleanupHTTPUpstream) DoWithTLS(*http.Request, string, int64, int, *tlsfingerprint.Profile) (*http.Response, error) {
+	return nil, nil
+}
+
+func (s *cleanupHTTPUpstream) Close() {
+	s.closed.Store(true)
+}
 
 func TestProvideServiceBuildInfo(t *testing.T) {
 	in := handler.BuildInfo{
@@ -48,6 +67,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	idempotencyCleanupSvc := service.NewIdempotencyCleanupService(nil, cfg)
 	schedulerSnapshotSvc := service.NewSchedulerSnapshotService(nil, nil, nil, nil, cfg)
 	opsSystemLogSinkSvc := service.NewOpsSystemLogSink(nil)
+	httpUpstream := &cleanupHTTPUpstream{}
 
 	cleanup := provideCleanup(
 		nil, // entClient
@@ -72,6 +92,12 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		billingCacheSvc,
 		&service.UsageRecordWorkerPool{},
 		&service.SubscriptionService{},
+		nil, // apiKeyService
+		nil, // concurrencyService
+		nil, // userMessageQueue
+		nil, // deferredService
+		nil, // timingWheel
+		httpUpstream,
 		oauthSvc,
 		openAIOAuthSvc,
 		geminiOAuthSvc,
@@ -83,9 +109,11 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // paymentOrderExpiry
 		nil, // channelMonitorRunner
 		nil, // quotaFlusher
+		nil, // contentModeration
 	)
 
 	require.NotPanics(t, func() {
 		cleanup()
 	})
+	require.True(t, httpUpstream.closed.Load())
 }

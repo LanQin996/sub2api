@@ -93,15 +93,61 @@ func (s *APIKeyService) initAuthCache(cfg *config.Config) {
 // StartAuthCacheInvalidationSubscriber starts the Pub/Sub subscriber for L1 cache invalidation.
 // This should be called after the service is fully initialized.
 func (s *APIKeyService) StartAuthCacheInvalidationSubscriber(ctx context.Context) {
-	if s.cache == nil || s.authCacheL1 == nil {
+	if s == nil {
 		return
 	}
-	if err := s.cache.SubscribeAuthCacheInvalidation(ctx, func(cacheKey string) {
+	s.authCacheLifecycleMu.Lock()
+	if s.cache == nil || s.authCacheL1 == nil || s.authCacheStopped || s.authCacheSubscriberStarted {
+		s.authCacheLifecycleMu.Unlock()
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	subscriberCtx, cancel := context.WithCancel(ctx)
+	s.authCacheSubscriberCancel = cancel
+	s.authCacheSubscriberStarted = true
+	s.authCacheLifecycleMu.Unlock()
+
+	if err := s.cache.SubscribeAuthCacheInvalidation(subscriberCtx, func(cacheKey string) {
+		s.authCacheLifecycleMu.RLock()
+		defer s.authCacheLifecycleMu.RUnlock()
+		if s.authCacheStopped || s.authCacheL1 == nil {
+			return
+		}
 		s.authCacheL1.Del(cacheKey)
 	}); err != nil {
+		cancel()
+		s.authCacheLifecycleMu.Lock()
+		if !s.authCacheStopped {
+			s.authCacheSubscriberCancel = nil
+			s.authCacheSubscriberStarted = false
+		}
+		s.authCacheLifecycleMu.Unlock()
 		// Log but don't fail - L1 cache will still work, just without cross-instance invalidation
 		slog.Warn("failed to start auth cache invalidation subscriber", "error", err)
 	}
+}
+
+// Stop cancels cache invalidation delivery before closing Ristretto's workers.
+func (s *APIKeyService) Stop() {
+	if s == nil {
+		return
+	}
+	s.authCacheStopOnce.Do(func() {
+		s.authCacheLifecycleMu.Lock()
+		s.authCacheStopped = true
+		cancel := s.authCacheSubscriberCancel
+		cache := s.authCacheL1
+		s.authCacheLifecycleMu.Unlock()
+
+		if cancel != nil {
+			cancel()
+		}
+		if cache != nil {
+			cache.Close()
+		}
+	})
 }
 
 func (s *APIKeyService) authCacheKey(key string) string {

@@ -101,6 +101,7 @@ func TestSubscriptionExpiryService_ReminderSkipsScanWhenNotLeader(t *testing.T) 
 	svc.sendExpiryReminders(context.Background())
 
 	require.Zero(t, repo.listCalls, "non-leader must not scan active subscriptions")
+	require.Empty(t, repo.reminderQueries, "non-leader must not scan reminder windows")
 }
 
 func TestSubscriptionExpiryService_ReminderScansWhenLeader(t *testing.T) {
@@ -113,7 +114,8 @@ func TestSubscriptionExpiryService_ReminderScansWhenLeader(t *testing.T) {
 
 	svc.sendExpiryReminders(context.Background())
 
-	require.Equal(t, 1, repo.listCalls, "leader should scan active subscriptions once")
+	require.Zero(t, repo.listCalls, "leader must not use the generic admin list")
+	require.Len(t, repo.reminderQueries, 3, "leader should scan each reminder window")
 }
 
 // Single-instance correctness: the lock is released at the end of each cycle, so
@@ -138,7 +140,8 @@ func TestSubscriptionExpiryService_ReminderRunsEveryCycleSingleInstance(t *testi
 			svc.sendExpiryReminders(context.Background())
 			svc.sendExpiryReminders(context.Background())
 
-			require.Equal(t, 3, repo.listCalls, "single instance must run every cycle")
+			require.Zero(t, repo.listCalls, "optimized repository must not use the generic admin list")
+			require.Len(t, repo.reminderQueries, 9, "single instance must scan all three windows every cycle")
 		})
 	}
 }

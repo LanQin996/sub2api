@@ -179,3 +179,39 @@ func TestTimingWheelService_ScheduleRecurring_ExecutesMultipleTimes(t *testing.T
 		t.Fatalf("期望周期任务至少执行 2 次，但只执行了 %d 次", atomic.LoadInt32(&count))
 	}
 }
+
+func TestTimingWheelService_CancelDuringRecurringCallbackPreventsReschedule(t *testing.T) {
+	original := newTimingWheel
+	t.Cleanup(func() { newTimingWheel = original })
+	newTimingWheel = func(_ time.Duration, _ int, execute collection.Execute) (*collection.TimingWheel, error) {
+		return original(5*time.Millisecond, 128, execute)
+	}
+
+	svc, err := NewTimingWheelService()
+	if err != nil {
+		t.Fatalf("NewTimingWheelService: %v", err)
+	}
+	defer svc.Stop()
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var count atomic.Int32
+	svc.ScheduleRecurring("cancel-running", 20*time.Millisecond, func() {
+		if count.Add(1) == 1 {
+			close(started)
+			<-release
+		}
+	})
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("recurring callback did not start")
+	}
+	svc.Cancel("cancel-running")
+	close(release)
+	time.Sleep(100 * time.Millisecond)
+	if got := count.Load(); got != 1 {
+		t.Fatalf("callback count after cancel = %d, want 1", got)
+	}
+}

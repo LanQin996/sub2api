@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -169,4 +170,48 @@ func TestRestoreSubscription_LiveSubscriptionConflict(t *testing.T) {
 	_, err := svc.RestoreSubscription(context.Background(), 1)
 	require.ErrorIs(t, err, ErrSubscriptionRestoreConflict)
 	require.Zero(t, repo.restoreCalls)
+}
+
+type subscriptionInvalidationCacheStub struct {
+	BillingCache
+	ctxCh          chan context.Context
+	handler        func(string)
+	subscribeCalls atomic.Int32
+}
+
+func (s *subscriptionInvalidationCacheStub) PublishSubscriptionCacheInvalidation(context.Context, string) error {
+	return nil
+}
+
+func (s *subscriptionInvalidationCacheStub) SubscribeSubscriptionCacheInvalidation(ctx context.Context, handler func(string)) error {
+	s.subscribeCalls.Add(1)
+	s.handler = handler
+	s.ctxCh <- ctx
+	return nil
+}
+
+func TestSubscriptionService_StopCancelsSubscriberAndClosesL1(t *testing.T) {
+	cache := &subscriptionInvalidationCacheStub{ctxCh: make(chan context.Context, 1)}
+	billing := &BillingCacheService{cache: cache}
+	cfg := &config.Config{SubscriptionCache: config.SubscriptionCacheConfig{L1Size: 16, L1TTLSeconds: 60}}
+	svc := NewSubscriptionService(nil, nil, billing, nil, cfg)
+	svc.StartSubCacheInvalidationSubscriber(context.Background())
+
+	var subscriberCtx context.Context
+	select {
+	case subscriberCtx = <-cache.ctxCh:
+	case <-time.After(time.Second):
+		t.Fatal("subscriber did not start")
+	}
+	require.EqualValues(t, 1, cache.subscribeCalls.Load())
+
+	require.NotPanics(t, svc.Stop)
+	require.NotPanics(t, svc.Stop)
+	select {
+	case <-subscriberCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("subscriber context was not canceled")
+	}
+	require.NotNil(t, cache.handler)
+	require.NotPanics(t, func() { cache.handler("after-stop") })
 }

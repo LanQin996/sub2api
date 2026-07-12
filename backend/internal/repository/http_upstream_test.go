@@ -22,6 +22,18 @@ type HTTPUpstreamSuite struct {
 	cfg *config.Config // 测试用配置
 }
 
+type closeTrackingRoundTripper struct {
+	closeCalls atomic.Int64
+}
+
+func (t *closeTrackingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (t *closeTrackingRoundTripper) CloseIdleConnections() {
+	t.closeCalls.Add(1)
+}
+
 // SetupTest 每个测试用例执行前的初始化
 // 创建空配置，各测试用例可按需覆盖
 func (s *HTTPUpstreamSuite) SetupTest() {
@@ -40,6 +52,7 @@ func (s *HTTPUpstreamSuite) newService() *httpUpstreamService {
 	up := NewHTTPUpstream(s.cfg)
 	svc, ok := up.(*httpUpstreamService)
 	require.True(s.T(), ok, "expected *httpUpstreamService")
+	s.T().Cleanup(svc.Close)
 	return svc
 }
 
@@ -58,6 +71,7 @@ func (s *HTTPUpstreamSuite) TestNilConfigResponseHeaderTimeoutFallback() {
 	up := NewHTTPUpstream(nil)
 	svc, ok := up.(*httpUpstreamService)
 	require.True(s.T(), ok, "expected *httpUpstreamService")
+	s.T().Cleanup(svc.Close)
 	entry := mustGetOrCreateClient(s.T(), svc, "", 0, 0)
 	transport, ok := entry.client.Transport.(*http.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
@@ -83,7 +97,7 @@ func (s *HTTPUpstreamSuite) TestGetOrCreateClient_InvalidURLReturnsError() {
 	require.Error(s.T(), err, "expected error for invalid proxy URL")
 }
 
-func (s *HTTPUpstreamSuite) TestOpenAIProfileDefaultsToHTTP2AndNoHeaderTimeout() {
+func (s *HTTPUpstreamSuite) TestOpenAIProfileDefaultsToHTTP2AndFiniteHeaderTimeout() {
 	s.cfg.Gateway = config.GatewayConfig{
 		ResponseHeaderTimeout: 600,
 		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
@@ -96,7 +110,7 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileDefaultsToHTTP2AndNoHeaderTimeout()
 	require.NoError(s.T(), err)
 	transport, ok := entry.client.Transport.(*http.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
-	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI profile should not inherit generic header timeout")
+	require.Equal(s.T(), 600*time.Second, transport.ResponseHeaderTimeout, "OpenAI profile should inherit the finite generic timeout by default")
 	require.True(s.T(), transport.ForceAttemptHTTP2, "OpenAI profile should prefer HTTP/2")
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH2, entry.protocolMode)
 }
@@ -117,7 +131,7 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileCustomHeaderTimeout() {
 	require.Equal(s.T(), 1800*time.Second, transport.ResponseHeaderTimeout)
 }
 
-func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGenericHeaderTimeout() {
+func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintUsesFiniteHeaderTimeout() {
 	s.cfg.Gateway = config.GatewayConfig{
 		ResponseHeaderTimeout: 600,
 		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
@@ -129,7 +143,7 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGeneric
 	require.NoError(s.T(), err)
 	transport, ok := entry.client.Transport.(*http.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
-	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI TLS path should not inherit generic header timeout")
+	require.Equal(s.T(), 600*time.Second, transport.ResponseHeaderTimeout, "OpenAI TLS path should inherit the finite generic timeout by default")
 }
 
 func (s *HTTPUpstreamSuite) TestOpenAIProfileHTTP2DisabledUsesHTTP1Transport() {
@@ -143,6 +157,7 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileHTTP2DisabledUsesHTTP1Transport() {
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.False(s.T(), transport.ForceAttemptHTTP2, "OpenAI HTTP/2 disabled should not force H2")
 	require.NotNil(s.T(), transport.TLSNextProto, "HTTP/1 mode should disable automatic H2 negotiation")
+	require.Equal(s.T(), defaultResponseHeaderTimeout, transport.ResponseHeaderTimeout, "zero-valued configs must retain a finite code-level timeout")
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH1, entry.protocolMode)
 }
 
@@ -240,6 +255,7 @@ func (s *HTTPUpstreamSuite) TestDo_WithoutProxy_GoesDirect() {
 	s.T().Cleanup(upstream.Close)
 
 	up := NewHTTPUpstream(s.cfg)
+	cleanupHTTPUpstream(s.T(), up)
 
 	req, err := http.NewRequest(http.MethodGet, upstream.URL+"/x", nil)
 	require.NoError(s.T(), err, "NewRequest")
@@ -264,6 +280,7 @@ func (s *HTTPUpstreamSuite) TestDo_WithHTTPProxy_UsesProxy() {
 
 	s.cfg.Gateway = config.GatewayConfig{ResponseHeaderTimeout: 1}
 	up := NewHTTPUpstream(s.cfg)
+	cleanupHTTPUpstream(s.T(), up)
 
 	// 发送请求到外部地址，应通过代理
 	req, err := http.NewRequest(http.MethodGet, "http://example.com/test", nil)
@@ -292,6 +309,7 @@ func (s *HTTPUpstreamSuite) TestDo_EmptyProxy_UsesDirect() {
 	s.T().Cleanup(upstream.Close)
 
 	up := NewHTTPUpstream(s.cfg)
+	cleanupHTTPUpstream(s.T(), up)
 	req, err := http.NewRequest(http.MethodGet, upstream.URL+"/y", nil)
 	require.NoError(s.T(), err, "NewRequest")
 	resp, err := up.Do(req, "", 1, 1)
@@ -404,10 +422,92 @@ func (s *HTTPUpstreamSuite) TestIdleTTLDoesNotEvictActive() {
 	// 设置为很久之前使用，但有活跃请求
 	atomic.StoreInt64(&entry1.lastUsed, time.Now().Add(-2*time.Minute).UnixNano())
 	atomic.StoreInt64(&entry1.inFlight, 1) // 模拟有活跃请求
-	// 创建新客户端，触发淘汰检查
-	_, _ = svc.getOrCreateClient("", 2, 1)
+	scansBefore := svc.idleEvictionScans.Load()
+	svc.requestCleanup()
+	require.Eventually(s.T(), func() bool {
+		return svc.idleEvictionScans.Load() > scansBefore
+	}, time.Second, 10*time.Millisecond)
 
 	require.True(s.T(), hasEntry(svc, entry1), "有活跃请求时不应回收")
+	atomic.StoreInt64(&entry1.inFlight, 0)
+	svc.requestCleanup()
+	require.Eventually(s.T(), func() bool {
+		return !hasEntry(svc, entry1)
+	}, time.Second, 10*time.Millisecond)
+}
+
+func (s *HTTPUpstreamSuite) TestClientCreationDoesNotScanEntireCache() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ConnectionPoolIsolation: config.ConnectionPoolIsolationAccount,
+		MaxUpstreamClients:      1000,
+	}
+	svc := s.newService()
+	for accountID := int64(1); accountID <= 200; accountID++ {
+		_, err := svc.getOrCreateClient("", accountID, 1)
+		require.NoError(s.T(), err)
+	}
+	require.Equal(s.T(), 200, clientCount(svc))
+	require.Zero(s.T(), svc.idleEvictionScans.Load(), "cache creation below the limit must not run O(n) expiry scans")
+}
+
+func (s *HTTPUpstreamSuite) TestDirectClientCacheHitDoesNotAllocate() {
+	svc := s.newService()
+	warmed, err := svc.getOrCreateClient("", 42, 1)
+	require.NoError(s.T(), err)
+
+	var cached *upstreamClientEntry
+	var cacheErr error
+	allocs := testing.AllocsPerRun(1000, func() {
+		cached, cacheErr = svc.getOrCreateClient("", 42, 1)
+	})
+
+	require.NoError(s.T(), cacheErr)
+	require.Same(s.T(), warmed, cached)
+	require.Zero(s.T(), allocs)
+}
+
+func (s *HTTPUpstreamSuite) TestCleanupLoopEvictsIdleClientWithoutNewTraffic() {
+	s.cfg.Gateway = config.GatewayConfig{ClientIdleTTLSeconds: 1}
+	svc := s.newService()
+	transport := &closeTrackingRoundTripper{}
+	entry := &upstreamClientEntry{client: &http.Client{Transport: transport}}
+	atomic.StoreInt64(&entry.lastUsed, time.Now().Add(-2*time.Second).UnixNano())
+	svc.mu.Lock()
+	svc.clients[upstreamClientCacheKey{proxyKey: "idle"}] = entry
+	svc.mu.Unlock()
+
+	svc.requestCleanup()
+	require.Eventually(s.T(), func() bool {
+		return !hasEntry(svc, entry)
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(s.T(), int64(1), transport.closeCalls.Load())
+}
+
+func (s *HTTPUpstreamSuite) TestCloseStopsCleanupAndReleasesCachedTransports() {
+	svc := s.newService()
+	transport := &closeTrackingRoundTripper{}
+	entry := &upstreamClientEntry{client: &http.Client{Transport: transport}}
+	atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
+	svc.mu.Lock()
+	svc.clients[upstreamClientCacheKey{proxyKey: "cached"}] = entry
+	svc.mu.Unlock()
+	svc.openAIHTTP2Fallbacks.Store("proxy", &openAIHTTP2FallbackState{})
+
+	svc.Close()
+
+	require.True(s.T(), svc.closed.Load())
+	require.Zero(s.T(), clientCount(svc))
+	require.Equal(s.T(), int64(1), transport.closeCalls.Load())
+	select {
+	case <-svc.doneCh:
+	default:
+		require.Fail(s.T(), "cleanup loop did not stop")
+	}
+	_, err := svc.getOrCreateClient("", 1, 1)
+	require.ErrorIs(s.T(), err, errHTTPUpstreamClosed)
+	_, fallbackExists := svc.openAIHTTP2Fallbacks.Load("proxy")
+	require.False(s.T(), fallbackExists)
+	require.NotPanics(s.T(), svc.Close)
 }
 
 // TestHTTPUpstreamSuite 运行测试套件
@@ -426,10 +526,25 @@ func mustGetOrCreateClient(t *testing.T, svc *httpUpstreamService, proxyURL stri
 // hasEntry 检查客户端是否存在于缓存中
 // 辅助函数，用于验证淘汰逻辑
 func hasEntry(svc *httpUpstreamService, target *upstreamClientEntry) bool {
+	svc.mu.RLock()
+	defer svc.mu.RUnlock()
 	for _, entry := range svc.clients {
 		if entry == target {
 			return true
 		}
 	}
 	return false
+}
+
+func clientCount(svc *httpUpstreamService) int {
+	svc.mu.RLock()
+	defer svc.mu.RUnlock()
+	return len(svc.clients)
+}
+
+func cleanupHTTPUpstream(t *testing.T, upstream service.HTTPUpstream) {
+	t.Helper()
+	closer, ok := upstream.(interface{ Close() })
+	require.True(t, ok, "HTTP upstream must expose lifecycle cleanup")
+	t.Cleanup(closer.Close)
 }

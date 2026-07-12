@@ -367,8 +367,8 @@ type OpenAIGatewayService struct {
 	openaiWSRetryMetrics                openAIWSRetryMetrics
 	responseHeaderFilter                *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle               *accountWriteThrottle
-	openaiCompatSessionResponses        sync.Map
-	openaiCompatAnthropicDigestSessions sync.Map
+	openaiCompatSessionResponses        openAICompatBoundedCache[openAICompatSessionResponseBinding]
+	openaiCompatAnthropicDigestSessions openAICompatBoundedCache[openAICompatAnthropicDigestBinding]
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -540,6 +540,7 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 		balanceNotifyService:          s.balanceNotifyService,
 		userPlatformQuotaRepo:         s.userPlatformQuotaRepo,
 		autoConcurrencyUpgradeService: s.autoConcurrencyUpgradeService,
+		cfg:                           s.cfg,
 	}
 }
 

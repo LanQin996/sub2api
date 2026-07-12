@@ -108,6 +108,11 @@ type ConcurrencyService struct {
 	accountLoadCacheMu  sync.RWMutex
 	accountLoadCache    map[string]cachedAccountLoadBatch
 	accountLoadGroup    singleflight.Group
+
+	slotCleanupMu      sync.Mutex
+	slotCleanupCancel  context.CancelFunc
+	slotCleanupWG      sync.WaitGroup
+	slotCleanupStopped bool
 }
 
 type cachedAccountLoadBatch struct {
@@ -558,25 +563,56 @@ func (s *ConcurrencyService) StartSlotCleanupWorker(_ AccountRepository, interva
 		return
 	}
 
+	s.slotCleanupMu.Lock()
+	if s.slotCleanupStopped || s.slotCleanupCancel != nil {
+		s.slotCleanupMu.Unlock()
+		return
+	}
+	workerCtx, cancel := context.WithCancel(context.Background())
+	s.slotCleanupCancel = cancel
+	s.slotCleanupWG.Add(1)
+	s.slotCleanupMu.Unlock()
+
 	runCleanup := func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cleanupCtx, cancel := context.WithTimeout(workerCtx, 5*time.Second)
 		err := s.cache.CleanupExpiredAccountSlotKeys(cleanupCtx)
 		cancel()
-		if err != nil {
+		if err != nil && workerCtx.Err() == nil {
 			logger.LegacyPrintf("service.concurrency", "Warning: cleanup expired account slots failed: %v", err)
 			return
 		}
 	}
 
 	go func() {
+		defer s.slotCleanupWG.Done()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		runCleanup()
-		for range ticker.C {
-			runCleanup()
+		for {
+			select {
+			case <-workerCtx.Done():
+				return
+			case <-ticker.C:
+				runCleanup()
+			}
 		}
 	}()
+}
+
+// Stop stops the account-slot cleanup worker and waits for an active cleanup call.
+func (s *ConcurrencyService) Stop() {
+	if s == nil {
+		return
+	}
+	s.slotCleanupMu.Lock()
+	s.slotCleanupStopped = true
+	cancel := s.slotCleanupCancel
+	s.slotCleanupMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	s.slotCleanupWG.Wait()
 }
 
 // GetAccountConcurrencyBatch gets current concurrency counts for multiple accounts.

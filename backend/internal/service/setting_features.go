@@ -11,6 +11,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -697,25 +698,86 @@ func (s *SettingService) IsBudgetRectifierEnabled(ctx context.Context) bool {
 	return settings.Enabled && settings.ThinkingBudgetEnabled
 }
 
+type cachedBetaPolicySettings struct {
+	settings  BetaPolicySettings
+	err       error
+	expiresAt int64
+}
+
+const (
+	betaPolicySettingsCacheTTL  = 10 * time.Second
+	betaPolicySettingsErrorTTL  = time.Second
+	betaPolicySettingsDBTimeout = 2 * time.Second
+)
+
+func cloneBetaPolicySettings(settings *BetaPolicySettings) *BetaPolicySettings {
+	if settings == nil {
+		return nil
+	}
+	cloned := &BetaPolicySettings{Rules: append([]BetaPolicyRule(nil), settings.Rules...)}
+	for i := range cloned.Rules {
+		cloned.Rules[i].ModelWhitelist = append([]string(nil), settings.Rules[i].ModelWhitelist...)
+	}
+	return cloned
+}
+
 // GetBetaPolicySettings 获取 Beta 策略配置
 func (s *SettingService) GetBetaPolicySettings(ctx context.Context) (*BetaPolicySettings, error) {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyBetaPolicySettings)
-	if err != nil {
-		if errors.Is(err, ErrSettingNotFound) {
-			return DefaultBetaPolicySettings(), nil
+	now := time.Now().UnixNano()
+	if cached, _ := s.betaPolicySettingsCache.Load().(*cachedBetaPolicySettings); cached != nil && now < cached.expiresAt {
+		if cached.err != nil {
+			return nil, cached.err
 		}
-		return nil, fmt.Errorf("get beta policy settings: %w", err)
-	}
-	if value == "" {
-		return DefaultBetaPolicySettings(), nil
+		return cloneBetaPolicySettings(&cached.settings), nil
 	}
 
-	var settings BetaPolicySettings
-	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+	loaded, _, _ := s.betaPolicySettingsSF.Do(SettingKeyBetaPolicySettings, func() (any, error) {
+		s.betaPolicySettingsMu.Lock()
+		defer s.betaPolicySettingsMu.Unlock()
+
+		now := time.Now().UnixNano()
+		if cached, _ := s.betaPolicySettingsCache.Load().(*cachedBetaPolicySettings); cached != nil && now < cached.expiresAt {
+			return cached, nil
+		}
+
+		base := context.Background()
+		if ctx != nil {
+			base = context.WithoutCancel(ctx)
+		}
+		dbCtx, cancel := context.WithTimeout(base, betaPolicySettingsDBTimeout)
+		defer cancel()
+
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyBetaPolicySettings)
+		settings := DefaultBetaPolicySettings()
+		cacheTTL := betaPolicySettingsCacheTTL
+		var loadErr error
+		switch {
+		case err == nil && strings.TrimSpace(value) != "":
+			var parsed BetaPolicySettings
+			if json.Unmarshal([]byte(value), &parsed) == nil {
+				settings = &parsed
+			}
+		case err != nil && !errors.Is(err, ErrSettingNotFound):
+			loadErr = fmt.Errorf("get beta policy settings: %w", err)
+			cacheTTL = betaPolicySettingsErrorTTL
+		}
+
+		entry := &cachedBetaPolicySettings{
+			settings:  *cloneBetaPolicySettings(settings),
+			err:       loadErr,
+			expiresAt: time.Now().Add(cacheTTL).UnixNano(),
+		}
+		s.betaPolicySettingsCache.Store(entry)
+		return entry, nil
+	})
+	entry, _ := loaded.(*cachedBetaPolicySettings)
+	if entry == nil {
 		return DefaultBetaPolicySettings(), nil
 	}
-
-	return &settings, nil
+	if entry.err != nil {
+		return nil, entry.err
+	}
+	return cloneBetaPolicySettings(&entry.settings), nil
 }
 
 // SetBetaPolicySettings 设置 Beta 策略配置
@@ -760,7 +822,17 @@ func (s *SettingService) SetBetaPolicySettings(ctx context.Context, settings *Be
 		return fmt.Errorf("marshal beta policy settings: %w", err)
 	}
 
-	return s.settingRepo.Set(ctx, SettingKeyBetaPolicySettings, string(data))
+	s.betaPolicySettingsMu.Lock()
+	defer s.betaPolicySettingsMu.Unlock()
+	if err := s.settingRepo.Set(ctx, SettingKeyBetaPolicySettings, string(data)); err != nil {
+		return err
+	}
+	s.betaPolicySettingsSF.Forget(SettingKeyBetaPolicySettings)
+	s.betaPolicySettingsCache.Store(&cachedBetaPolicySettings{
+		settings:  *cloneBetaPolicySettings(settings),
+		expiresAt: time.Now().Add(betaPolicySettingsCacheTTL).UnixNano(),
+	})
+	return nil
 }
 
 // GetOpenAIFastPolicySettings 获取 OpenAI fast 策略配置

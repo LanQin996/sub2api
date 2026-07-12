@@ -92,6 +92,12 @@ func provideCleanup(
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	subscriptionService *service.SubscriptionService,
+	apiKeyService *service.APIKeyService,
+	concurrencyService *service.ConcurrencyService,
+	userMessageQueue *service.UserMessageQueueService,
+	deferredService *service.DeferredService,
+	timingWheel *service.TimingWheelService,
+	httpUpstream service.HTTPUpstream,
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
 	geminiOAuth *service.GeminiOAuthService,
@@ -103,6 +109,7 @@ func provideCleanup(
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
+	contentModeration *service.ContentModerationService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -203,6 +210,30 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"APIKeyService", func() error {
+				if apiKeyService != nil {
+					apiKeyService.Stop()
+				}
+				return nil
+			}},
+			{"ConcurrencyService", func() error {
+				if concurrencyService != nil {
+					concurrencyService.Stop()
+				}
+				return nil
+			}},
+			{"UserMessageQueueService", func() error {
+				if userMessageQueue != nil {
+					userMessageQueue.Stop()
+				}
+				return nil
+			}},
+			{"DeferredService", func() error {
+				if deferredService != nil {
+					deferredService.Stop()
+				}
+				return nil
+			}},
 			{"PricingService", func() error {
 				pricing.Stop()
 				return nil
@@ -279,9 +310,27 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"ContentModerationService", func() error {
+				if contentModeration != nil {
+					contentModeration.Close()
+				}
+				return nil
+			}},
 		}
 
 		infraSteps := []cleanupStep{
+			{"TimingWheelService", func() error {
+				if timingWheel != nil {
+					timingWheel.Stop()
+				}
+				return nil
+			}},
+			{"HTTPUpstream", func() error {
+				if closer, ok := httpUpstream.(interface{ Close() }); ok {
+					closer.Close()
+				}
+				return nil
+			}},
 			{"Redis", func() error {
 				if rdb == nil {
 					return nil

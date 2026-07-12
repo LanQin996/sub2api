@@ -94,6 +94,10 @@ func (s *OpsSystemLogSink) WriteLogEvent(event *logger.LogEvent) {
 	}
 }
 
+func (s *OpsSystemLogSink) IndexedEventsOnly() bool {
+	return true
+}
+
 func (s *OpsSystemLogSink) shouldIndex(event *logger.LogEvent) bool {
 	level := strings.ToLower(strings.TrimSpace(event.Level))
 	switch level {

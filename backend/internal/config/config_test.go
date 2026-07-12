@@ -219,7 +219,7 @@ func TestLoadOpenAIHTTP2DisabledFromEnv(t *testing.T) {
 	require.False(t, cfg.Gateway.OpenAIHTTP2.Enabled)
 }
 
-func TestLoadDefaultOpenAIResponseHeaderTimeoutUnlimited(t *testing.T) {
+func TestLoadDefaultOpenAIResponseHeaderTimeoutUsesGenericFallback(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
 	cfg, err := Load()
@@ -658,8 +658,8 @@ func TestLoadDefaultDashboardAggregationConfig(t *testing.T) {
 	if !cfg.DashboardAgg.Enabled {
 		t.Fatalf("DashboardAgg.Enabled = false, want true")
 	}
-	if cfg.DashboardAgg.IntervalSeconds != 60 {
-		t.Fatalf("DashboardAgg.IntervalSeconds = %d, want 60", cfg.DashboardAgg.IntervalSeconds)
+	if cfg.DashboardAgg.IntervalSeconds != 600 {
+		t.Fatalf("DashboardAgg.IntervalSeconds = %d, want 600", cfg.DashboardAgg.IntervalSeconds)
 	}
 	if cfg.DashboardAgg.LookbackSeconds != 120 {
 		t.Fatalf("DashboardAgg.LookbackSeconds = %d, want 120", cfg.DashboardAgg.LookbackSeconds)
@@ -682,8 +682,8 @@ func TestLoadDefaultDashboardAggregationConfig(t *testing.T) {
 	if cfg.DashboardAgg.Retention.DailyDays != 730 {
 		t.Fatalf("DashboardAgg.Retention.DailyDays = %d, want 730", cfg.DashboardAgg.Retention.DailyDays)
 	}
-	if cfg.DashboardAgg.RecomputeDays != 2 {
-		t.Fatalf("DashboardAgg.RecomputeDays = %d, want 2", cfg.DashboardAgg.RecomputeDays)
+	if cfg.DashboardAgg.RecomputeDays != 0 {
+		t.Fatalf("DashboardAgg.RecomputeDays = %d, want 0", cfg.DashboardAgg.RecomputeDays)
 	}
 }
 

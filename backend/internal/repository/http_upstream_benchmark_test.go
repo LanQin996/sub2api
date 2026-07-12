@@ -12,32 +12,29 @@ import (
 // 这是 Go 基准测试的常见模式，确保测试结果准确
 var httpClientSink *http.Client
 
-// BenchmarkHTTPUpstreamProxyClient 对比重复创建与复用代理客户端的开销
+// BenchmarkHTTPUpstreamClient 对比构建 Transport 与真实缓存命中路径。
 //
 // 测试目的：
-// - 验证连接池复用相比每次新建的性能提升
-// - 量化内存分配差异
-//
-// 预期结果：
-// - "复用" 子测试应显著快于 "新建"
-// - "复用" 子测试应零内存分配
-func BenchmarkHTTPUpstreamProxyClient(b *testing.B) {
+// - 直连是默认路径，缓存命中不应产生临时 key 分配
+// - 代理路径仍需解析和规范化 URL，单独报告其成本
+func BenchmarkHTTPUpstreamClient(b *testing.B) {
 	// 创建测试配置
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{ResponseHeaderTimeout: 300},
 	}
 	upstream := NewHTTPUpstream(cfg)
+	if closer, ok := upstream.(interface{ Close() }); ok {
+		b.Cleanup(closer.Close)
+	}
 	svc, ok := upstream.(*httpUpstreamService)
 	if !ok {
 		b.Fatalf("类型断言失败，无法获取 httpUpstreamService")
 	}
 
-	proxyURL := "http://127.0.0.1:8080"
 	b.ReportAllocs() // 报告内存分配统计
 
-	// 子测试：每次新建客户端
-	// 模拟未优化前的行为，每次请求都创建新的 http.Client
-	b.Run("新建", func(b *testing.B) {
+	b.Run("新建Transport", func(b *testing.B) {
+		proxyURL := "http://127.0.0.1:8080"
 		parsedProxy, err := url.Parse(proxyURL)
 		if err != nil {
 			b.Fatalf("解析代理地址失败: %v", err)
@@ -55,19 +52,30 @@ func BenchmarkHTTPUpstreamProxyClient(b *testing.B) {
 		}
 	})
 
-	// 子测试：复用已缓存的客户端
-	// 模拟优化后的行为，从缓存获取客户端
-	b.Run("复用", func(b *testing.B) {
-		// 预热：确保客户端已缓存
-		entry, err := svc.getOrCreateClient(proxyURL, 1, 1)
-		if err != nil {
-			b.Fatalf("getOrCreateClient: %v", err)
-		}
-		client := entry.client
-		b.ResetTimer() // 重置计时器，排除预热时间
-		for i := 0; i < b.N; i++ {
-			// 直接使用缓存的客户端，无内存分配
-			httpClientSink = client
-		}
-	})
+	for _, tc := range []struct {
+		name     string
+		proxyURL string
+	}{
+		{name: "直连缓存命中", proxyURL: ""},
+		{name: "代理缓存命中", proxyURL: "http://127.0.0.1:8080"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			entry, err := svc.getOrCreateClient(tc.proxyURL, 1, 1)
+			if err != nil {
+				b.Fatalf("getOrCreateClient warmup: %v", err)
+			}
+			client := entry.client
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				cached, err := svc.getOrCreateClient(tc.proxyURL, 1, 1)
+				if err != nil {
+					b.Fatalf("getOrCreateClient cache hit: %v", err)
+				}
+				if cached.client != client {
+					b.Fatal("cache hit returned a different client")
+				}
+				httpClientSink = cached.client
+			}
+		})
+	}
 }

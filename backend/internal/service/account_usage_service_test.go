@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 )
@@ -29,6 +30,157 @@ func (r *accountUsageCodexProbeRepo) SetRateLimited(_ context.Context, _ int64, 
 		r.rateLimitCh <- resetAt
 	}
 	return nil
+}
+
+func TestBoundedAccountUsageCacheTTLBoundary(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	cache := &boundedAccountUsageCache{maxEntries: 2}
+	cache.storeAt(1, "cached", time.Minute, base)
+
+	if got, ok := cache.loadAt(1, base.Add(time.Minute-time.Nanosecond)); !ok || got != "cached" {
+		t.Fatalf("entry before TTL boundary = (%v, %v), want (cached, true)", got, ok)
+	}
+	if got, ok := cache.loadAt(1, base.Add(time.Minute)); ok || got != nil {
+		t.Fatalf("entry at TTL boundary = (%v, %v), want (nil, false)", got, ok)
+	}
+	if got := cache.Len(); got != 0 {
+		t.Fatalf("cache length after expired load = %d, want 0", got)
+	}
+}
+
+func TestBoundedAccountUsageCacheCapacityAndReplacement(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	cache := &boundedAccountUsageCache{maxEntries: 2}
+	cache.storeAt(1, "first", time.Hour, base)
+	cache.storeAt(2, "second", time.Hour, base)
+	cache.storeAt(1, "updated", time.Hour, base)
+
+	if got := cache.Len(); got != 2 {
+		t.Fatalf("cache length after replacement = %d, want 2", got)
+	}
+	if got, ok := cache.loadAt(1, base); !ok || got != "updated" {
+		t.Fatalf("replacement entry = (%v, %v), want (updated, true)", got, ok)
+	}
+	if _, ok := cache.loadAt(2, base); !ok {
+		t.Fatal("replacing an existing key must not evict another entry")
+	}
+
+	cache.storeAt(3, "third", time.Hour, base)
+	if got := cache.Len(); got != 2 {
+		t.Fatalf("cache length above capacity = %d, want 2", got)
+	}
+}
+
+func TestBoundedAccountUsageCacheDefaultCapacity(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	cache := &boundedAccountUsageCache{}
+	for key := int64(1); key <= accountUsageCacheMaxEntries+1; key++ {
+		cache.storeAt(key, key, time.Hour, base)
+	}
+
+	if got := cache.Len(); got != accountUsageCacheMaxEntries {
+		t.Fatalf("default cache length = %d, want %d", got, accountUsageCacheMaxEntries)
+	}
+}
+
+func TestBoundedAccountUsageCachePrefersExpiredEntriesAtCapacity(t *testing.T) {
+	t.Parallel()
+
+	const maxEntries = accountUsageCacheCleanupBatch * 2
+	base := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	cache := &boundedAccountUsageCache{maxEntries: maxEntries}
+	cache.storeAt(1, "expired", time.Minute, base)
+	for key := int64(2); key <= maxEntries; key++ {
+		cache.storeAt(key, key, time.Hour, base)
+	}
+
+	now := base.Add(2 * time.Minute)
+	cache.storeAt(maxEntries+1, "new", time.Hour, now)
+
+	if got := cache.Len(); got != maxEntries {
+		t.Fatalf("cache length after capacity cleanup = %d, want %d", got, maxEntries)
+	}
+	if _, ok := cache.loadAt(1, now); ok {
+		t.Fatal("expired entry should be removed at the capacity boundary")
+	}
+	for key := int64(2); key <= maxEntries; key++ {
+		if _, ok := cache.loadAt(key, now); !ok {
+			t.Fatalf("live entry %d was evicted while an expired entry existed", key)
+		}
+	}
+	if got, ok := cache.loadAt(maxEntries+1, now); !ok || got != "new" {
+		t.Fatalf("new entry = (%v, %v), want (new, true)", got, ok)
+	}
+}
+
+func TestBoundedAccountUsageCacheConcurrentAccessStaysBounded(t *testing.T) {
+	t.Parallel()
+
+	const (
+		maxEntries = 64
+		workers    = 16
+		iterations = 200
+	)
+	cache := &boundedAccountUsageCache{maxEntries: maxEntries}
+	var wg sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		worker := worker
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				key := int64(worker*iterations + i)
+				cache.Store(key, key, time.Minute)
+				cache.Load(key)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := cache.Len(); got > maxEntries {
+		t.Fatalf("cache length after concurrent writes = %d, want <= %d", got, maxEntries)
+	}
+}
+
+func TestBoundedAccountUsageCacheNonPositiveTTLInvalidatesEntry(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	cache := &boundedAccountUsageCache{maxEntries: 2}
+	cache.storeAt(1, "cached", time.Minute, base)
+	cache.storeAt(1, "ignored", 0, base)
+
+	if got, ok := cache.loadAt(1, base); ok || got != nil {
+		t.Fatalf("entry after non-positive TTL = (%v, %v), want (nil, false)", got, ok)
+	}
+}
+
+func TestAccountUsageServiceShouldProbeOpenAICodexSnapshotUsesTTL(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	svc := &AccountUsageService{cache: NewUsageCache()}
+	if !svc.shouldProbeOpenAICodexSnapshot(42, now) {
+		t.Fatal("first probe should be allowed")
+	}
+	if svc.shouldProbeOpenAICodexSnapshot(42, now.Add(openAIProbeCacheTTL-time.Nanosecond)) {
+		t.Fatal("probe before TTL expiry should be suppressed")
+	}
+	if !svc.shouldProbeOpenAICodexSnapshot(42, now.Add(openAIProbeCacheTTL)) {
+		t.Fatal("probe at TTL expiry should be allowed")
+	}
+	if !svc.shouldProbeOpenAICodexSnapshot(42, now.Add(openAIProbeCacheTTL+time.Second), true) {
+		t.Fatal("forced probe should bypass the cache")
+	}
+	if svc.shouldProbeOpenAICodexSnapshot(42, now.Add(openAIProbeCacheTTL+time.Second)) {
+		t.Fatal("forced probe should refresh the cache timestamp")
+	}
 }
 
 func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {

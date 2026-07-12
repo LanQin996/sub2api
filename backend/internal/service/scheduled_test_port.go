@@ -38,10 +38,10 @@ type ScheduledTestPlanRepository interface {
 	Create(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error)
 	GetByID(ctx context.Context, id int64) (*ScheduledTestPlan, error)
 	ListByAccountID(ctx context.Context, accountID int64) ([]*ScheduledTestPlan, error)
-	ListDue(ctx context.Context, now time.Time) ([]*ScheduledTestPlan, error)
+	ClaimDue(ctx context.Context, now time.Time, leaseUntil time.Time, limit int) ([]*ScheduledTestPlan, error)
 	Update(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error)
 	Delete(ctx context.Context, id int64) error
-	UpdateAfterRun(ctx context.Context, id int64, lastRunAt time.Time, nextRunAt time.Time) error
+	CompleteClaim(ctx context.Context, id int64, leaseUntil time.Time, lastRunAt time.Time, nextRunAt time.Time) (bool, error)
 }
 
 // ScheduledTestResultRepository defines the data access interface for test results.

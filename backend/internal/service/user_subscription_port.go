@@ -37,3 +37,10 @@ type UserSubscriptionRepository interface {
 
 	BatchUpdateExpiredStatus(ctx context.Context) (int64, error)
 }
+
+// SubscriptionExpiryReminderRepository is the optimized read path used by the
+// expiry reminder scheduler. It deliberately avoids the COUNT and broad eager
+// loading performed by the admin-facing List method.
+type SubscriptionExpiryReminderRepository interface {
+	ListActiveExpiringBetween(ctx context.Context, startsAt, endsAt, afterExpiresAt time.Time, afterID int64, limit int) ([]UserSubscription, error)
+}

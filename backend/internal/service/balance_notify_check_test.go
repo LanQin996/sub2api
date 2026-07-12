@@ -152,6 +152,26 @@ func TestGetBalanceNotifyConfig_InvalidThreshold(t *testing.T) {
 	require.Equal(t, 0.0, threshold)
 }
 
+func TestBalanceNotifyGlobalSwitchesCachedAndFailClosed(t *testing.T) {
+	s, repo := newBalanceNotifyServiceForTest()
+	repo.data[SettingKeyBalanceLowNotifyEnabled] = "false"
+	repo.data[SettingKeyAccountQuotaNotifyEnabled] = "false"
+
+	require.False(t, s.balanceLowNotificationsEnabled(context.Background()))
+	require.False(t, s.accountQuotaNotificationsEnabled(context.Background()))
+
+	// Both switches share one short-lived snapshot. A settings mutation must not
+	// cause a second DB read path until that snapshot expires.
+	repo.data[SettingKeyBalanceLowNotifyEnabled] = "true"
+	repo.data[SettingKeyAccountQuotaNotifyEnabled] = "true"
+	require.False(t, s.balanceLowNotificationsEnabled(context.Background()))
+	require.False(t, s.accountQuotaNotificationsEnabled(context.Background()))
+
+	s.globalSwitchCache.Store(&cachedBalanceNotifyGlobalSwitches{})
+	require.True(t, s.balanceLowNotificationsEnabled(context.Background()))
+	require.True(t, s.accountQuotaNotificationsEnabled(context.Background()))
+}
+
 func TestIsAccountQuotaNotifyEnabled(t *testing.T) {
 	s, repo := newBalanceNotifyServiceForTest()
 
@@ -164,6 +184,7 @@ func TestIsAccountQuotaNotifyEnabled(t *testing.T) {
 
 	// Explicit "true"
 	repo.data[SettingKeyAccountQuotaNotifyEnabled] = "true"
+	s.globalSwitchCache.Store(&cachedBalanceNotifyGlobalSwitches{})
 	require.True(t, s.isAccountQuotaNotifyEnabled(context.Background()))
 }
 

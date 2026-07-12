@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +16,22 @@ import (
 )
 
 type upstreamContextTestKey string
+
+type blockingPlatformQuotaRepository struct {
+	UserPlatformQuotaRepository
+	started chan struct{}
+	release chan struct{}
+}
+
+func (r *blockingPlatformQuotaRepository) IncrementUsageWithReset(ctx context.Context, _ int64, _ string, _ float64, _ time.Time) error {
+	close(r.started)
+	select {
+	case <-r.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
 func newStreamingResponseTestGatewayService() *GatewayService {
 	return &GatewayService{
@@ -184,4 +202,149 @@ func TestDetachUpstreamContextIgnoresClientCancel(t *testing.T) {
 
 	require.NoError(t, upstreamCtx.Err())
 	require.Equal(t, "test-value", upstreamCtx.Value(upstreamContextTestKey("test-key")))
+}
+
+func TestDetachUpstreamContextCancelsAfterDisconnectGrace(t *testing.T) {
+	parent, cancelParent := context.WithCancel(context.Background())
+	upstreamCtx, release := detachUpstreamContextWithGrace(parent, 20*time.Millisecond)
+	defer release()
+
+	cancelParent()
+	require.NoError(t, upstreamCtx.Err(), "disconnect grace should allow a short billing drain")
+
+	select {
+	case <-upstreamCtx.Done():
+		require.ErrorIs(t, upstreamCtx.Err(), context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("detached upstream context did not cancel after grace")
+	}
+}
+
+func TestDetachUpstreamContextReleaseCancelsImmediately(t *testing.T) {
+	upstreamCtx, release := detachUpstreamContextWithGrace(context.Background(), time.Hour)
+	release()
+
+	select {
+	case <-upstreamCtx.Done():
+		require.ErrorIs(t, upstreamCtx.Err(), context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("release did not cancel detached upstream context")
+	}
+}
+
+func TestDetachUpstreamContextReleaseStopsPendingDisconnectTimer(t *testing.T) {
+	parent, cancelParent := context.WithCancel(context.Background())
+	upstreamCtx, release := detachUpstreamContextWithGrace(parent, time.Hour)
+	cancelParent()
+	// Let the parent callback install its grace timer before release races it.
+	time.Sleep(10 * time.Millisecond)
+
+	release()
+	select {
+	case <-upstreamCtx.Done():
+		require.ErrorIs(t, upstreamCtx.Err(), context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("release did not cancel context with a pending disconnect timer")
+	}
+}
+
+func TestDetachUpstreamContextGraceDoesNotRetainPerRequestGoroutines(t *testing.T) {
+	const requestCount = 128
+	baseline := runtime.NumGoroutine()
+	releases := make([]context.CancelFunc, 0, requestCount)
+
+	for i := 0; i < requestCount; i++ {
+		parent, cancelParent := context.WithCancel(context.Background())
+		_, release := detachUpstreamContextWithGrace(parent, time.Hour)
+		releases = append(releases, release)
+		cancelParent()
+	}
+	defer func() {
+		for _, release := range releases {
+			release()
+		}
+	}()
+
+	// The parent callbacks should only install runtime timers and return. The old
+	// implementation blocked one callback goroutine per request for the full grace.
+	time.Sleep(25 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		runtime.Gosched()
+		return runtime.NumGoroutine() <= baseline+16
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestDetachedBillingContextHasFiniteDeadline(t *testing.T) {
+	billingCtx, cancel := detachedBillingContext(context.Background())
+	defer cancel()
+
+	deadline, ok := billingCtx.Deadline()
+	require.True(t, ok)
+	remaining := time.Until(deadline)
+	require.Greater(t, remaining, time.Duration(0))
+	require.LessOrEqual(t, remaining, postUsageBillingTimeout)
+}
+
+func TestPersistUserPlatformQuotaUsageAppliesBackpressure(t *testing.T) {
+	repo := &blockingPlatformQuotaRepository{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- persistUserPlatformQuotaUsage(context.Background(), repo, 1, PlatformOpenAI, 0.25)
+	}()
+
+	select {
+	case <-repo.started:
+	case <-time.After(time.Second):
+		t.Fatal("quota persistence did not start")
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("quota persistence returned before the repository completed: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+
+	close(repo.release)
+	require.NoError(t, <-done)
+}
+
+func TestBindUpstreamContextToResponseReleasesOnBodyClose(t *testing.T) {
+	upstreamCtx, release := detachUpstreamContextWithGrace(context.Background(), time.Hour)
+	resp := bindUpstreamContextToResponse(&http.Response{Body: io.NopCloser(strings.NewReader("ok"))}, release)
+
+	require.NoError(t, resp.Body.Close())
+	select {
+	case <-upstreamCtx.Done():
+		require.ErrorIs(t, upstreamCtx.Err(), context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("response body close did not release upstream context")
+	}
+}
+
+func TestNotificationChecksShortCircuitDefaultDisabledState(t *testing.T) {
+	deps := &billingDeps{balanceNotifyService: &BalanceNotifyService{}}
+	p := &postUsageBillingParams{
+		Cost:    &CostBreakdown{ActualCost: 1, TotalCost: 1},
+		User:    &User{},
+		Account: &Account{Type: AccountTypeAPIKey},
+	}
+
+	require.False(t, shouldCheckBalanceLowNotification(context.Background(), p, deps))
+	require.False(t, shouldCheckAccountQuotaNotification(context.Background(), p, deps))
+
+	p.User.BalanceNotifyEnabled = true
+	p.Account.Extra = map[string]any{
+		"quota_notify_daily_enabled":   true,
+		"quota_notify_daily_threshold": 10.0,
+	}
+	settingRepo := &gatewayTTLSettingRepo{data: map[string]string{
+		SettingKeyBalanceLowNotifyEnabled:   "true",
+		SettingKeyBalanceLowNotifyThreshold: "10",
+		SettingKeyAccountQuotaNotifyEnabled: "true",
+	}}
+	deps.balanceNotifyService = NewBalanceNotifyService(NewEmailService(settingRepo, nil), settingRepo, nil)
+	require.True(t, shouldCheckBalanceLowNotification(context.Background(), p, deps))
+	require.True(t, shouldCheckAccountQuotaNotification(context.Background(), p, deps))
 }

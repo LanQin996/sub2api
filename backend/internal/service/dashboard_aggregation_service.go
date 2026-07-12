@@ -16,6 +16,7 @@ import (
 const (
 	defaultDashboardAggregationTimeout         = 2 * time.Minute
 	defaultDashboardAggregationBackfillTimeout = 30 * time.Minute
+	defaultDashboardAggregationInterval        = 10 * time.Minute
 	dashboardAggregationRetentionInterval      = 6 * time.Hour
 
 	// dashboardAggregationLeaderLockKey gates the periodic scheduled aggregation so
@@ -59,6 +60,7 @@ type DashboardAggregationService struct {
 	lockCache  LeaderLockCache
 	db         *sql.DB
 	instanceID string
+	nowFn      func() time.Time
 }
 
 // NewDashboardAggregationService 创建聚合服务。
@@ -96,10 +98,7 @@ func (s *DashboardAggregationService) Start() {
 		return
 	}
 
-	interval := time.Duration(s.cfg.IntervalSeconds) * time.Second
-	if interval <= 0 {
-		interval = time.Minute
-	}
+	interval := s.aggregationInterval()
 
 	if s.cfg.RecomputeDays > 0 {
 		go s.recomputeRecentDays()
@@ -230,11 +229,16 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 	}
 	defer release()
 
-	now := time.Now().UTC()
+	now := s.nowUTC()
+	end := closedAggregationBoundary(now, s.aggregationInterval())
 	last, err := s.repo.GetAggregationWatermark(ctx)
 	if err != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 读取水位失败: %v", err)
 		last = time.Unix(0, 0).UTC()
+	} else if !end.After(last) {
+		// All replicas use the same closed interval boundary. Once one replica has
+		// advanced the shared watermark, later callbacks for that boundary are no-ops.
+		return
 	}
 
 	lookback := time.Duration(s.cfg.LookbackSeconds) * time.Second
@@ -245,28 +249,50 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 		if retentionDays <= 0 {
 			retentionDays = 1
 		}
-		start = truncateToDayUTC(now.AddDate(0, 0, -retentionDays))
-	} else if start.After(now) {
-		start = now.Add(-lookback)
+		start = truncateToDayUTC(end.AddDate(0, 0, -retentionDays))
+	} else if start.After(end) {
+		start = end.Add(-lookback)
 	}
 
-	if err := s.aggregateRange(ctx, start, now); err != nil {
+	if err := s.aggregateRange(ctx, start, end); err != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合失败: %v", err)
 		return
 	}
 
-	updateErr := s.repo.UpdateAggregationWatermark(ctx, now)
+	updateErr := s.repo.UpdateAggregationWatermark(ctx, end)
 	if updateErr != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 更新水位失败: %v", updateErr)
 	}
 	slog.Debug("[DashboardAggregation] 聚合完成",
 		"start", start.Format(time.RFC3339),
-		"end", now.Format(time.RFC3339),
+		"end", end.Format(time.RFC3339),
 		"duration", time.Since(jobStart).String(),
 		"watermark_updated", updateErr == nil,
 	)
 
 	s.maybeCleanupRetention(ctx, now)
+}
+
+func (s *DashboardAggregationService) aggregationInterval() time.Duration {
+	interval := time.Duration(s.cfg.IntervalSeconds) * time.Second
+	if interval <= 0 {
+		return defaultDashboardAggregationInterval
+	}
+	return interval
+}
+
+func (s *DashboardAggregationService) nowUTC() time.Time {
+	if s.nowFn != nil {
+		return s.nowFn().UTC()
+	}
+	return time.Now().UTC()
+}
+
+func closedAggregationBoundary(now time.Time, interval time.Duration) time.Time {
+	if interval <= 0 {
+		interval = defaultDashboardAggregationInterval
+	}
+	return now.UTC().Truncate(interval)
 }
 
 func (s *DashboardAggregationService) backfillRange(ctx context.Context, start, end time.Time) error {

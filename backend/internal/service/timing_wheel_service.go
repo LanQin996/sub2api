@@ -15,6 +15,11 @@ var newTimingWheel = collection.NewTimingWheel
 type TimingWheelService struct {
 	tw       *collection.TimingWheel
 	stopOnce sync.Once
+
+	mu             sync.Mutex
+	stopped        bool
+	nextGeneration uint64
+	recurring      map[string]uint64
 }
 
 // NewTimingWheelService creates a new TimingWheelService instance
@@ -29,7 +34,7 @@ func NewTimingWheelService() (*TimingWheelService, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建 timing wheel 失败: %w", err)
 	}
-	return &TimingWheelService{tw: tw}, nil
+	return &TimingWheelService{tw: tw, recurring: make(map[string]uint64)}, nil
 }
 
 // Start starts the timing wheel
@@ -40,6 +45,10 @@ func (s *TimingWheelService) Start() {
 // Stop stops the timing wheel
 func (s *TimingWheelService) Stop() {
 	s.stopOnce.Do(func() {
+		s.mu.Lock()
+		s.stopped = true
+		clear(s.recurring)
+		s.mu.Unlock()
 		s.tw.Stop()
 		logger.LegacyPrintf("service.timing_wheel", "%s", "[TimingWheel] Stopped")
 	})
@@ -47,6 +56,13 @@ func (s *TimingWheelService) Stop() {
 
 // Schedule schedules a one-time task
 func (s *TimingWheelService) Schedule(name string, delay time.Duration, fn func()) {
+	s.mu.Lock()
+	stopped := s.stopped
+	s.mu.Unlock()
+	if stopped {
+		logger.LegacyPrintf("service.timing_wheel", "[TimingWheel] SetTimer skipped after stop for %q", name)
+		return
+	}
 	if err := s.tw.SetTimer(name, fn, delay); err != nil {
 		logger.LegacyPrintf("service.timing_wheel", "[TimingWheel] SetTimer failed for %q: %v", name, err)
 	}
@@ -54,19 +70,39 @@ func (s *TimingWheelService) Schedule(name string, delay time.Duration, fn func(
 
 // ScheduleRecurring schedules a recurring task
 func (s *TimingWheelService) ScheduleRecurring(name string, interval time.Duration, fn func()) {
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		logger.LegacyPrintf("service.timing_wheel", "[TimingWheel] recurring SetTimer skipped after stop for %q", name)
+		return
+	}
+	s.nextGeneration++
+	generation := s.nextGeneration
+	s.recurring[name] = generation
+
 	var schedule func()
 	schedule = func() {
 		fn()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.stopped || s.recurring[name] != generation {
+			return
+		}
 		if err := s.tw.SetTimer(name, schedule, interval); err != nil {
 			logger.LegacyPrintf("service.timing_wheel", "[TimingWheel] recurring SetTimer failed for %q: %v", name, err)
 		}
 	}
 	if err := s.tw.SetTimer(name, schedule, interval); err != nil {
+		delete(s.recurring, name)
 		logger.LegacyPrintf("service.timing_wheel", "[TimingWheel] initial SetTimer failed for %q: %v", name, err)
 	}
+	s.mu.Unlock()
 }
 
 // Cancel cancels a scheduled task
 func (s *TimingWheelService) Cancel(name string) {
+	s.mu.Lock()
+	delete(s.recurring, name)
 	_ = s.tw.RemoveTimer(name)
+	s.mu.Unlock()
 }

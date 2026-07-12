@@ -205,20 +205,25 @@ type RateLimitCacheInvalidator interface {
 }
 
 type APIKeyService struct {
-	apiKeyRepo            APIKeyRepository
-	userRepo              UserRepository
-	groupRepo             GroupRepository
-	userSubRepo           UserSubscriptionRepository
-	userGroupRateRepo     UserGroupRateRepository
-	cache                 APIKeyCache
-	rateLimitCacheInvalid RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
-	concurrencyService    *ConcurrencyService
-	cfg                   *config.Config
-	authCacheL1           *ristretto.Cache
-	authCfg               apiKeyAuthCacheConfig
-	authGroup             singleflight.Group
-	lastUsedTouchL1       sync.Map // keyID -> nextAllowedAt(time.Time)
-	lastUsedTouchSF       singleflight.Group
+	apiKeyRepo                 APIKeyRepository
+	userRepo                   UserRepository
+	groupRepo                  GroupRepository
+	userSubRepo                UserSubscriptionRepository
+	userGroupRateRepo          UserGroupRateRepository
+	cache                      APIKeyCache
+	rateLimitCacheInvalid      RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
+	concurrencyService         *ConcurrencyService
+	cfg                        *config.Config
+	authCacheL1                *ristretto.Cache
+	authCfg                    apiKeyAuthCacheConfig
+	authGroup                  singleflight.Group
+	authCacheLifecycleMu       sync.RWMutex
+	authCacheSubscriberCancel  context.CancelFunc
+	authCacheSubscriberStarted bool
+	authCacheStopped           bool
+	authCacheStopOnce          sync.Once
+	lastUsedTouchL1            sync.Map // keyID -> nextAllowedAt(time.Time)
+	lastUsedTouchSF            singleflight.Group
 }
 
 // NewAPIKeyService 创建API Key服务实例

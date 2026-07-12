@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -177,6 +176,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	}
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	defer releaseUpstreamCtx()
 	var upstreamReq *http.Request
 	if account.Platform == PlatformGrok {
 		upstreamModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
@@ -190,14 +190,12 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		body, err = patchGrokResponsesBody(body, upstreamModel)
 		if err != nil {
-			releaseUpstreamCtx()
 			return nil, err
 		}
 		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token)
 	} else {
 		upstreamReq, err = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 	}
-	releaseUpstreamCtx()
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +219,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
+		respBody, _ := readUpstreamResponseBodyAtMostWithTimeout(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes, defaultUpstreamResponseBodyReadTimeout)
 		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 		if upstreamMsg == "" {
 			upstreamMsg = http.StatusText(resp.StatusCode)

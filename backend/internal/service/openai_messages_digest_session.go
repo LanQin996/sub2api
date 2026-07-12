@@ -54,12 +54,10 @@ func (s *OpenAIGatewayService) findOpenAICompatAnthropicDigestPromptCacheKey(acc
 	}
 	chain := digestChain
 	for {
-		if raw, ok := s.openaiCompatAnthropicDigestSessions.Load(ns + chain); ok {
-			if binding, ok := raw.(openAICompatAnthropicDigestBinding); ok {
-				if binding.ExpiresAt.IsZero() || time.Now().Before(binding.ExpiresAt) {
-					if key := strings.TrimSpace(binding.PromptCacheKey); key != "" {
-						return key, chain
-					}
+		if binding, ok := s.openaiCompatAnthropicDigestSessions.Load(ns + chain); ok {
+			if binding.ExpiresAt.IsZero() || time.Now().Before(binding.ExpiresAt) {
+				if key := strings.TrimSpace(binding.PromptCacheKey); key != "" {
+					return key, chain
 				}
 			}
 			s.openaiCompatAnthropicDigestSessions.Delete(ns + chain)
@@ -73,7 +71,11 @@ func (s *OpenAIGatewayService) findOpenAICompatAnthropicDigestPromptCacheKey(acc
 }
 
 func (s *OpenAIGatewayService) bindOpenAICompatAnthropicDigestPromptCacheKey(account *Account, cAPIKeyID int64, digestChain, promptCacheKey, oldDigestChain string) {
-	if s == nil || digestChain == "" || strings.TrimSpace(promptCacheKey) == "" {
+	if s == nil || digestChain == "" {
+		return
+	}
+	promptCacheKey = strings.Clone(strings.TrimSpace(promptCacheKey))
+	if promptCacheKey == "" {
 		return
 	}
 	ns := openAICompatAnthropicDigestNamespace(account, cAPIKeyID)
@@ -81,11 +83,11 @@ func (s *OpenAIGatewayService) bindOpenAICompatAnthropicDigestPromptCacheKey(acc
 		return
 	}
 	binding := openAICompatAnthropicDigestBinding{
-		PromptCacheKey: strings.TrimSpace(promptCacheKey),
+		PromptCacheKey: promptCacheKey,
 		ExpiresAt:      time.Now().Add(s.openAIWSResponseStickyTTL()),
 	}
-	s.openaiCompatAnthropicDigestSessions.Store(ns+digestChain, binding)
-	if oldDigestChain != "" && oldDigestChain != digestChain {
+	stored := s.openaiCompatAnthropicDigestSessions.Store(ns+digestChain, binding, binding.ExpiresAt, len(binding.PromptCacheKey))
+	if stored && oldDigestChain != "" && oldDigestChain != digestChain {
 		s.openaiCompatAnthropicDigestSessions.Delete(ns + oldDigestChain)
 	}
 }

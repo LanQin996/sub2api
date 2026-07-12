@@ -19,6 +19,8 @@ type dashboardAggregationRepoTestStub struct {
 	lastStart            time.Time
 	lastEnd              time.Time
 	watermark            time.Time
+	watermarkUpdates     int
+	lastWatermarkUpdate  time.Time
 	aggregateErr         error
 	cleanupAggregatesErr error
 	cleanupUsageErr      error
@@ -43,6 +45,8 @@ func (s *dashboardAggregationRepoTestStub) GetAggregationWatermark(ctx context.C
 }
 
 func (s *dashboardAggregationRepoTestStub) UpdateAggregationWatermark(ctx context.Context, aggregatedAt time.Time) error {
+	s.watermarkUpdates++
+	s.lastWatermarkUpdate = aggregatedAt
 	return nil
 }
 
@@ -66,12 +70,16 @@ func (s *dashboardAggregationRepoTestStub) EnsureUsageLogsPartitions(ctx context
 }
 
 func TestDashboardAggregationService_RunScheduledAggregation_EpochUsesRetentionStart(t *testing.T) {
+	now := time.Date(2026, time.July, 12, 8, 37, 42, 0, time.UTC)
 	repo := &dashboardAggregationRepoTestStub{watermark: time.Unix(0, 0).UTC()}
 	svc := &DashboardAggregationService{
 		repo: repo,
+		nowFn: func() time.Time {
+			return now
+		},
 		cfg: config.DashboardAggregationConfig{
 			Enabled:         true,
-			IntervalSeconds: 60,
+			IntervalSeconds: 600,
 			LookbackSeconds: 120,
 			Retention: config.DashboardAggregationRetentionConfig{
 				UsageLogsDays: 1,
@@ -84,8 +92,43 @@ func TestDashboardAggregationService_RunScheduledAggregation_EpochUsesRetentionS
 	svc.runScheduledAggregation()
 
 	require.Equal(t, 1, repo.aggregateCalls)
-	require.False(t, repo.lastEnd.IsZero())
+	require.Equal(t, time.Date(2026, time.July, 12, 8, 30, 0, 0, time.UTC), repo.lastEnd)
 	require.Equal(t, truncateToDayUTC(repo.lastEnd.AddDate(0, 0, -1)), repo.lastStart)
+	require.Equal(t, 1, repo.watermarkUpdates)
+	require.Equal(t, repo.lastEnd, repo.lastWatermarkUpdate)
+}
+
+func TestDashboardAggregationService_RunScheduledAggregation_SkipsCompletedBoundary(t *testing.T) {
+	now := time.Date(2026, time.July, 12, 8, 37, 42, 0, time.UTC)
+	boundary := time.Date(2026, time.July, 12, 8, 30, 0, 0, time.UTC)
+	repo := &dashboardAggregationRepoTestStub{watermark: boundary}
+	svc := &DashboardAggregationService{
+		repo: repo,
+		nowFn: func() time.Time {
+			return now
+		},
+		cfg: config.DashboardAggregationConfig{
+			Enabled:         true,
+			IntervalSeconds: 600,
+			LookbackSeconds: 120,
+		},
+	}
+
+	svc.runScheduledAggregation()
+
+	require.Equal(t, 0, repo.aggregateCalls)
+	require.Equal(t, 0, repo.ensurePartitionCalls)
+	require.Equal(t, 0, repo.watermarkUpdates)
+}
+
+func TestClosedAggregationBoundary_UsesConfiguredInterval(t *testing.T) {
+	now := time.Date(2026, time.July, 12, 8, 37, 42, 0, time.FixedZone("UTC+8", 8*60*60))
+
+	require.Equal(
+		t,
+		time.Date(2026, time.July, 12, 0, 30, 0, 0, time.UTC),
+		closedAggregationBoundary(now, 10*time.Minute),
+	)
 }
 
 func TestDashboardAggregationService_CleanupRetentionFailure_DoesNotRecord(t *testing.T) {

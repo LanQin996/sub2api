@@ -129,6 +129,7 @@ func (s *authRepoStub) GetRateLimitData(ctx context.Context, id int64) (*APIKeyR
 
 type authCacheStub struct {
 	getAuthCache   func(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error)
+	subscribeAuth  func(ctx context.Context, handler func(cacheKey string)) error
 	setAuthKeys    []string
 	deleteAuthKeys []string
 }
@@ -175,6 +176,9 @@ func (s *authCacheStub) PublishAuthCacheInvalidation(ctx context.Context, cacheK
 }
 
 func (s *authCacheStub) SubscribeAuthCacheInvalidation(ctx context.Context, handler func(cacheKey string)) error {
+	if s.subscribeAuth != nil {
+		return s.subscribeAuth(ctx, handler)
+	}
 	return nil
 }
 
@@ -446,6 +450,7 @@ func TestAPIKeyService_GetByKey_UsesL1Cache(t *testing.T) {
 		},
 	}
 	svc := NewAPIKeyService(repo, nil, nil, nil, nil, cache, cfg)
+	t.Cleanup(svc.Stop)
 	require.NotNil(t, svc.authCacheL1)
 
 	_, err := svc.GetByKey(context.Background(), "k-l1")
@@ -457,6 +462,42 @@ func TestAPIKeyService_GetByKey_UsesL1Cache(t *testing.T) {
 	_, err = svc.GetByKey(context.Background(), "k-l1")
 	require.NoError(t, err)
 	require.Equal(t, int32(1), atomic.LoadInt32(&calls))
+}
+
+func TestAPIKeyService_StopCancelsSubscriberAndClosesL1(t *testing.T) {
+	ctxCh := make(chan context.Context, 1)
+	var handler func(string)
+	var subscribeCalls atomic.Int32
+	cache := &authCacheStub{
+		subscribeAuth: func(ctx context.Context, h func(string)) error {
+			subscribeCalls.Add(1)
+			handler = h
+			ctxCh <- ctx
+			return nil
+		},
+	}
+	cfg := &config.Config{APIKeyAuth: config.APIKeyAuthCacheConfig{L1Size: 16, L1TTLSeconds: 60}}
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, cache, cfg)
+	svc.StartAuthCacheInvalidationSubscriber(context.Background())
+	svc.StartAuthCacheInvalidationSubscriber(context.Background())
+
+	var subscriberCtx context.Context
+	select {
+	case subscriberCtx = <-ctxCh:
+	case <-time.After(time.Second):
+		t.Fatal("subscriber did not start")
+	}
+	require.EqualValues(t, 1, subscribeCalls.Load())
+
+	require.NotPanics(t, svc.Stop)
+	require.NotPanics(t, svc.Stop)
+	select {
+	case <-subscriberCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("subscriber context was not canceled")
+	}
+	require.NotNil(t, handler)
+	require.NotPanics(t, func() { handler("after-stop") })
 }
 
 func TestAPIKeyService_InvalidateAuthCacheByUserID(t *testing.T) {

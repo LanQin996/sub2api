@@ -48,13 +48,28 @@ func (r *scheduledTestPlanRepository) ListByAccountID(ctx context.Context, accou
 	return scanPlans(rows)
 }
 
-func (r *scheduledTestPlanRepository) ListDue(ctx context.Context, now time.Time) ([]*service.ScheduledTestPlan, error) {
+func (r *scheduledTestPlanRepository) ClaimDue(ctx context.Context, now time.Time, leaseUntil time.Time, limit int) ([]*service.ScheduledTestPlan, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, account_id, model_id, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
-		FROM scheduled_test_plans
-		WHERE enabled = true AND next_run_at <= $1
-		ORDER BY next_run_at ASC
-	`, now)
+		WITH due AS (
+			SELECT id
+			FROM scheduled_test_plans
+			WHERE enabled = true AND next_run_at <= $1
+			ORDER BY next_run_at ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE scheduled_test_plans AS plan
+		SET next_run_at = $3, updated_at = NOW()
+		FROM due
+		WHERE plan.id = due.id
+		RETURNING plan.id, plan.account_id, plan.model_id, plan.cron_expression, plan.enabled,
+			plan.max_results, plan.auto_recover, plan.last_run_at, plan.next_run_at,
+			plan.created_at, plan.updated_at
+	`, now, limit, leaseUntil)
 	if err != nil {
 		return nil, err
 	}
@@ -77,11 +92,20 @@ func (r *scheduledTestPlanRepository) Delete(ctx context.Context, id int64) erro
 	return err
 }
 
-func (r *scheduledTestPlanRepository) UpdateAfterRun(ctx context.Context, id int64, lastRunAt time.Time, nextRunAt time.Time) error {
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE scheduled_test_plans SET last_run_at = $2, next_run_at = $3, updated_at = NOW() WHERE id = $1
-	`, id, lastRunAt, nextRunAt)
-	return err
+func (r *scheduledTestPlanRepository) CompleteClaim(ctx context.Context, id int64, leaseUntil time.Time, lastRunAt time.Time, nextRunAt time.Time) (bool, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE scheduled_test_plans
+		SET last_run_at = $3, next_run_at = $4, updated_at = NOW()
+		WHERE id = $1 AND next_run_at = $2
+	`, id, leaseUntil, lastRunAt, nextRunAt)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected == 1, nil
 }
 
 // --- Result Repository ---

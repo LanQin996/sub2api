@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -73,6 +74,10 @@ type SettingService struct {
 
 	autoConcurrencyUpgradeSettingsCache atomic.Value // *cachedAutoConcurrencyUpgradeSettings
 	autoConcurrencyUpgradeSettingsSF    singleflight.Group
+
+	betaPolicySettingsCache atomic.Value // *cachedBetaPolicySettings
+	betaPolicySettingsSF    singleflight.Group
+	betaPolicySettingsMu    sync.Mutex
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）

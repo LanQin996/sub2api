@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick } from 'vue'
+import { computed, ref, onBeforeUnmount, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { extractI18nErrorMessage } from '@/utils/apiError'
@@ -108,17 +108,34 @@ const paymentAmountSymbol = computed(() => currencySymbol(props.currency))
 
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
+let unmountPaymentElement: (() => void) | null = null
+let popupReadyListener: ((event: MessageEvent) => void) | null = null
+let popupReadyTimeout: number | null = null
+let isUnmounted = false
+
+function clearPopupReadyListener() {
+  if (popupReadyListener) {
+    window.removeEventListener('message', popupReadyListener)
+    popupReadyListener = null
+  }
+  if (popupReadyTimeout !== null) {
+    window.clearTimeout(popupReadyTimeout)
+    popupReadyTimeout = null
+  }
+}
 
 onMounted(async () => {
   try {
     const { loadStripe } = await import('@stripe/stripe-js')
+    if (isUnmounted) return
     const stripe = await loadStripe(props.publishableKey)
+    if (isUnmounted) return
     if (!stripe) { initError.value = t('payment.stripeLoadFailed'); return }
 
     stripeInstance = stripe
     loading.value = false
     await nextTick()
-    if (!stripeMount.value) return
+    if (isUnmounted || !stripeMount.value) return
 
     const isDark = document.documentElement.classList.contains('dark')
     const elements = stripe.elements({
@@ -131,14 +148,17 @@ onMounted(async () => {
       paymentMethodOrder: ['alipay', 'wechat_pay', 'card', 'link'],
     } as Record<string, unknown>)
     paymentElement.mount(stripeMount.value)
+    unmountPaymentElement = () => paymentElement.unmount()
     paymentElement.on('ready', () => { ready.value = true })
     paymentElement.on('change', (event: { value: { type: string } }) => {
       selectedType.value = event.value.type
     })
   } catch (err: unknown) {
-    initError.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.stripeLoadFailed'))
+    if (!isUnmounted) {
+      initError.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.stripeLoadFailed'))
+    }
   } finally {
-    loading.value = false
+    if (!isUnmounted) loading.value = false
   }
 })
 
@@ -157,16 +177,20 @@ async function handlePay() {
     }).href
     const popup = window.open(popupUrl, 'paymentPopup', getPaymentPopupFeatures())
 
-    const onReady = (event: MessageEvent) => {
-      if (event.source !== popup || event.data?.type !== 'STRIPE_POPUP_READY') return
-      window.removeEventListener('message', onReady)
-      popup?.postMessage({
-        type: 'STRIPE_POPUP_INIT',
-        clientSecret: props.clientSecret,
-        publishableKey: props.publishableKey,
-      }, window.location.origin)
+    clearPopupReadyListener()
+    if (popup) {
+      popupReadyListener = (event: MessageEvent) => {
+        if (event.source !== popup || event.data?.type !== 'STRIPE_POPUP_READY') return
+        clearPopupReadyListener()
+        popup.postMessage({
+          type: 'STRIPE_POPUP_INIT',
+          clientSecret: props.clientSecret,
+          publishableKey: props.publishableKey,
+        }, window.location.origin)
+      }
+      window.addEventListener('message', popupReadyListener)
+      popupReadyTimeout = window.setTimeout(clearPopupReadyListener, 30_000)
     }
-    window.addEventListener('message', onReady)
 
     emit('redirect', props.orderId, popupUrl)
     return
@@ -195,6 +219,13 @@ async function handlePay() {
     submitting.value = false
   }
 }
+
+onBeforeUnmount(() => {
+  isUnmounted = true
+  clearPopupReadyListener()
+  unmountPaymentElement?.()
+  unmountPaymentElement = null
+})
 
 async function handleCancel() {
   if (!props.orderId || cancelling.value) return

@@ -149,8 +149,8 @@ gateway:
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
-  # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
-  # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
+  # OpenAI/Codex upstream response header timeout (seconds, 0=inherit generic timeout)
+  # OpenAI/Codex 等待上游响应头超时时间（秒，0=沿用通用超时）
   openai_response_header_timeout: 0
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
@@ -710,7 +710,7 @@ dashboard_aggregation:
   enabled: true
   # Refresh interval (seconds)
   # 刷新间隔（秒）
-  interval_seconds: 60
+  interval_seconds: 600
   # Lookback window (seconds) for late-arriving data
   # 回看窗口（秒），处理迟到数据
   lookback_seconds: 120
@@ -722,7 +722,7 @@ dashboard_aggregation:
   backfill_max_days: 31
   # Recompute recent N days on startup
   # 启动时重算最近 N 天
-  recompute_days: 2
+  recompute_days: 0
   # Retention windows (days)
   # 保留窗口（天）
   retention:

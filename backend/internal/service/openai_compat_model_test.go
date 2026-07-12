@@ -1909,5 +1909,6 @@ func TestForwardAsAnthropic_UpstreamRequestIgnoresClientCancel(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
-	require.NoError(t, upstream.lastReq.Context().Err())
+	require.NoError(t, upstream.contextErrAtDo, "detached context must survive client cancellation while dispatched")
+	require.ErrorIs(t, upstream.lastReq.Context().Err(), context.Canceled, "completed upstream context must be released")
 }

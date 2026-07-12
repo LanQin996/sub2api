@@ -3,10 +3,12 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"io/fs"
 	"testing"
 	"testing/fstest"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	migrationfs "github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,6 +48,16 @@ func TestValidateMigrationExecutionMode(t *testing.T) {
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a);
 DROP INDEX CONCURRENTLY IF EXISTS idx_b;
 `)
+		require.True(t, nonTx)
+		require.NoError(t, err)
+	})
+
+	t.Run("订阅到期提醒索引使用非事务迁移", func(t *testing.T) {
+		const filename = "174_subscription_expiry_reminder_index_notx.sql"
+		body, err := fs.ReadFile(migrationfs.FS, filename)
+		require.NoError(t, err)
+
+		nonTx, err := validateMigrationExecutionMode(filename, string(body))
 		require.True(t, nonTx)
 		require.NoError(t, err)
 	})

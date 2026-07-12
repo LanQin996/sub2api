@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -258,7 +257,7 @@ func (s *OpenAIGatewayService) readUpstreamErrorBody(resp *http.Response) []byte
 	if s != nil {
 		cfg = s.cfg
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, openAIUpstreamErrorBodyReadLimitForConfig(cfg)))
+	body, _ := readUpstreamResponseBodyAtMostWithTimeout(resp.Body, openAIUpstreamErrorBodyReadLimitForConfig(cfg), defaultUpstreamResponseBodyReadTimeout)
 	return body
 }
 

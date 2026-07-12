@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -49,10 +50,15 @@ type SubscriptionService struct {
 	entClient           *dbent.Client
 
 	// L1 缓存：加速中间件热路径的订阅查询
-	subCacheL1     *ristretto.Cache
-	subCacheGroup  singleflight.Group
-	subCacheTTL    time.Duration
-	subCacheJitter int // 抖动百分比
+	subCacheL1                *ristretto.Cache
+	subCacheGroup             singleflight.Group
+	subCacheTTL               time.Duration
+	subCacheJitter            int // 抖动百分比
+	subCacheLifecycleMu       sync.RWMutex
+	subCacheSubscriberCancel  context.CancelFunc
+	subCacheSubscriberStarted bool
+	subCacheStopped           bool
+	stopOnce                  sync.Once
 
 	maintenanceQueue *SubscriptionMaintenanceQueue
 }
@@ -82,14 +88,29 @@ func (s *SubscriptionService) initMaintenanceQueue(cfg *config.Config) {
 	s.maintenanceQueue = NewSubscriptionMaintenanceQueue(mc.WorkerCount, mc.QueueSize)
 }
 
-// Stop stops the maintenance worker pool.
+// Stop stops cache invalidation, Ristretto workers, and the maintenance pool.
 func (s *SubscriptionService) Stop() {
 	if s == nil {
 		return
 	}
-	if s.maintenanceQueue != nil {
-		s.maintenanceQueue.Stop()
-	}
+	s.stopOnce.Do(func() {
+		if s.maintenanceQueue != nil {
+			s.maintenanceQueue.Stop()
+		}
+
+		s.subCacheLifecycleMu.Lock()
+		s.subCacheStopped = true
+		cancel := s.subCacheSubscriberCancel
+		cache := s.subCacheL1
+		s.subCacheLifecycleMu.Unlock()
+
+		if cancel != nil {
+			cancel()
+		}
+		if cache != nil {
+			cache.Close()
+		}
+	})
 }
 
 // initSubCache 初始化订阅 L1 缓存
@@ -160,12 +181,37 @@ func (s *SubscriptionService) invalidateSubCacheKeySync(key string) {
 
 // StartSubCacheInvalidationSubscriber 启动跨实例订阅 L1 缓存失效订阅。
 func (s *SubscriptionService) StartSubCacheInvalidationSubscriber(ctx context.Context) {
-	if s.billingCacheService == nil || s.subCacheL1 == nil {
+	if s == nil {
 		return
 	}
-	if err := s.billingCacheService.SubscribeSubscriptionCacheInvalidation(ctx, func(cacheKey string) {
+	s.subCacheLifecycleMu.Lock()
+	if s.billingCacheService == nil || s.subCacheL1 == nil || s.subCacheStopped || s.subCacheSubscriberStarted {
+		s.subCacheLifecycleMu.Unlock()
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	subscriberCtx, cancel := context.WithCancel(ctx)
+	s.subCacheSubscriberCancel = cancel
+	s.subCacheSubscriberStarted = true
+	s.subCacheLifecycleMu.Unlock()
+
+	if err := s.billingCacheService.SubscribeSubscriptionCacheInvalidation(subscriberCtx, func(cacheKey string) {
+		s.subCacheLifecycleMu.RLock()
+		defer s.subCacheLifecycleMu.RUnlock()
+		if s.subCacheStopped {
+			return
+		}
 		s.invalidateSubCacheKeySync(cacheKey)
 	}); err != nil {
+		cancel()
+		s.subCacheLifecycleMu.Lock()
+		if !s.subCacheStopped {
+			s.subCacheSubscriberCancel = nil
+			s.subCacheSubscriberStarted = false
+		}
+		s.subCacheLifecycleMu.Unlock()
 		log.Printf("Warning: failed to start subscription cache invalidation subscriber: %v", err)
 	}
 }

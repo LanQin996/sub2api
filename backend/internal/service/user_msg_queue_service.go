@@ -38,11 +38,15 @@ type QueueLockResult struct {
 // UserMessageQueueService 用户消息串行队列服务
 // 对真实用户消息实施账号级串行化 + RPM 自适应延迟
 type UserMessageQueueService struct {
-	cache    UserMsgQueueCache
-	rpmCache RPMCache
-	cfg      *config.UserMessageQueueConfig
-	stopCh   chan struct{} // graceful shutdown
-	stopOnce sync.Once     // 确保 Stop() 并发安全
+	cache         UserMsgQueueCache
+	rpmCache      RPMCache
+	cfg           *config.UserMessageQueueConfig
+	startOnce     sync.Once
+	stopOnce      sync.Once // 确保 Stop() 并发安全
+	workerMu      sync.Mutex
+	workerCancel  context.CancelFunc
+	workerWG      sync.WaitGroup
+	workerStopped bool
 }
 
 // NewUserMessageQueueService 创建用户消息串行队列服务
@@ -51,7 +55,6 @@ func NewUserMessageQueueService(cache UserMsgQueueCache, rpmCache RPMCache, cfg 
 		cache:    cache,
 		rpmCache: rpmCache,
 		cfg:      cfg,
-		stopCh:   make(chan struct{}),
 	}
 }
 
@@ -251,43 +254,66 @@ func (s *UserMessageQueueService) StartCleanupWorker(interval time.Duration) {
 		return
 	}
 
-	runCleanup := func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		// 每轮限制处理数量，避免清理任务在大量过期候选时长时间占用 Redis。
-		cleaned, err := s.cache.ReconcileExpiredLockCandidates(ctx, 1000)
-		if err != nil {
-			logger.LegacyPrintf("service.umq", "Cleanup reconcile failed: %v", err)
+	s.startOnce.Do(func() {
+		s.workerMu.Lock()
+		if s.workerStopped {
+			s.workerMu.Unlock()
 			return
 		}
+		workerCtx, cancel := context.WithCancel(context.Background())
+		s.workerCancel = cancel
+		s.workerWG.Add(1)
+		s.workerMu.Unlock()
 
-		if cleaned > 0 {
-			logger.LegacyPrintf("service.umq", "Cleanup completed: released %d orphaned locks", cleaned)
-		}
-	}
+		runCleanup := func() {
+			ctx, cleanupCancel := context.WithTimeout(workerCtx, 10*time.Second)
+			defer cleanupCancel()
 
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-s.stopCh:
+			// 每轮限制处理数量，避免清理任务在大量过期候选时长时间占用 Redis。
+			cleaned, err := s.cache.ReconcileExpiredLockCandidates(ctx, 1000)
+			if err != nil {
+				if workerCtx.Err() == nil {
+					logger.LegacyPrintf("service.umq", "Cleanup reconcile failed: %v", err)
+				}
 				return
-			case <-ticker.C:
-				runCleanup()
+			}
+
+			if cleaned > 0 {
+				logger.LegacyPrintf("service.umq", "Cleanup completed: released %d orphaned locks", cleaned)
 			}
 		}
-	}()
+
+		go func() {
+			defer s.workerWG.Done()
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-workerCtx.Done():
+					return
+				case <-ticker.C:
+					runCleanup()
+				}
+			}
+		}()
+	})
 }
 
 // Stop 停止后台 cleanup worker
 func (s *UserMessageQueueService) Stop() {
-	if s != nil && s.stopCh != nil {
-		s.stopOnce.Do(func() {
-			close(s.stopCh)
-		})
+	if s == nil {
+		return
 	}
+	s.stopOnce.Do(func() {
+		s.workerMu.Lock()
+		s.workerStopped = true
+		cancel := s.workerCancel
+		s.workerMu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		s.workerWG.Wait()
+	})
 }
 
 // applyJitter 对延迟值施加 ±jitterPct 的随机抖动

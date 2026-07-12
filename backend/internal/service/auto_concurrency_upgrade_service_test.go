@@ -67,6 +67,47 @@ func TestAutoConcurrencyUpgradeServiceScheduleCooldown(t *testing.T) {
 	require.True(t, svc.shouldSchedule(43, now))
 }
 
+func TestAutoConcurrencyUpgradeServiceDisabledDoesNotTrackOrSpawn(t *testing.T) {
+	settingRepo := &autoConcurrencyUpgradeSettingRepoStub{values: map[string]string{
+		SettingKeyAutoConcurrencyUpgradeEnabled:        "false",
+		SettingKeyAutoConcurrencyUpgradeSpendThreshold: "10",
+		SettingKeyAutoConcurrencyUpgradeStep:           "2",
+		SettingKeyAutoConcurrencyUpgradeMax:            "20",
+	}}
+	usageRepo := &autoConcurrencyUpgradeUsageRepoStub{sum: 100}
+	userRepo := &autoConcurrencyUpgradeUserRepoStub{user: &User{ID: 42, Concurrency: 5}}
+	svc := NewAutoConcurrencyUpgradeService(userRepo, usageRepo, NewSettingService(settingRepo, &config.Config{}), nil)
+
+	svc.ScheduleCheckAfterUsageForUser(context.Background(), userRepo.user)
+
+	svc.mu.Lock()
+	require.Empty(t, svc.nextCheckAtByUser)
+	require.Empty(t, svc.inFlightByUser)
+	svc.mu.Unlock()
+	require.Zero(t, usageRepo.sumCalls)
+	require.Equal(t, 1, settingRepo.getMultipleCalls)
+}
+
+func TestAutoConcurrencyUpgradeServiceKnownMaxDoesNotTrackOrSpawn(t *testing.T) {
+	settingRepo := &autoConcurrencyUpgradeSettingRepoStub{values: map[string]string{
+		SettingKeyAutoConcurrencyUpgradeEnabled:        "true",
+		SettingKeyAutoConcurrencyUpgradeSpendThreshold: "10",
+		SettingKeyAutoConcurrencyUpgradeStep:           "2",
+		SettingKeyAutoConcurrencyUpgradeMax:            "20",
+	}}
+	usageRepo := &autoConcurrencyUpgradeUsageRepoStub{sum: 100}
+	userRepo := &autoConcurrencyUpgradeUserRepoStub{user: &User{ID: 42, Concurrency: 20}}
+	svc := NewAutoConcurrencyUpgradeService(userRepo, usageRepo, NewSettingService(settingRepo, &config.Config{}), nil)
+
+	svc.ScheduleCheckAfterUsageForUser(context.Background(), userRepo.user)
+
+	svc.mu.Lock()
+	require.Empty(t, svc.nextCheckAtByUser)
+	require.Empty(t, svc.inFlightByUser)
+	svc.mu.Unlock()
+	require.Zero(t, usageRepo.sumCalls)
+}
+
 func TestAutoConcurrencyUpgradeServiceSkipsSpendSumWhenKnownConcurrencyAtMax(t *testing.T) {
 	settingRepo := &autoConcurrencyUpgradeSettingRepoStub{values: map[string]string{
 		SettingKeyAutoConcurrencyUpgradeEnabled:        "true",

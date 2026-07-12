@@ -63,6 +63,19 @@ func (s *AutoConcurrencyUpgradeService) ScheduleCheckAfterUsageForUser(ctx conte
 }
 
 func (s *AutoConcurrencyUpgradeService) scheduleCheckAfterUsage(ctx context.Context, userID int64, knownConcurrency int) {
+	if s == nil || s.userRepo == nil || s.usageRepo == nil || s.settingService == nil || userID <= 0 {
+		return
+	}
+	settings, err := s.settingService.GetAutoConcurrencyUpgradeSettings(ctx)
+	if err != nil {
+		slog.Warn("auto concurrency upgrade: load settings before schedule failed", "user_id", userID, "error", err)
+		return
+	}
+	// The feature is disabled by default. Check the cached global setting before
+	// touching per-user cooldown state or creating background work.
+	if !settings.Enabled || knownConcurrency >= settings.MaxConcurrency {
+		return
+	}
 	if !s.shouldSchedule(userID, time.Now()) {
 		return
 	}

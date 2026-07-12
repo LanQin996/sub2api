@@ -109,23 +109,130 @@ type antigravityUsageCache struct {
 }
 
 const (
-	apiCacheTTL             = 3 * time.Minute
-	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
-	antigravityErrorTTL     = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
-	apiQueryMaxJitter       = 800 * time.Millisecond // 用量查询最大随机延迟
-	windowStatsCacheTTL     = 1 * time.Minute
-	openAIProbeCacheTTL     = 10 * time.Minute
-	openAICodexProbeVersion = "0.144.1"
+	apiCacheTTL                   = 3 * time.Minute
+	apiErrorCacheTTL              = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
+	antigravityErrorTTL           = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
+	apiQueryMaxJitter             = 800 * time.Millisecond // 用量查询最大随机延迟
+	windowStatsCacheTTL           = 1 * time.Minute
+	openAIProbeCacheTTL           = 10 * time.Minute
+	openAICodexProbeVersion       = "0.144.1"
+	accountUsageCacheMaxEntries   = 4096
+	accountUsageCacheCleanupBatch = 16
 )
+
+type accountUsageCacheEntry struct {
+	value     any
+	expiresAt time.Time
+}
+
+type boundedAccountUsageCache struct {
+	mu         sync.RWMutex
+	items      map[int64]accountUsageCacheEntry
+	maxEntries int
+}
+
+func (c *boundedAccountUsageCache) Load(key int64) (any, bool) {
+	if c == nil {
+		return nil, false
+	}
+	return c.loadAt(key, time.Now())
+}
+
+func (c *boundedAccountUsageCache) loadAt(key int64, now time.Time) (any, bool) {
+	c.mu.RLock()
+	item, ok := c.items[key]
+	if !ok {
+		c.mu.RUnlock()
+		return nil, false
+	}
+	if item.expiresAt.IsZero() || now.Before(item.expiresAt) {
+		c.mu.RUnlock()
+		return item.value, true
+	}
+	c.mu.RUnlock()
+
+	// 只有过期命中才升级为写锁；升级期间并发 Store 可能替换条目，因此必须重新读取。
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	item, ok = c.items[key]
+	if !ok {
+		return nil, false
+	}
+	if item.expiresAt.IsZero() || now.Before(item.expiresAt) {
+		return item.value, true
+	}
+	delete(c.items, key)
+	return nil, false
+}
+
+func (c *boundedAccountUsageCache) Store(key int64, value any, ttl time.Duration) {
+	if c == nil {
+		return
+	}
+	c.storeAt(key, value, ttl, time.Now())
+}
+
+func (c *boundedAccountUsageCache) storeAt(key int64, value any, ttl time.Duration, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ttl <= 0 {
+		delete(c.items, key)
+		return
+	}
+	if c.items == nil {
+		c.items = make(map[int64]accountUsageCacheEntry)
+	}
+	c.removeExpiredLocked(now, accountUsageCacheCleanupBatch)
+	limit := c.maxEntries
+	if limit <= 0 {
+		limit = accountUsageCacheMaxEntries
+	}
+	if _, exists := c.items[key]; !exists {
+		if len(c.items) >= limit {
+			// 仅在容量边界执行完整扫描，普通 Store 仍保持固定清理开销；
+			// 缓存满时优先清理过期项，避免随机淘汰仍有效的条目。
+			c.removeExpiredLocked(now, 0)
+		}
+		for len(c.items) >= limit {
+			for victim := range c.items {
+				delete(c.items, victim)
+				break
+			}
+		}
+	}
+	c.items[key] = accountUsageCacheEntry{value: value, expiresAt: now.Add(ttl)}
+}
+
+func (c *boundedAccountUsageCache) Len() int {
+	if c == nil {
+		return 0
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.items)
+}
+
+func (c *boundedAccountUsageCache) removeExpiredLocked(now time.Time, limit int) {
+	scanned := 0
+	for key, item := range c.items {
+		if !item.expiresAt.IsZero() && !now.Before(item.expiresAt) {
+			delete(c.items, key)
+		}
+		scanned++
+		if limit > 0 && scanned >= limit {
+			return
+		}
+	}
+}
 
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
-	apiCache          sync.Map           // accountID -> *apiUsageCache
-	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
-	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
-	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
-	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
-	openAIProbeCache  sync.Map           // accountID -> time.Time
+	apiCache          boundedAccountUsageCache // accountID -> *apiUsageCache
+	windowStatsCache  boundedAccountUsageCache // accountID -> *windowStatsCache
+	antigravityCache  boundedAccountUsageCache // accountID -> *antigravityUsageCache
+	apiFlight         singleflight.Group       // 防止同一账号的并发请求击穿缓存（Anthropic）
+	antigravityFlight singleflight.Group       // 防止同一 Antigravity 账号的并发请求击穿缓存
+	openAIProbeCache  boundedAccountUsageCache // accountID -> time.Time
 }
 
 // NewUsageCache 创建 UsageCache 实例
@@ -418,14 +525,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 					s.cache.apiCache.Store(accountID, &apiUsageCache{
 						err:       fetchErr,
 						timestamp: time.Now(),
-					})
+					}, apiErrorCacheTTL)
 					return nil, fetchErr
 				}
 				// 缓存成功响应
 				s.cache.apiCache.Store(accountID, &apiUsageCache{
 					response:  resp,
 					timestamp: time.Now(),
-				})
+				}, apiCacheTTL)
 				return resp, nil
 			})
 			if flightErr != nil {
@@ -678,7 +785,7 @@ func (s *AccountUsageService) shouldProbeOpenAICodexSnapshot(accountID int64, no
 			}
 		}
 	}
-	s.cache.openAIProbeCache.Store(accountID, now)
+	s.cache.openAIProbeCache.Store(accountID, now, openAIProbeCacheTTL)
 	return true
 }
 
@@ -912,7 +1019,7 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 			s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
 				usageInfo: degraded,
 				timestamp: time.Now(),
-			})
+			}, antigravityCacheTTL(degraded))
 			return degraded, nil
 		}
 
@@ -920,7 +1027,7 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 		s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
 			usageInfo: fetchResult.UsageInfo,
 			timestamp: time.Now(),
-		})
+		}, antigravityCacheTTL(fetchResult.UsageInfo))
 		return fetchResult.UsageInfo, nil
 	})
 
@@ -1087,7 +1194,7 @@ func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Accou
 		s.cache.windowStatsCache.Store(account.ID, &windowStatsCache{
 			stats:     windowStats,
 			timestamp: time.Now(),
-		})
+		}, windowStatsCacheTTL)
 	}
 
 	// 为 FiveHour 添加 WindowStats（5h 窗口统计）

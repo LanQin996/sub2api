@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ func (c *slotCleanupCache) CleanupExpiredAccountSlotKeys(context.Context) error 
 func TestStartSlotCleanupWorker_UsesCacheWideCleanupWithoutAccountRepo(t *testing.T) {
 	cache := &slotCleanupCache{}
 	svc := NewConcurrencyService(cache)
+	defer svc.Stop()
 
 	svc.StartSlotCleanupWorker(nil, time.Hour)
 
@@ -36,4 +38,47 @@ func TestStartSlotCleanupWorker_UsesCacheWideCleanupWithoutAccountRepo(t *testin
 		case <-ticker.C:
 		}
 	}
+}
+
+type blockingSlotCleanupCache struct {
+	ConcurrencyCache
+	started  chan struct{}
+	canceled atomic.Bool
+	once     sync.Once
+}
+
+func (c *blockingSlotCleanupCache) CleanupExpiredAccountSlotKeys(ctx context.Context) error {
+	c.once.Do(func() { close(c.started) })
+	<-ctx.Done()
+	c.canceled.Store(true)
+	return ctx.Err()
+}
+
+func TestConcurrencyService_StopCancelsAndWaitsForSlotCleanup(t *testing.T) {
+	cache := &blockingSlotCleanupCache{started: make(chan struct{})}
+	svc := NewConcurrencyService(cache)
+	svc.StartSlotCleanupWorker(nil, time.Hour)
+
+	select {
+	case <-cache.started:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup worker did not start")
+	}
+
+	stopped := make(chan struct{})
+	go func() {
+		svc.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("Stop did not cancel the active cleanup call")
+	}
+	if !cache.canceled.Load() {
+		t.Fatal("cleanup context was not canceled")
+	}
+
+	// Stop is intentionally idempotent because cleanup may be invoked defensively.
+	svc.Stop()
 }

@@ -295,7 +295,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Select from '@/components/common/Select.vue'
@@ -347,6 +347,8 @@ const STORAGE_IMAGE_BACKGROUND = 'playground:image-background'
 const STORAGE_IMAGE_OUTPUT_FORMAT = 'playground:image-output-format'
 const STORAGE_CHAT_MESSAGES = 'playground:chat-messages'
 const STORAGE_IMAGE_HISTORY = 'playground:image-history'
+const MODEL_DISCOVERY_CONCURRENCY = 8
+const STORAGE_WRITE_DEBOUNCE_MS = 500
 
 function defaultMessages(): ChatMessage[] {
   return [
@@ -398,6 +400,54 @@ const imageLoading = ref(false)
 const errorMessage = ref('')
 const chatScrollRef = ref<HTMLElement | null>(null)
 const imageTimers = new Map<string, number>()
+const requestControllers = new Set<AbortController>()
+let chatStorageTimer: number | null = null
+let imageStorageTimer: number | null = null
+let isUnmounting = false
+
+function scheduleChatPersistence() {
+  if (isUnmounting) return
+  if (chatStorageTimer !== null) window.clearTimeout(chatStorageTimer)
+  chatStorageTimer = window.setTimeout(() => {
+    chatStorageTimer = null
+    localStorage.setItem(STORAGE_CHAT_MESSAGES, JSON.stringify(messages.value))
+  }, STORAGE_WRITE_DEBOUNCE_MS)
+}
+
+function scheduleImagePersistence() {
+  if (isUnmounting) return
+  if (imageStorageTimer !== null) window.clearTimeout(imageStorageTimer)
+  imageStorageTimer = window.setTimeout(() => {
+    imageStorageTimer = null
+    const persisted = images.value.filter((image) => image.status !== 'pending')
+    localStorage.setItem(STORAGE_IMAGE_HISTORY, JSON.stringify(persisted))
+  }, STORAGE_WRITE_DEBOUNCE_MS)
+}
+
+function flushPendingPersistence() {
+  if (chatStorageTimer !== null) {
+    window.clearTimeout(chatStorageTimer)
+    chatStorageTimer = null
+    localStorage.setItem(STORAGE_CHAT_MESSAGES, JSON.stringify(messages.value))
+  }
+  if (imageStorageTimer !== null) {
+    window.clearTimeout(imageStorageTimer)
+    imageStorageTimer = null
+    const persisted = images.value.filter((image) => image.status !== 'pending')
+    localStorage.setItem(STORAGE_IMAGE_HISTORY, JSON.stringify(persisted))
+  }
+}
+
+async function withRequestController<T>(request: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  if (isUnmounting) throw new DOMException('Component unmounted', 'AbortError')
+  const controller = new AbortController()
+  requestControllers.add(controller)
+  try {
+    return await request(controller.signal)
+  } finally {
+    requestControllers.delete(controller)
+  }
+}
 
 const imageCountOptions: SelectOption[] = [
   { value: '1', label: '1' },
@@ -642,7 +692,13 @@ async function loadKeys() {
   loadingKeys.value = true
   errorMessage.value = ''
   try {
-    const data = await keysAPI.list(1, 100, { status: 'active', sort_by: 'created_at', sort_order: 'desc' })
+    const data = await withRequestController((signal) => keysAPI.list(
+      1,
+      100,
+      { status: 'active', sort_by: 'created_at', sort_order: 'desc' },
+      { signal }
+    ))
+    if (isUnmounting) return
     apiKeys.value = data.items
     if (!selectedChatKey.value && apiKeys.value.length > 0) {
       selectedChatKeyId.value = String(apiKeys.value[0].id)
@@ -651,35 +707,42 @@ async function loadKeys() {
       selectedImageKeyId.value = String(apiKeys.value[0].id)
     }
   } catch (error) {
-    errorMessage.value = (error as { message?: string }).message || ui.loadKeyFailed
+    if (!isUnmounting) {
+      errorMessage.value = (error as { message?: string }).message || ui.loadKeyFailed
+    }
   } finally {
     loadingKeys.value = false
   }
 }
 
 async function fetchModelsForApiKey(apiKey: string): Promise<string[]> {
-  const response = await fetch(`${normalizeEndpoint(endpointBase.value)}/models`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`
+  return withRequestController(async (signal) => {
+    const response = await fetch(`${normalizeEndpoint(endpointBase.value)}/models`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`
+      },
+      signal
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`)
     }
+    return Array.isArray(data?.data)
+      ? uniqueModels(data.data.map((item: any) => String(item?.id || '').trim()))
+      : []
   })
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    throw new Error(data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`)
-  }
-  return Array.isArray(data?.data)
-    ? uniqueModels(data.data.map((item: any) => String(item?.id || '').trim()))
-    : []
 }
 
 async function loadModelsForKey(key: ApiKey) {
   const keyId = String(key.id)
   try {
     const models = await fetchModelsForApiKey(key.key)
+    if (isUnmounting) return
     keyModelMap.value = { ...keyModelMap.value, [keyId]: models }
     keyModelsLoaded.value = { ...keyModelsLoaded.value, [keyId]: true }
   } catch {
+    if (isUnmounting) return
     keyModelMap.value = { ...keyModelMap.value, [keyId]: [] }
     keyModelsLoaded.value = { ...keyModelsLoaded.value, [keyId]: false }
   }
@@ -688,27 +751,38 @@ async function loadModelsForKey(key: ApiKey) {
 async function loadAllKeyModels() {
   loadingModels.value = true
   try {
-    await Promise.all(apiKeys.value.map((key) => loadModelsForKey(key)))
+    const keys = apiKeys.value
+    let nextIndex = 0
+    const workerCount = Math.min(MODEL_DISCOVERY_CONCURRENCY, keys.length)
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+      while (!isUnmounting && nextIndex < keys.length) {
+        const key = keys[nextIndex++]
+        await loadModelsForKey(key)
+      }
+    }))
   } finally {
     loadingModels.value = false
   }
 }
 
 async function callOpenAICompat(path: string, payload: Record<string, unknown>, apiKey: string) {
-  const response = await fetch(`${normalizeEndpoint(endpointBase.value)}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
+  return withRequestController(async (signal) => {
+    const response = await fetch(`${normalizeEndpoint(endpointBase.value)}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const message = data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`
+      throw new Error(message)
+    }
+    return data
   })
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    const message = data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`
-    throw new Error(message)
-  }
-  return data
 }
 
 async function callOpenAICompatStream(
@@ -717,52 +791,66 @@ async function callOpenAICompatStream(
   apiKey: string,
   onDelta: (content: string) => void,
 ) {
-  const response = await fetch(`${normalizeEndpoint(endpointBase.value)}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  })
+  return withRequestController(async (signal) => {
+    const response = await fetch(`${normalizeEndpoint(endpointBase.value)}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal
+    })
 
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}))
-    const message = data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`
-    throw new Error(message)
-  }
-
-  if (!response.body) {
-    throw new Error(ui.streamUnavailable)
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split(/\r?\n/)
-    buffer = lines.pop() || ''
-
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || !trimmed.startsWith('data:')) continue
-      const data = trimmed.slice(5).trim()
-      if (data === '[DONE]') return
-      try {
-        const parsed = JSON.parse(data)
-        const delta = parsed?.choices?.[0]?.delta?.content
-          ?? parsed?.choices?.[0]?.message?.content
-          ?? ''
-        if (delta) onDelta(delta)
-      } catch {
-        // Ignore malformed stream keepalive chunks.
-      }
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      const message = data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`
+      throw new Error(message)
     }
-  }
+
+    if (!response.body) {
+      throw new Error(ui.streamUnavailable)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let reachedEOF = false
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          reachedEOF = true
+          break
+        }
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split(/\r?\n/)
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed || !trimmed.startsWith('data:')) continue
+          const data = trimmed.slice(5).trim()
+          if (data === '[DONE]') return
+          try {
+            const parsed = JSON.parse(data)
+            const delta = parsed?.choices?.[0]?.delta?.content
+              ?? parsed?.choices?.[0]?.message?.content
+              ?? ''
+            if (delta) onDelta(delta)
+          } catch {
+            // Ignore malformed stream keepalive chunks.
+          }
+        }
+      }
+    } finally {
+      if (!reachedEOF) {
+        await reader.cancel().catch(() => undefined)
+      }
+      reader.releaseLock()
+    }
+  })
 }
 
 async function callOpenAICompatForm(path: string, payload: Record<string, unknown>, files: File[], apiKey: string) {
@@ -770,19 +858,22 @@ async function callOpenAICompatForm(path: string, payload: Record<string, unknow
   Object.entries(payload).forEach(([key, value]) => appendImageFormValue(formData, key, value))
   files.forEach((file) => formData.append('image', file))
 
-  const response = await fetch(`${normalizeEndpoint(endpointBase.value)}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: formData
+  return withRequestController(async (signal) => {
+    const response = await fetch(`${normalizeEndpoint(endpointBase.value)}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: formData,
+      signal
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const message = data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`
+      throw new Error(message)
+    }
+    return data
   })
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    const message = data?.error?.message || data?.message || `${ui.requestFailed} (${response.status})`
-    throw new Error(message)
-  }
-  return data
 }
 
 async function sendChat() {
@@ -793,6 +884,7 @@ async function sendChat() {
   messages.value.push({ id: crypto.randomUUID(), role: 'user', content })
   const assistantMessageId = crypto.randomUUID()
   messages.value.push({ id: assistantMessageId, role: 'assistant', content: '' })
+  scheduleChatPersistence()
   chatLoading.value = true
   await scrollChatToBottom()
   try {
@@ -816,6 +908,7 @@ function appendChatDelta(messageId: string, delta: string) {
   messages.value = messages.value.map((message) =>
     message.id === messageId ? { ...message, content: `${message.content}${delta}` } : message
   )
+  scheduleChatPersistence()
 }
 
 async function generateImage() {
@@ -858,10 +951,12 @@ async function generateImage() {
 
 function updateImageTask(taskId: string, updates: Partial<GeneratedImage>) {
   images.value = images.value.map((image) => image.id === taskId ? { ...image, ...updates } : image)
+  scheduleImagePersistence()
 }
 
 function replaceImageTask(taskId: string, generated: GeneratedImage[]) {
   images.value = images.value.flatMap((image) => image.id === taskId ? generated : [image])
+  scheduleImagePersistence()
 }
 
 function startImageTimer(taskId: string) {
@@ -881,6 +976,19 @@ function stopImageTimer(taskId: string) {
     imageTimers.delete(taskId)
   }
 }
+
+onBeforeUnmount(() => {
+  isUnmounting = true
+  for (const timer of imageTimers.values()) {
+    window.clearInterval(timer)
+  }
+  imageTimers.clear()
+  for (const controller of requestControllers) {
+    controller.abort()
+  }
+  requestControllers.clear()
+  flushPendingPersistence()
+})
 
 async function scrollChatToBottom() {
   await nextTick()
@@ -913,11 +1021,13 @@ function clearChat() {
     }
   ]
   localStorage.removeItem(STORAGE_CHAT_MESSAGES)
+  scheduleChatPersistence()
 }
 
 function clearImages() {
   images.value = []
   localStorage.removeItem(STORAGE_IMAGE_HISTORY)
+  scheduleImagePersistence()
 }
 
 function ensureSelectedKeysSupportModes() {
@@ -962,24 +1072,11 @@ watch(imageCount, (value) => localStorage.setItem(STORAGE_IMAGE_COUNT, String(va
 watch(imageQuality, (value) => localStorage.setItem(STORAGE_IMAGE_QUALITY, String(value || 'auto')))
 watch(imageBackground, (value) => localStorage.setItem(STORAGE_IMAGE_BACKGROUND, String(value || 'auto')))
 watch(imageOutputFormat, (value) => localStorage.setItem(STORAGE_IMAGE_OUTPUT_FORMAT, String(value || 'png')))
-watch(
-  messages,
-  (value) => {
-    localStorage.setItem(STORAGE_CHAT_MESSAGES, JSON.stringify(value))
-  },
-  { deep: true }
-)
-watch(
-  images,
-  (value) => {
-    const persisted = value.filter((image) => image.status !== 'pending')
-    localStorage.setItem(STORAGE_IMAGE_HISTORY, JSON.stringify(persisted))
-  },
-  { deep: true }
-)
 onMounted(async () => {
   await loadKeys()
+  if (isUnmounting) return
   await loadAllKeyModels()
+  if (isUnmounting) return
   ensureSelectedKeysSupportModes()
 })
 </script>

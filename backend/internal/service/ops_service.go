@@ -7,17 +7,27 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"golang.org/x/sync/singleflight"
 )
 
 var ErrOpsDisabled = infraerrors.NotFound("OPS_DISABLED", "Ops monitoring is disabled")
 
 const (
 	opsMaxStoredErrorBodyBytes = 20 * 1024
+	opsMonitoringCacheTTL      = 2 * time.Second
+	opsMonitoringErrorTTL      = 500 * time.Millisecond
+	opsMonitoringDBTimeout     = 2 * time.Second
 )
+
+type cachedOpsMonitoringEnabled struct {
+	enabled   bool
+	expiresAt int64
+}
 
 // OpsService provides ingestion and query APIs for the Ops monitoring module.
 type OpsService struct {
@@ -46,6 +56,9 @@ type OpsService struct {
 	// UpdateOpsAdvancedSettings 写入新配置后调用，把最新的 quota auto-pause 全局默认阈值
 	// 立即同步到调度热路径读取的内存缓存，避免下次请求才能感知新值。
 	quotaAutoPauseSink func(OpsOpenAIAccountQuotaAutoPauseSettings)
+
+	monitoringEnabledCache atomic.Value // *cachedOpsMonitoringEnabled
+	monitoringEnabledSF    singleflight.Group
 }
 
 // CleanupReloader 由 OpsCleanupService 实现。
@@ -119,21 +132,47 @@ func (s *OpsService) IsMonitoringEnabled(ctx context.Context) bool {
 	if s.settingRepo == nil {
 		return true
 	}
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpsMonitoringEnabled)
-	if err != nil {
-		// Default enabled when key is missing, and fail-open on transient errors
-		// (ops should never block gateway traffic).
-		if errors.Is(err, ErrSettingNotFound) {
-			return true
+	now := time.Now().UnixNano()
+	if cached, _ := s.monitoringEnabledCache.Load().(*cachedOpsMonitoringEnabled); cached != nil && now < cached.expiresAt {
+		return cached.enabled
+	}
+
+	loaded, _, _ := s.monitoringEnabledSF.Do(SettingKeyOpsMonitoringEnabled, func() (any, error) {
+		now := time.Now().UnixNano()
+		if cached, _ := s.monitoringEnabledCache.Load().(*cachedOpsMonitoringEnabled); cached != nil && now < cached.expiresAt {
+			return cached, nil
 		}
-		return true
+
+		base := context.Background()
+		if ctx != nil {
+			base = context.WithoutCancel(ctx)
+		}
+		dbCtx, cancel := context.WithTimeout(base, opsMonitoringDBTimeout)
+		defer cancel()
+
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpsMonitoringEnabled)
+		enabled := true // Fail open: observability must never block gateway traffic.
+		ttl := opsMonitoringCacheTTL
+		if err == nil {
+			switch strings.ToLower(strings.TrimSpace(value)) {
+			case "false", "0", "off", "disabled":
+				enabled = false
+			}
+		} else if !errors.Is(err, ErrSettingNotFound) {
+			ttl = opsMonitoringErrorTTL
+		}
+
+		entry := &cachedOpsMonitoringEnabled{
+			enabled:   enabled,
+			expiresAt: time.Now().Add(ttl).UnixNano(),
+		}
+		s.monitoringEnabledCache.Store(entry)
+		return entry, nil
+	})
+	if cached, ok := loaded.(*cachedOpsMonitoringEnabled); ok && cached != nil {
+		return cached.enabled
 	}
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "false", "0", "off", "disabled":
-		return false
-	default:
-		return true
-	}
+	return true
 }
 
 func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogInput) error {

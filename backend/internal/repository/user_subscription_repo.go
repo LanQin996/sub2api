@@ -18,6 +18,8 @@ type userSubscriptionRepository struct {
 	client *dbent.Client
 }
 
+var _ service.SubscriptionExpiryReminderRepository = (*userSubscriptionRepository)(nil)
+
 func NewUserSubscriptionRepository(client *dbent.Client) service.UserSubscriptionRepository {
 	return &userSubscriptionRepository{client: client}
 }
@@ -319,6 +321,52 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 	}
 
 	return result, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *userSubscriptionRepository) ListActiveExpiringBetween(ctx context.Context, startsAt, endsAt, afterExpiresAt time.Time, afterID int64, limit int) ([]service.UserSubscription, error) {
+	if limit <= 0 {
+		return []service.UserSubscription{}, nil
+	}
+
+	predicates := []predicate.UserSubscription{
+		usersubscription.StatusEQ(service.SubscriptionStatusActive),
+		usersubscription.ExpiresAtGTE(startsAt),
+		usersubscription.ExpiresAtLT(endsAt),
+	}
+	if !afterExpiresAt.IsZero() {
+		predicates = append(predicates, usersubscription.Or(
+			usersubscription.ExpiresAtGT(afterExpiresAt),
+			usersubscription.And(
+				usersubscription.ExpiresAtEQ(afterExpiresAt),
+				usersubscription.IDGT(afterID),
+			),
+		))
+	}
+
+	client := clientFromContext(ctx, r.client)
+	subs, err := client.UserSubscription.Query().
+		Where(predicates...).
+		Select(
+			usersubscription.FieldID,
+			usersubscription.FieldUserID,
+			usersubscription.FieldGroupID,
+			usersubscription.FieldExpiresAt,
+			usersubscription.FieldStatus,
+		).
+		WithUser(func(q *dbent.UserQuery) {
+			q.Select(user.FieldID, user.FieldEmail, user.FieldUsername)
+		}).
+		WithGroup(func(q *dbent.GroupQuery) {
+			q.Select(group.FieldID, group.FieldName)
+		}).
+		Order(dbent.Asc(usersubscription.FieldExpiresAt), dbent.Asc(usersubscription.FieldID)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return userSubscriptionReminderEntitiesToService(subs), nil
 }
 
 func (r *userSubscriptionRepository) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
@@ -660,6 +708,37 @@ func userSubscriptionEntitiesToService(models []*dbent.UserSubscription) []servi
 		if s := userSubscriptionEntityToService(models[i]); s != nil {
 			out = append(out, *s)
 		}
+	}
+	return out
+}
+
+func userSubscriptionReminderEntitiesToService(models []*dbent.UserSubscription) []service.UserSubscription {
+	out := make([]service.UserSubscription, 0, len(models))
+	for _, m := range models {
+		if m == nil {
+			continue
+		}
+		sub := service.UserSubscription{
+			ID:        m.ID,
+			UserID:    m.UserID,
+			GroupID:   m.GroupID,
+			ExpiresAt: m.ExpiresAt,
+			Status:    m.Status,
+		}
+		if m.Edges.User != nil {
+			sub.User = &service.User{
+				ID:       m.Edges.User.ID,
+				Email:    m.Edges.User.Email,
+				Username: m.Edges.User.Username,
+			}
+		}
+		if m.Edges.Group != nil {
+			sub.Group = &service.Group{
+				ID:   m.Edges.Group.ID,
+				Name: m.Edges.Group.Name,
+			}
+		}
+		out = append(out, sub)
 	}
 	return out
 }
