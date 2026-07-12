@@ -97,6 +97,40 @@ vi.mock('@/stores', () => ({
   }),
 }))
 
+const mountView = () =>
+  mount(KeyUsageView, {
+    global: {
+      stubs: {
+        RouterLink: { template: '<a><slot /></a>' },
+        LocaleSwitcher: true,
+        Icon: true,
+      },
+    },
+  })
+
+const installControlledAnimationFrames = () => {
+  let nextFrameId = 1
+  const callbacks = new Map<number, FrameRequestCallback>()
+  const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+    const id = nextFrameId++
+    callbacks.set(id, callback)
+    return id
+  })
+  const cancelFrame = vi.fn((id: number) => {
+    callbacks.delete(id)
+  })
+  const runFrame = (id: number, timestamp = performance.now()) => {
+    const callback = callbacks.get(id)
+    callbacks.delete(id)
+    callback?.(timestamp)
+  }
+
+  vi.stubGlobal('requestAnimationFrame', requestFrame)
+  vi.stubGlobal('cancelAnimationFrame', cancelFrame)
+
+  return { callbacks, requestFrame, cancelFrame, runFrame }
+}
+
 describe('KeyUsageView daily detail', () => {
   beforeEach(() => {
     showInfo.mockReset()
@@ -110,6 +144,7 @@ describe('KeyUsageView daily detail', () => {
       value: vi.fn().mockReturnValue({ matches: false }),
     })
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 0))
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id))
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -162,19 +197,13 @@ describe('KeyUsageView daily detail', () => {
   })
 
   afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
   it('renders daily usage detail rows after a successful query', async () => {
-    const wrapper = mount(KeyUsageView, {
-      global: {
-        stubs: {
-          RouterLink: { template: '<a><slot /></a>' },
-          LocaleSwitcher: true,
-          Icon: true,
-        },
-      },
-    })
+    const wrapper = mountView()
 
     await wrapper.find('input').setValue('sk-test-key')
     await wrapper.find('input').trigger('keydown.enter')
@@ -204,5 +233,76 @@ describe('KeyUsageView daily detail', () => {
     expect(text).toContain('$0.12')
 
     wrapper.unmount()
+  })
+
+  it('重复查询会取消旧动画，卸载会清理 RAF、延迟任务和刷新定时器', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    })
+    const frames = installControlledAnimationFrames()
+    const wrapper = mountView()
+    const input = wrapper.find('input')
+    await input.setValue('sk-test-key')
+
+    await input.trigger('keydown.enter')
+    await flushPromises()
+    await nextTick()
+
+    expect(frames.requestFrame).toHaveBeenCalledTimes(1)
+    const firstFrameId = frames.requestFrame.mock.results[0].value as number
+    const staleFirstFrame = frames.callbacks.get(firstFrameId)
+    expect(staleFirstFrame).toBeTypeOf('function')
+
+    await input.trigger('keydown.enter')
+    await flushPromises()
+    await nextTick()
+
+    expect(frames.cancelFrame).toHaveBeenCalledWith(firstFrameId)
+    expect(frames.requestFrame).toHaveBeenCalledTimes(2)
+    const secondFrameId = frames.requestFrame.mock.results[1].value as number
+
+    // 即使已取消的旧回调被强制执行，也不能启动 timeout 或覆盖新动画句柄。
+    staleFirstFrame?.(performance.now())
+    expect(frames.requestFrame).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(1)
+
+    frames.runFrame(secondFrameId)
+    expect(vi.getTimerCount()).toBe(2)
+
+    // 延迟启动期间再次查询，旧 timeout 必须被取消，只保留页面刷新 interval。
+    await input.trigger('keydown.enter')
+    await flushPromises()
+    await nextTick()
+    expect(vi.getTimerCount()).toBe(1)
+    expect(frames.requestFrame).toHaveBeenCalledTimes(3)
+
+    const thirdFrameId = frames.requestFrame.mock.results[2].value as number
+    frames.runFrame(thirdFrameId)
+    await vi.advanceTimersByTimeAsync(50)
+
+    expect(frames.requestFrame).toHaveBeenCalledTimes(4)
+    const tickFrameId = frames.requestFrame.mock.results[3].value as number
+    expect(frames.callbacks.has(tickFrameId)).toBe(true)
+
+    wrapper.unmount()
+
+    expect(frames.cancelFrame).toHaveBeenCalledWith(tickFrameId)
+    expect(frames.callbacks.size).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('动画已排入 nextTick 后卸载不会再启动 RAF', async () => {
+    const frames = installControlledAnimationFrames()
+    const wrapper = mountView()
+    showSuccess.mockImplementationOnce(() => wrapper.unmount())
+    const input = wrapper.find('input')
+    await input.setValue('sk-test-key')
+    await input.trigger('keydown.enter')
+    await flushPromises()
+    await nextTick()
+
+    expect(showSuccess).toHaveBeenCalledWith('Query successful')
+    expect(frames.requestFrame).not.toHaveBeenCalled()
+    expect(frames.callbacks.size).toBe(0)
   })
 })

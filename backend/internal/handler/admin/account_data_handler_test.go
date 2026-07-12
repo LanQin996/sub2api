@@ -315,4 +315,441 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdProxies, 0)
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+	require.Nil(t, adminSvc.createdAccounts[0].GroupIDs)
+}
+
+func accountOnlyDataImportPayload(groupIDs []int64) map[string]any {
+	return map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":        "acc",
+					"platform":    service.PlatformOpenAI,
+					"type":        service.AccountTypeOAuth,
+					"credentials": map[string]any{"token": "x"},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+		"skip_default_group_bind": true,
+		"group_ids":               groupIDs,
+	}
+}
+
+func TestImportDataBindsSelectedGroups(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+		{ID: 12, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+	}
+	payload := accountOnlyDataImportPayload([]int64{11, 12, 11})
+	data := payload["data"].(map[string]any)
+	accounts := data["accounts"].([]map[string]any)
+	data["accounts"] = append(accounts, map[string]any{
+		"name":        "acc-2",
+		"platform":    service.PlatformOpenAI,
+		"type":        service.AccountTypeOAuth,
+		"credentials": map[string]any{"token": "y"},
+	})
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.createdAccounts, 2)
+	require.Equal(t, []int64{11, 12}, adminSvc.createdAccounts[0].GroupIDs)
+	require.Equal(t, []int64{11, 12}, adminSvc.createdAccounts[1].GroupIDs)
+	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+	require.False(t, adminSvc.createdAccounts[0].SkipMixedChannelCheck)
+	require.True(t, adminSvc.createdAccounts[1].SkipMixedChannelCheck)
+	require.Equal(t, 1, adminSvc.mixedCheckCalls)
+	require.Equal(t, service.PlatformOpenAI, adminSvc.lastMixedCheck.platform)
+	require.Equal(t, []int64{11, 12}, adminSvc.lastMixedCheck.groupIDs)
+}
+
+func TestImportDataBindsMixedSchedulingAntigravityToCompatibleGroups(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Platform: service.PlatformAntigravity, Status: service.StatusActive},
+		{ID: 21, Platform: service.PlatformAnthropic, Status: service.StatusActive},
+		{ID: 31, Platform: service.PlatformGemini, Status: service.StatusActive},
+	}
+	payload := accountOnlyDataImportPayload([]int64{11, 21, 31})
+	payload["data"].(map[string]any)["accounts"] = []map[string]any{
+		{
+			"name":        "mixed",
+			"platform":    service.PlatformAntigravity,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"refresh_token": "mixed-token"},
+			"extra":       map[string]any{"mixed_scheduling": true},
+		},
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.Equal(t, []int64{11, 21, 31}, adminSvc.createdAccounts[0].GroupIDs)
+	require.False(t, adminSvc.createdAccounts[0].SkipMixedChannelCheck)
+	require.Equal(t, 1, adminSvc.mixedCheckCalls)
+	require.Equal(t, service.PlatformAntigravity, adminSvc.lastMixedCheck.platform)
+	require.Equal(t, []int64{11, 21, 31}, adminSvc.lastMixedCheck.groupIDs)
+}
+
+func TestImportDataSeparatesMixedChannelCheckCacheBySchedulingProfile(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Platform: service.PlatformAntigravity, Status: service.StatusActive},
+		{ID: 21, Platform: service.PlatformAnthropic, Status: service.StatusActive},
+	}
+	payload := accountOnlyDataImportPayload([]int64{11, 21})
+	payload["data"].(map[string]any)["accounts"] = []map[string]any{
+		{
+			"name":        "antigravity-only",
+			"platform":    service.PlatformAntigravity,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"refresh_token": "plain-token"},
+		},
+		{
+			"name":        "mixed-1",
+			"platform":    service.PlatformAntigravity,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"refresh_token": "mixed-token-1"},
+			"extra":       map[string]any{"mixed_scheduling": true},
+		},
+		{
+			"name":        "mixed-2",
+			"platform":    service.PlatformAntigravity,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"refresh_token": "mixed-token-2"},
+			"extra":       map[string]any{"mixed_scheduling": true},
+		},
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.createdAccounts, 3)
+	require.Equal(t, []int64{11}, adminSvc.createdAccounts[0].GroupIDs)
+	require.Equal(t, []int64{11, 21}, adminSvc.createdAccounts[1].GroupIDs)
+	require.Equal(t, []int64{11, 21}, adminSvc.createdAccounts[2].GroupIDs)
+	require.False(t, adminSvc.createdAccounts[0].SkipMixedChannelCheck)
+	require.False(t, adminSvc.createdAccounts[1].SkipMixedChannelCheck)
+	require.True(t, adminSvc.createdAccounts[2].SkipMixedChannelCheck)
+	require.Equal(t, 2, adminSvc.mixedCheckCalls)
+}
+
+func TestImportDataNormalizesAccountAndGroupPlatforms(t *testing.T) {
+	tests := []struct {
+		name            string
+		accountPlatform string
+		groupPlatform   string
+		wantPlatform    string
+	}{
+		{
+			name:            "claude account alias",
+			accountPlatform: "  ClAuDe  ",
+			groupPlatform:   " AnThRoPiC ",
+			wantPlatform:    service.PlatformAnthropic,
+		},
+		{
+			name:            "claude group alias",
+			accountPlatform: " AnThRoPiC ",
+			groupPlatform:   "  ClAuDe  ",
+			wantPlatform:    service.PlatformAnthropic,
+		},
+		{
+			name:            "case and whitespace",
+			accountPlatform: "  OpEnAI ",
+			groupPlatform:   " OPENAI  ",
+			wantPlatform:    service.PlatformOpenAI,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router, adminSvc := setupAccountDataRouter()
+			adminSvc.groups = []service.Group{
+				{ID: 11, Platform: tt.groupPlatform, Status: service.StatusActive},
+			}
+			payload := accountOnlyDataImportPayload([]int64{11})
+			accounts := payload["data"].(map[string]any)["accounts"].([]map[string]any)
+			accounts[0]["platform"] = tt.accountPlatform
+			body, err := json.Marshal(payload)
+			require.NoError(t, err)
+
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Len(t, adminSvc.createdAccounts, 1)
+			require.Equal(t, tt.wantPlatform, adminSvc.createdAccounts[0].Platform)
+			require.Equal(t, []int64{11}, adminSvc.createdAccounts[0].GroupIDs)
+			require.Equal(t, tt.wantPlatform, adminSvc.lastMixedCheck.platform)
+		})
+	}
+}
+
+func TestImportDataKeepsPerAccountFailureSemanticsWithSelectedGroups(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+	}
+	payload := accountOnlyDataImportPayload([]int64{11})
+	payload["data"].(map[string]any)["accounts"] = []map[string]any{
+		{
+			"name":        "valid",
+			"platform":    service.PlatformOpenAI,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"token": "valid-token"},
+		},
+		{
+			"name":        "invalid",
+			"platform":    service.PlatformAnthropic,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{},
+		},
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Code int              `json:"code"`
+		Data DataImportResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Zero(t, resp.Code)
+	require.Equal(t, 1, resp.Data.AccountCreated)
+	require.Equal(t, 1, resp.Data.AccountFailed)
+	require.Len(t, resp.Data.Errors, 1)
+	require.Equal(t, "invalid", resp.Data.Errors[0].Name)
+	require.Contains(t, resp.Data.Errors[0].Message, "credentials")
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.Equal(t, "valid", adminSvc.createdAccounts[0].Name)
+}
+
+func TestImportDataRequiresMixedChannelConfirmation(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Platform: service.PlatformAntigravity, Status: service.StatusActive},
+	}
+	adminSvc.checkMixedErr = &service.MixedChannelError{
+		GroupID:         11,
+		GroupName:       "mixed-group",
+		CurrentPlatform: "Antigravity",
+		OtherPlatform:   "Anthropic",
+	}
+	payload := accountOnlyDataImportPayload([]int64{11})
+	accounts := payload["data"].(map[string]any)["accounts"].([]map[string]any)
+	accounts[0]["platform"] = service.PlatformAntigravity
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	var conflictResp struct {
+		Code    int    `json:"code"`
+		Reason  string `json:"reason"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &conflictResp))
+	require.Equal(t, http.StatusConflict, conflictResp.Code)
+	require.Equal(t, "MIXED_CHANNEL_WARNING", conflictResp.Reason)
+	require.Contains(t, conflictResp.Message, "mixed_channel_warning")
+	require.Empty(t, adminSvc.createdAccounts)
+	require.Equal(t, 1, adminSvc.mixedCheckCalls)
+
+	payload["confirm_mixed_channel_risk"] = true
+	body, err = json.Marshal(payload)
+	require.NoError(t, err)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.True(t, adminSvc.createdAccounts[0].SkipMixedChannelCheck)
+	require.Equal(t, 1, adminSvc.mixedCheckCalls, "confirmed retry must bypass the mixed-channel preflight")
+}
+
+func TestImportDataDetectsMixedChannelRiskWithinBatch(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 21, Platform: service.PlatformAnthropic, Status: service.StatusActive},
+	}
+	payload := accountOnlyDataImportPayload([]int64{21})
+	payload["data"].(map[string]any)["accounts"] = []map[string]any{
+		{
+			"name":        "antigravity-mixed",
+			"platform":    service.PlatformAntigravity,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"refresh_token": "ag-token"},
+			"extra":       map[string]any{"mixed_scheduling": true},
+		},
+		{
+			"name":        "anthropic",
+			"platform":    service.PlatformAnthropic,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"token": "anthropic-token"},
+		},
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	var conflictResp struct {
+		Code   int    `json:"code"`
+		Reason string `json:"reason"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &conflictResp))
+	require.Equal(t, http.StatusConflict, conflictResp.Code)
+	require.Equal(t, "MIXED_CHANNEL_WARNING", conflictResp.Reason)
+	require.Empty(t, adminSvc.createdAccounts, "batch risk must be detected before any account is created")
+
+	payload["confirm_mixed_channel_risk"] = true
+	body, err = json.Marshal(payload)
+	require.NoError(t, err)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var successResp struct {
+		Code int              `json:"code"`
+		Data DataImportResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &successResp))
+	require.Zero(t, successResp.Code)
+	require.Equal(t, 2, successResp.Data.AccountCreated)
+	require.Zero(t, successResp.Data.AccountFailed)
+	require.Len(t, adminSvc.createdAccounts, 2)
+	require.Equal(t, []int64{21}, adminSvc.createdAccounts[0].GroupIDs)
+	require.Equal(t, []int64{21}, adminSvc.createdAccounts[1].GroupIDs)
+	require.True(t, adminSvc.createdAccounts[0].SkipMixedChannelCheck)
+	require.True(t, adminSvc.createdAccounts[1].SkipMixedChannelCheck)
+}
+
+func TestImportDataMatchesSelectedGroupsByAccountPlatform(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+		{ID: 21, Platform: service.PlatformAnthropic, Status: service.StatusActive},
+	}
+	payload := accountOnlyDataImportPayload([]int64{11, 21})
+	payload["data"].(map[string]any)["accounts"] = []map[string]any{
+		{
+			"name":        "openai",
+			"platform":    service.PlatformOpenAI,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"token": "openai"},
+		},
+		{
+			"name":        "anthropic",
+			"platform":    service.PlatformAnthropic,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"token": "anthropic"},
+		},
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.createdAccounts, 2)
+	require.Equal(t, []int64{11}, adminSvc.createdAccounts[0].GroupIDs)
+	require.Equal(t, []int64{21}, adminSvc.createdAccounts[1].GroupIDs)
+	require.Equal(t, 2, adminSvc.mixedCheckCalls)
+}
+
+func TestImportDataRejectsInvalidGroupBeforeCreatingAccounts(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	body, err := json.Marshal(accountOnlyDataImportPayload([]int64{0}))
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Empty(t, adminSvc.createdAccounts)
+	require.Empty(t, adminSvc.createdProxies)
+}
+
+func TestImportDataRejectsMissingGroupBeforeCreatingAccounts(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	body, err := json.Marshal(accountOnlyDataImportPayload([]int64{99}))
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Empty(t, adminSvc.createdAccounts)
+	require.Empty(t, adminSvc.createdProxies)
+}
+
+func TestImportDataRejectsGroupSelectionWithoutEveryAccountPlatform(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.groups = []service.Group{
+		{ID: 11, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+	}
+	payload := accountOnlyDataImportPayload([]int64{11})
+	accounts := payload["data"].(map[string]any)["accounts"].([]map[string]any)
+	accounts[0]["platform"] = service.PlatformAnthropic
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Empty(t, adminSvc.createdAccounts)
+	require.Empty(t, adminSvc.createdProxies)
+	require.Zero(t, adminSvc.mixedCheckCalls)
 }

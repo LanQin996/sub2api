@@ -34,6 +34,7 @@ type stubAdminService struct {
 	updateAccountErr                    error
 	bulkUpdateAccountErr                error
 	checkMixedErr                       error
+	mixedCheckCalls                     int
 	lastMixedCheck                      struct {
 		accountID int64
 		platform  string
@@ -455,6 +456,7 @@ func (s *stubAdminService) BulkUpdateAccounts(ctx context.Context, input *servic
 }
 
 func (s *stubAdminService) CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error {
+	s.mixedCheckCalls++
 	s.lastMixedCheck.accountID = currentAccountID
 	s.lastMixedCheck.platform = currentAccountPlatform
 	s.lastMixedCheck.groupIDs = append([]int64(nil), groupIDs...)

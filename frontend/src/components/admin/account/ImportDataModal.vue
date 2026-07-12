@@ -54,6 +54,15 @@
         />
       </div>
 
+      <fieldset
+        data-testid="import-groups"
+        :disabled="importing"
+        class="m-0 min-w-0 border-0 p-0 transition-opacity"
+        :class="importing ? 'pointer-events-none opacity-60' : ''"
+      >
+        <GroupSelector v-model="groupIds" :groups="groups" />
+      </fieldset>
+
       <div
         v-if="result"
         class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700"
@@ -96,18 +105,32 @@
       </div>
     </template>
   </BaseDialog>
+
+  <ConfirmDialog
+    :show="showMixedChannelConfirm"
+    :title="t('admin.accounts.dataImportMixedChannelWarningTitle')"
+    :message="t('admin.accounts.dataImportMixedChannelWarning')"
+    :confirm-text="t('admin.accounts.dataImportMixedChannelConfirm')"
+    :cancel-text="t('common.cancel')"
+    :danger="true"
+    @confirm="handleMixedChannelConfirm"
+    @cancel="clearMixedChannelConfirmation"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import GroupSelector from '@/components/common/GroupSelector.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type { AdminDataImportResult, AdminDataPayload } from '@/types'
+import type { AdminDataImportResult, AdminDataPayload, AdminGroup } from '@/types'
 
 interface Props {
   show: boolean
+  groups: AdminGroup[]
 }
 
 interface Emits {
@@ -123,10 +146,16 @@ const appStore = useAppStore()
 
 const importing = ref(false)
 const files = ref<File[]>([])
+const groupIds = ref<number[]>([])
 const dragDepth = ref(0)
 const dragActive = computed(() => dragDepth.value > 0)
 const hasCreatedData = ref(false)
 const result = ref<AdminDataImportResult | null>(null)
+const pendingMixedChannelImport = ref<{
+  data: AdminDataPayload
+  groupIDs: number[]
+} | null>(null)
+const showMixedChannelConfirm = computed(() => pendingMixedChannelImport.value !== null)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFilesLabel = computed(() => {
@@ -138,11 +167,17 @@ const fileListTitle = computed(() => files.value.map((item) => item.name).join('
 
 const errorItems = computed(() => result.value?.errors || [])
 
+const clearMixedChannelConfirmation = () => {
+  pendingMixedChannelImport.value = null
+}
+
 watch(
   () => props.show,
   (open) => {
+    clearMixedChannelConfirmation()
     if (open) {
       files.value = []
+      groupIds.value = []
       dragDepth.value = 0
       hasCreatedData.value = false
       result.value = null
@@ -152,6 +187,9 @@ watch(
     }
   }
 )
+
+watch(groupIds, clearMixedChannelConfirmation, { deep: true })
+watch(() => props.groups, clearMixedChannelConfirmation)
 
 const openFilePicker = () => {
   fileInput.value?.click()
@@ -165,6 +203,7 @@ const handleFileChange = (event: Event) => {
 
 const handleClose = () => {
   if (importing.value) return
+  clearMixedChannelConfirmation()
   if (hasCreatedData.value) {
     hasCreatedData.value = false
     emit('imported')
@@ -192,6 +231,7 @@ const setSelectedFiles = (sourceFiles: FileList | File[] | null | undefined) => 
   }
   files.value = picked
   result.value = null
+  clearMixedChannelConfirmation()
 }
 
 const handleDragEnter = () => {
@@ -269,12 +309,148 @@ const mergeDataPayloads = (payloads: AdminDataPayload[]): AdminDataPayload => {
   }
 }
 
+const normalizePlatform = (platform: unknown) => {
+  const normalized = typeof platform === 'string' ? platform.trim().toLowerCase() : ''
+  return normalized === 'claude' ? 'anthropic' : normalized
+}
+
+// 与后端 validateDataAccount 的覆盖检查口径保持一致。无效账号应进入逐项失败结果，
+// 不能因为选择了群组就被前端提前拦掉整个批次。
+const isValidAccountForGroupCoverage = (account: AdminDataPayload['accounts'][number]) => {
+  const item = account as unknown as Record<string, unknown>
+  if (typeof item.name !== 'string' || item.name.trim() === '') return false
+  if (normalizePlatform(item.platform) === '') return false
+  if (
+    typeof item.type !== 'string' ||
+    !['oauth', 'setup-token', 'apikey', 'upstream'].includes(item.type)
+  ) {
+    return false
+  }
+  if (
+    !item.credentials ||
+    typeof item.credentials !== 'object' ||
+    Array.isArray(item.credentials) ||
+    Object.keys(item.credentials).length === 0
+  ) {
+    return false
+  }
+  if (typeof item.rate_multiplier === 'number' && item.rate_multiplier < 0) return false
+  if (typeof item.concurrency === 'number' && item.concurrency < 0) return false
+  if (typeof item.priority === 'number' && item.priority < 0) return false
+  return true
+}
+
+const getCompatibleGroupPlatforms = (account: AdminDataPayload['accounts'][number]) => {
+  const platform = normalizePlatform(account.platform)
+  const platforms = new Set([platform])
+  if (platform === 'antigravity' && account.extra?.mixed_scheduling === true) {
+    platforms.add('anthropic')
+    platforms.add('gemini')
+  }
+  return platforms
+}
+
+const findUncoveredPlatforms = (payload: AdminDataPayload, selectedGroupIDs: number[]) => {
+  if (selectedGroupIDs.length === 0) return []
+
+  const selectedIDs = new Set(selectedGroupIDs)
+  const selectedPlatforms = new Set(
+    props.groups
+      .filter((group) => selectedIDs.has(group.id))
+      .map((group) => normalizePlatform(group.platform))
+  )
+  const uncoveredPlatforms = new Set<string>()
+  for (const account of payload.accounts) {
+    if (!isValidAccountForGroupCoverage(account)) continue
+    const compatiblePlatforms = getCompatibleGroupPlatforms(account)
+    if (Array.from(compatiblePlatforms).some((platform) => selectedPlatforms.has(platform))) {
+      continue
+    }
+    uncoveredPlatforms.add(normalizePlatform(account.platform) || '<empty>')
+  }
+  return Array.from(uncoveredPlatforms)
+}
+
+const isMixedChannelWarning = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as Record<string, unknown>
+  return (
+    candidate.status === 409 &&
+    (candidate.reason === 'MIXED_CHANNEL_WARNING' || candidate.code === 'MIXED_CHANNEL_WARNING')
+  )
+}
+
+const applyImportResult = (res: AdminDataImportResult) => {
+  result.value = res
+
+  const msgParams: Record<string, unknown> = {
+    account_created: res.account_created,
+    account_failed: res.account_failed,
+    proxy_created: res.proxy_created,
+    proxy_reused: res.proxy_reused,
+    proxy_failed: res.proxy_failed
+  }
+  if (res.account_failed > 0 || res.proxy_failed > 0) {
+    // 部分成功也创建了数据;弹窗关闭时通过 imported 通知父组件刷新列表
+    if (res.account_created > 0 || res.proxy_created > 0) {
+      hasCreatedData.value = true
+    }
+    appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))
+  } else {
+    appStore.showSuccess(t('admin.accounts.dataImportSuccess', msgParams))
+    emit('imported')
+  }
+}
+
+const submitImport = async (
+  dataPayload: AdminDataPayload,
+  groupIDs: number[],
+  confirmMixedChannelRisk: boolean
+) => {
+  try {
+    const res = await adminAPI.accounts.importData({
+      data: dataPayload,
+      skip_default_group_bind: true,
+      ...(groupIDs.length > 0 ? { group_ids: groupIDs } : {}),
+      ...(confirmMixedChannelRisk ? { confirm_mixed_channel_risk: true } : {})
+    })
+    applyImportResult(res)
+  } catch (error: unknown) {
+    if (!confirmMixedChannelRisk && props.show && isMixedChannelWarning(error)) {
+      pendingMixedChannelImport.value = {
+        data: dataPayload,
+        groupIDs: [...groupIDs]
+      }
+      return
+    }
+    const message =
+      error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: unknown }).message || '')
+        : ''
+    appStore.showError(message || t('admin.accounts.dataImportFailed'))
+  }
+}
+
+const handleMixedChannelConfirm = async () => {
+  const pending = pendingMixedChannelImport.value
+  if (!pending || importing.value) return
+
+  clearMixedChannelConfirmation()
+  importing.value = true
+  try {
+    await submitImport(pending.data, pending.groupIDs, true)
+  } finally {
+    importing.value = false
+  }
+}
+
 const handleImport = async () => {
   if (files.value.length === 0) {
     appStore.showError(t('admin.accounts.dataImportSelectFile'))
     return
   }
 
+  clearMixedChannelConfirmation()
   importing.value = true
   try {
     const dataPayloads: AdminDataPayload[] = []
@@ -296,32 +472,17 @@ const handleImport = async () => {
     }
     const dataPayload = mergeDataPayloads(dataPayloads)
 
-    const res = await adminAPI.accounts.importData({
-      data: dataPayload,
-      skip_default_group_bind: true
-    })
-
-    result.value = res
-
-    const msgParams: Record<string, unknown> = {
-      account_created: res.account_created,
-      account_failed: res.account_failed,
-      proxy_created: res.proxy_created,
-      proxy_reused: res.proxy_reused,
-      proxy_failed: res.proxy_failed,
+    const groupIDs = [...groupIds.value]
+    const uncoveredPlatforms = findUncoveredPlatforms(dataPayload, groupIDs)
+    if (uncoveredPlatforms.length > 0) {
+      appStore.showError(
+        t('admin.accounts.dataImportGroupPlatformMismatch', {
+          platforms: uncoveredPlatforms.join(', ')
+        })
+      )
+      return
     }
-    if (res.account_failed > 0 || res.proxy_failed > 0) {
-      // 部分成功也创建了数据;弹窗关闭时通过 imported 通知父组件刷新列表
-      if (res.account_created > 0 || res.proxy_created > 0) {
-        hasCreatedData.value = true
-      }
-      appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))
-    } else {
-      appStore.showSuccess(t('admin.accounts.dataImportSuccess', msgParams))
-      emit('imported')
-    }
-  } catch (error: any) {
-    appStore.showError(error?.message || t('admin.accounts.dataImportFailed'))
+    await submitImport(dataPayload, groupIDs, false)
   } finally {
     importing.value = false
   }

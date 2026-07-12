@@ -321,6 +321,9 @@ type CreateAccountInput struct {
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool
+	// DeferPrivacySetup prevents CreateAccount from starting per-account privacy setup.
+	// Internal bulk callers must perform the deferred setup after creation completes.
+	DeferPrivacySetup bool
 }
 
 // ShadowOptions is the input for CreateShadow.

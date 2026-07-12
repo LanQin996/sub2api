@@ -535,6 +535,11 @@ const RING_GRADIENTS = [
 
 const ringAnimated = ref(false)
 const displayPcts = ref<number[]>([])
+let ringAnimationGeneration = 0
+let ringStartFrame: number | null = null
+let ringDelayTimer: ReturnType<typeof setTimeout> | null = null
+let ringTickFrame: number | null = null
+let isUnmounted = false
 
 const ringTrackColor = computed(() => isDark.value ? '#222222' : '#F0F0EE')
 
@@ -553,13 +558,41 @@ function getRingOffset(ring: RingItem): number {
   return CIRCUMFERENCE - (Math.min(ring.pct, 100) / 100) * CIRCUMFERENCE
 }
 
+function cancelRingAnimation() {
+  ringAnimationGeneration += 1
+  if (ringStartFrame !== null) {
+    cancelAnimationFrame(ringStartFrame)
+    ringStartFrame = null
+  }
+  if (ringDelayTimer !== null) {
+    clearTimeout(ringDelayTimer)
+    ringDelayTimer = null
+  }
+  if (ringTickFrame !== null) {
+    cancelAnimationFrame(ringTickFrame)
+    ringTickFrame = null
+  }
+}
+
 function triggerRingAnimation(items: RingItem[]) {
+  cancelRingAnimation()
+  if (isUnmounted) return
+
+  const generation = ringAnimationGeneration
   ringAnimated.value = false
   displayPcts.value = items.map(() => 0)
 
-  nextTick(() => {
-    requestAnimationFrame(() => {
-      setTimeout(() => {
+  void nextTick().then(() => {
+    if (isUnmounted || generation !== ringAnimationGeneration) return
+
+    const startFrame = requestAnimationFrame(() => {
+      if (ringStartFrame === startFrame) ringStartFrame = null
+      if (isUnmounted || generation !== ringAnimationGeneration) return
+
+      const delayTimer = setTimeout(() => {
+        if (ringDelayTimer === delayTimer) ringDelayTimer = null
+        if (isUnmounted || generation !== ringAnimationGeneration) return
+
         ringAnimated.value = true
 
         // Animate percentage numbers
@@ -568,15 +601,28 @@ function triggerRingAnimation(items: RingItem[]) {
         const targets = items.map(item => item.isBalance ? 0 : item.pct)
 
         function tick() {
+          if (isUnmounted || generation !== ringAnimationGeneration) return
+
           const elapsed = performance.now() - startTime
           const p = Math.min(elapsed / duration, 1)
           const ease = 1 - Math.pow(1 - p, 3)
           displayPcts.value = targets.map(target => Math.round(ease * target))
-          if (p < 1) requestAnimationFrame(tick)
+          if (p < 1) scheduleTick()
         }
-        requestAnimationFrame(tick)
+
+        function scheduleTick() {
+          const tickFrame = requestAnimationFrame(() => {
+            if (ringTickFrame === tickFrame) ringTickFrame = null
+            tick()
+          })
+          ringTickFrame = tickFrame
+        }
+
+        scheduleTick()
       }, 50)
+      ringDelayTimer = delayTimer
     })
+    ringStartFrame = startFrame
   })
 }
 
@@ -889,10 +935,7 @@ async function queryKey() {
     showLoading.value = false
     showDatePicker.value = true
 
-    // Trigger ring animations after DOM update
-    nextTick(() => {
-      triggerRingAnimation(ringItems.value)
-    })
+    triggerRingAnimation(ringItems.value)
 
     appStore.showSuccess(t('keyUsage.querySuccess'))
   } catch (err) {
@@ -935,7 +978,12 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (resetTimer) clearInterval(resetTimer)
+  isUnmounted = true
+  cancelRingAnimation()
+  if (resetTimer) {
+    clearInterval(resetTimer)
+    resetTimer = null
+  }
 })
 </script>
 

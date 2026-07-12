@@ -18,10 +18,11 @@ import (
 )
 
 const (
-	dataType       = "sub2api-data"
-	legacyDataType = "sub2api-bundle"
-	dataVersion    = 1
-	dataPageCap    = 1000
+	dataType                 = "sub2api-data"
+	legacyDataType           = "sub2api-bundle"
+	dataVersion              = 1
+	dataPageCap              = 1000
+	dataImportPrivacyTimeout = 20 * time.Second
 )
 
 type DataPayload struct {
@@ -73,8 +74,10 @@ type DataAccount struct {
 }
 
 type DataImportRequest struct {
-	Data                 DataPayload `json:"data"`
-	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+	Data                    DataPayload `json:"data"`
+	SkipDefaultGroupBind    *bool       `json:"skip_default_group_bind"`
+	GroupIDs                []int64     `json:"group_ids,omitempty"`
+	ConfirmMixedChannelRisk bool        `json:"confirm_mixed_channel_risk,omitempty"`
 }
 
 type DataImportResult struct {
@@ -242,6 +245,190 @@ func (h *AccountHandler) ImportData(c *gin.Context) {
 	})
 }
 
+type dataImportGroupSelection map[string][]int64
+
+type dataImportGroupCheckKey struct {
+	platform        string
+	mixedScheduling bool
+}
+
+func normalizeDataImportPlatform(platform string) string {
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	if platform == "claude" {
+		return service.PlatformAnthropic
+	}
+	return platform
+}
+
+func dataImportMixedSchedulingEnabled(item DataAccount) bool {
+	if normalizeDataImportPlatform(item.Platform) != service.PlatformAntigravity || item.Extra == nil {
+		return false
+	}
+	enabled, _ := item.Extra["mixed_scheduling"].(bool)
+	return enabled
+}
+
+func (s dataImportGroupSelection) forAccount(item DataAccount) []int64 {
+	platform := normalizeDataImportPlatform(item.Platform)
+	groupIDs := s[platform]
+	if !dataImportMixedSchedulingEnabled(item) {
+		return groupIDs
+	}
+
+	mixedGroupIDs := make([]int64, 0, len(groupIDs)+len(s[service.PlatformAnthropic])+len(s[service.PlatformGemini]))
+	mixedGroupIDs = append(mixedGroupIDs, groupIDs...)
+	mixedGroupIDs = append(mixedGroupIDs, s[service.PlatformAnthropic]...)
+	mixedGroupIDs = append(mixedGroupIDs, s[service.PlatformGemini]...)
+	return mixedGroupIDs
+}
+
+func (s dataImportGroupSelection) hasGroupsForAccount(item DataAccount) bool {
+	platform := normalizeDataImportPlatform(item.Platform)
+	if len(s[platform]) > 0 {
+		return true
+	}
+	return dataImportMixedSchedulingEnabled(item) &&
+		(len(s[service.PlatformAnthropic]) > 0 || len(s[service.PlatformGemini]) > 0)
+}
+
+func dataImportGroupRiskKey(item DataAccount) dataImportGroupCheckKey {
+	return dataImportGroupCheckKey{
+		platform:        normalizeDataImportPlatform(item.Platform),
+		mixedScheduling: dataImportMixedSchedulingEnabled(item),
+	}
+}
+
+func dataImportMixedChannel(platform string) string {
+	switch normalizeDataImportPlatform(platform) {
+	case service.PlatformAntigravity:
+		return "Antigravity"
+	case service.PlatformAnthropic:
+		return "Anthropic"
+	default:
+		return ""
+	}
+}
+
+func (h *AccountHandler) resolveImportGroups(ctx context.Context, ids []int64) (dataImportGroupSelection, error) {
+	selection := make(dataImportGroupSelection)
+	if len(ids) == 0 {
+		return selection, nil
+	}
+
+	groupIDs := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, groupID := range ids {
+		if groupID <= 0 {
+			return nil, infraerrors.BadRequest("INVALID_GROUP_IDS", "group_ids must contain positive integers")
+		}
+		if _, ok := seen[groupID]; ok {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		groupIDs = append(groupIDs, groupID)
+	}
+
+	groups, err := h.adminService.GetAllGroups(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list import groups: %w", err)
+	}
+	groupByID := make(map[int64]service.Group, len(groups))
+	for i := range groups {
+		groupByID[groups[i].ID] = groups[i]
+	}
+
+	for _, groupID := range groupIDs {
+		group, ok := groupByID[groupID]
+		if !ok {
+			return nil, fmt.Errorf("validate group %d: %w", groupID, service.ErrGroupNotFound)
+		}
+		platform := normalizeDataImportPlatform(group.Platform)
+		if platform == "" {
+			return nil, infraerrors.BadRequest("INVALID_GROUP_PLATFORM", fmt.Sprintf("group %d has no platform", groupID))
+		}
+		selection[platform] = append(selection[platform], groupID)
+	}
+
+	return selection, nil
+}
+
+func validateDataImportGroupCoverage(payload DataPayload, selection dataImportGroupSelection) error {
+	if len(selection) == 0 {
+		return nil
+	}
+
+	missingPlatforms := make([]string, 0)
+	seen := make(map[string]struct{})
+	for i := range payload.Accounts {
+		item := payload.Accounts[i]
+		item.Platform = normalizeDataImportPlatform(item.Platform)
+		if validateDataAccount(item) != nil {
+			continue
+		}
+		if selection.hasGroupsForAccount(item) {
+			continue
+		}
+		platform := item.Platform
+		if _, ok := seen[platform]; ok {
+			continue
+		}
+		seen[platform] = struct{}{}
+		if platform == "" {
+			platform = "<empty>"
+		}
+		missingPlatforms = append(missingPlatforms, platform)
+	}
+	if len(missingPlatforms) > 0 {
+		return infraerrors.BadRequest(
+			"IMPORT_GROUP_PLATFORM_MISMATCH",
+			"selected groups do not cover account platforms: "+strings.Join(missingPlatforms, ", "),
+		)
+	}
+	return nil
+}
+
+func (h *AccountHandler) validateDataImportMixedChannelRisk(ctx context.Context, payload DataPayload, selection dataImportGroupSelection) error {
+	checked := make(map[dataImportGroupCheckKey]struct{}, len(selection))
+	batchChannels := make(map[int64]string)
+	for i := range payload.Accounts {
+		item := payload.Accounts[i]
+		item.Platform = normalizeDataImportPlatform(item.Platform)
+		if validateDataAccount(item) != nil {
+			continue
+		}
+		key := dataImportGroupRiskKey(item)
+		if _, ok := checked[key]; ok {
+			continue
+		}
+		groupIDs := selection.forAccount(item)
+		if len(groupIDs) == 0 {
+			continue
+		}
+
+		if err := h.adminService.CheckMixedChannelRisk(ctx, 0, item.Platform, groupIDs); err != nil {
+			return err
+		}
+		checked[key] = struct{}{}
+
+		channel := dataImportMixedChannel(item.Platform)
+		if channel == "" {
+			continue
+		}
+		for _, groupID := range groupIDs {
+			if otherChannel, ok := batchChannels[groupID]; ok && otherChannel != channel {
+				return &service.MixedChannelError{
+					GroupID:         groupID,
+					GroupName:       fmt.Sprintf("Group %d", groupID),
+					CurrentPlatform: channel,
+					OtherPlatform:   otherChannel,
+				}
+			}
+			batchChannels[groupID] = channel
+		}
+	}
+	return nil
+}
+
 func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) (DataImportResult, error) {
 	skipDefaultGroupBind := true
 	if req.SkipDefaultGroupBind != nil {
@@ -250,6 +437,22 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	dataPayload := req.Data
 	result := DataImportResult{}
+	groupSelection, err := h.resolveImportGroups(ctx, req.GroupIDs)
+	if err != nil {
+		return result, err
+	}
+	if err := validateDataImportGroupCoverage(dataPayload, groupSelection); err != nil {
+		return result, err
+	}
+	if !req.ConfirmMixedChannelRisk {
+		if err := h.validateDataImportMixedChannelRisk(ctx, dataPayload, groupSelection); err != nil {
+			var mixedErr *service.MixedChannelError
+			if errors.As(err, &mixedErr) {
+				return result, infraerrors.Conflict("MIXED_CHANNEL_WARNING", mixedErr.Error())
+			}
+			return result, err
+		}
+	}
 
 	existingProxies, err := h.listAllProxies(ctx)
 	if err != nil {
@@ -396,11 +599,14 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 	}
 
-	// 收集需要异步设置隐私的 Antigravity OAuth 账号
-	var privacyAccounts []*service.Account
+	// 批量导入统一延迟隐私设置，避免每个账号各起 goroutine。
+	var privacySetupAccounts []*service.Account
+	mixedChannelCheckedAtCreate := make(map[dataImportGroupCheckKey]bool, len(groupSelection))
+	groupIDsByRiskKey := make(map[dataImportGroupCheckKey][]int64, len(groupSelection))
 
 	for i := range dataPayload.Accounts {
 		item := dataPayload.Accounts[i]
+		item.Platform = normalizeDataImportPlatform(item.Platform)
 		if err := validateDataAccount(item); err != nil {
 			result.AccountFailed++
 			result.Errors = append(result.Errors, DataImportError{
@@ -428,22 +634,31 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		enrichCredentialsFromIDToken(&item)
+		groupRiskKey := dataImportGroupRiskKey(item)
+		groupIDs, ok := groupIDsByRiskKey[groupRiskKey]
+		if !ok {
+			groupIDs = groupSelection.forAccount(item)
+			groupIDsByRiskKey[groupRiskKey] = groupIDs
+		}
+		skipMixedChannelCheck := req.ConfirmMixedChannelRisk || mixedChannelCheckedAtCreate[groupRiskKey]
 
 		accountInput := &service.CreateAccountInput{
-			Name:                 item.Name,
-			Notes:                item.Notes,
-			Platform:             item.Platform,
-			Type:                 item.Type,
-			Credentials:          item.Credentials,
-			Extra:                item.Extra,
-			ProxyID:              proxyID,
-			Concurrency:          item.Concurrency,
-			Priority:             item.Priority,
-			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
-			ExpiresAt:            item.ExpiresAt,
-			AutoPauseOnExpired:   item.AutoPauseOnExpired,
-			SkipDefaultGroupBind: skipDefaultGroupBind,
+			Name:                  item.Name,
+			Notes:                 item.Notes,
+			Platform:              item.Platform,
+			Type:                  item.Type,
+			Credentials:           item.Credentials,
+			Extra:                 item.Extra,
+			ProxyID:               proxyID,
+			Concurrency:           item.Concurrency,
+			Priority:              item.Priority,
+			RateMultiplier:        item.RateMultiplier,
+			GroupIDs:              groupIDs,
+			ExpiresAt:             item.ExpiresAt,
+			AutoPauseOnExpired:    item.AutoPauseOnExpired,
+			SkipDefaultGroupBind:  skipDefaultGroupBind,
+			SkipMixedChannelCheck: len(groupIDs) > 0 && skipMixedChannelCheck,
+			DeferPrivacySetup:     true,
 		}
 
 		created, err := h.adminService.CreateAccount(ctx, accountInput)
@@ -456,27 +671,42 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			})
 			continue
 		}
-		// 收集 Antigravity OAuth 账号，稍后异步设置隐私
-		if created.Platform == service.PlatformAntigravity && created.Type == service.AccountTypeOAuth {
-			privacyAccounts = append(privacyAccounts, created)
+		// 收集 OpenAI/Antigravity OAuth 账号，稍后由单个后台任务顺序设置隐私。
+		if created.Type == service.AccountTypeOAuth &&
+			(created.Platform == service.PlatformOpenAI || created.Platform == service.PlatformAntigravity) {
+			privacySetupAccounts = append(privacySetupAccounts, created)
+		}
+		if len(groupIDs) > 0 {
+			mixedChannelCheckedAtCreate[groupRiskKey] = true
 		}
 		result.AccountCreated++
 	}
 
-	// 异步设置 Antigravity 隐私，避免大量导入时阻塞请求
-	if len(privacyAccounts) > 0 {
+	// 单个后台任务顺序设置隐私，避免大量导入时出现 N 个 goroutine 和重复调用。
+	if len(privacySetupAccounts) > 0 {
 		adminSvc := h.adminService
+		accounts := append([]*service.Account(nil), privacySetupAccounts...)
 		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					slog.Error("import_antigravity_privacy_panic", "recover", r)
-				}
-			}()
 			bgCtx := context.Background()
-			for _, acc := range privacyAccounts {
-				adminSvc.ForceAntigravityPrivacy(bgCtx, acc)
+			for _, acc := range accounts {
+				func() {
+					privacyCtx, cancel := context.WithTimeout(bgCtx, dataImportPrivacyTimeout)
+					defer cancel()
+					defer func() {
+						if r := recover(); r != nil {
+							slog.Error("import_account_privacy_panic",
+								"account_id", acc.ID, "platform", acc.Platform, "recover", r)
+						}
+					}()
+					switch acc.Platform {
+					case service.PlatformOpenAI:
+						adminSvc.EnsureOpenAIPrivacy(privacyCtx, acc)
+					case service.PlatformAntigravity:
+						adminSvc.ForceAntigravityPrivacy(privacyCtx, acc)
+					}
+				}()
 			}
-			slog.Info("import_antigravity_privacy_done", "count", len(privacyAccounts))
+			slog.Info("import_account_privacy_done", "count", len(accounts))
 		}()
 	}
 

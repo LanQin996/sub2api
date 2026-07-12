@@ -68,6 +68,8 @@ func normalizeAccountConcurrency(platform, accountType string, concurrency int) 
 	return concurrency
 }
 
+const createAccountRollbackTimeout = 5 * time.Second
+
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
 	// 绑定分组
 	groupIDs := input.GroupIDs
@@ -146,13 +148,20 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	// 绑定分组
 	if len(groupIDs) > 0 {
 		if err := s.accountRepo.BindGroups(ctx, account.ID, groupIDs); err != nil {
-			return nil, err
+			rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), createAccountRollbackTimeout)
+			defer cancel()
+			if deleteErr := s.accountRepo.Delete(rollbackCtx, account.ID); deleteErr != nil {
+				slog.Error("create_account_bind_groups_rollback_failed",
+					"account_id", account.ID, "bind_err", err, "delete_err", deleteErr)
+			}
+			return nil, fmt.Errorf("bind account groups: %w", err)
 		}
+		account.GroupIDs = append([]int64(nil), groupIDs...)
 	}
 
 	// OAuth 账号：创建后异步设置隐私。
 	// 使用 Ensure（幂等）而非 Force：新建账号 Extra 为空时效果相同，但更安全。
-	if account.Type == AccountTypeOAuth {
+	if account.Type == AccountTypeOAuth && !input.DeferPrivacySetup {
 		switch account.Platform {
 		case PlatformOpenAI:
 			go func() {

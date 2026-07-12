@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { adminAPI } from '@/api/admin'
+import type { AdminDataImportResult, AdminGroup } from '@/types'
 
 const showError = vi.fn()
 const showSuccess = vi.fn()
@@ -29,9 +31,9 @@ vi.mock('vue-i18n', () => ({
   })
 }))
 
-const mountModal = () =>
+const mountModal = (groups: AdminGroup[] = []) =>
   mount(ImportDataModal, {
-    props: { show: true },
+    props: { show: true, groups },
     global: {
       stubs: {
         BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }
@@ -53,6 +55,23 @@ const setInputFiles = (element: Element, files: File[]) => {
     configurable: true
   })
 }
+
+const importGroups = [
+  {
+    id: 11,
+    name: 'OpenAI Primary',
+    platform: 'openai',
+    rate_multiplier: 1,
+    account_count: 2
+  },
+  {
+    id: 12,
+    name: 'OpenAI Backup',
+    platform: 'openai',
+    rate_multiplier: 1,
+    account_count: 0
+  }
+] as AdminGroup[]
 
 describe('ImportDataModal', () => {
   beforeEach(async () => {
@@ -176,6 +195,376 @@ describe('ImportDataModal', () => {
     expect(showSuccess).toHaveBeenCalledWith('admin.accounts.dataImportSuccess')
   })
 
+  it('随导入请求发送所选群组并在重新打开时清空选择', async () => {
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 0
+    })
+
+    const wrapper = mountModal(importGroups)
+    const groupCheckboxes = wrapper.findAll('input[type="checkbox"]')
+    expect(groupCheckboxes).toHaveLength(2)
+    await groupCheckboxes[0]!.setValue(true)
+    await groupCheckboxes[1]!.setValue(true)
+
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'accounts.json',
+        JSON.stringify({
+          exported_at: '2026-07-05T00:00:00Z',
+          proxies: [],
+          accounts: [{ name: 'a', platform: 'openai' }]
+        })
+      )
+    ])
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(adminAPI.accounts.importData).toHaveBeenCalledWith({
+      data: expect.objectContaining({ accounts: [{ name: 'a', platform: 'openai' }] }),
+      skip_default_group_bind: true,
+      group_ids: [11, 12]
+    })
+
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    const reopenedCheckboxes = wrapper.findAll('input[type="checkbox"]')
+    expect((reopenedCheckboxes[0]!.element as HTMLInputElement).checked).toBe(false)
+    expect((reopenedCheckboxes[1]!.element as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('所选群组未覆盖导入账号平台时拒绝请求', async () => {
+    const wrapper = mountModal(importGroups)
+    await wrapper.findAll('input[type="checkbox"]')[0]!.setValue(true)
+
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'anthropic.json',
+        JSON.stringify({
+          exported_at: '2026-07-05T00:00:00Z',
+          proxies: [],
+          accounts: [
+            {
+              name: 'claude',
+              platform: 'anthropic',
+              type: 'oauth',
+              credentials: { token: 'test' },
+              concurrency: 1,
+              priority: 1
+            }
+          ]
+        })
+      )
+    ])
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportGroupPlatformMismatch')
+    expect(adminAPI.accounts.importData).not.toHaveBeenCalled()
+  })
+
+  it('Antigravity 混合调度账号可绑定 Anthropic 群组', async () => {
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 0
+    })
+    const groups = [
+      {
+        id: 21,
+        name: 'Claude Mixed',
+        platform: 'anthropic',
+        rate_multiplier: 1,
+        account_count: 0
+      }
+    ] as AdminGroup[]
+    const wrapper = mountModal(groups)
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'antigravity.json',
+        JSON.stringify({
+          exported_at: '2026-07-05T00:00:00Z',
+          proxies: [],
+          accounts: [
+            {
+              name: 'antigravity-mixed',
+              platform: 'antigravity',
+              type: 'oauth',
+              credentials: { token: 'test' },
+              extra: { mixed_scheduling: true },
+              concurrency: 1,
+              priority: 1
+            }
+          ]
+        })
+      )
+    ])
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(adminAPI.accounts.importData).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        accounts: [expect.objectContaining({ platform: 'antigravity' })]
+      }),
+      skip_default_group_bind: true,
+      group_ids: [21]
+    })
+    expect(showError).not.toHaveBeenCalledWith('admin.accounts.dataImportGroupPlatformMismatch')
+  })
+
+  it('群组与账号平台别名会去空格并忽略大小写', async () => {
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 0
+    })
+    const groups = [
+      {
+        id: 22,
+        name: 'Claude Alias',
+        platform: ' Anthropic ',
+        rate_multiplier: 1,
+        account_count: 0
+      }
+    ] as AdminGroup[]
+    const wrapper = mountModal(groups)
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'claude.json',
+        JSON.stringify({
+          exported_at: '2026-07-05T00:00:00Z',
+          proxies: [],
+          accounts: [
+            {
+              name: 'claude-alias',
+              platform: ' CLAUDE ',
+              type: 'oauth',
+              credentials: { token: 'test' },
+              concurrency: 1,
+              priority: 1
+            }
+          ]
+        })
+      )
+    ])
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(adminAPI.accounts.importData).toHaveBeenCalledWith(
+      expect.objectContaining({ group_ids: [22] })
+    )
+    expect(showError).not.toHaveBeenCalledWith('admin.accounts.dataImportGroupPlatformMismatch')
+  })
+
+  it('无效账号不阻断同批次合法账号导入', async () => {
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 1
+    })
+    const wrapper = mountModal(importGroups)
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'partial.json',
+        JSON.stringify({
+          exported_at: '2026-07-05T00:00:00Z',
+          proxies: [],
+          accounts: [
+            {
+              name: 'valid',
+              platform: 'openai',
+              type: 'oauth',
+              credentials: { token: 'test' },
+              concurrency: 1,
+              priority: 1
+            },
+            { name: 'invalid' }
+          ]
+        })
+      )
+    ])
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(adminAPI.accounts.importData).toHaveBeenCalledOnce()
+    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportCompletedWithErrors')
+  })
+
+  it('收到真实形状的混合渠道 409 后确认并携带风险标记重试', async () => {
+    vi.mocked(adminAPI.accounts.importData)
+      .mockRejectedValueOnce({
+        status: 409,
+        code: 409,
+        reason: 'MIXED_CHANNEL_WARNING',
+        message: 'mixed channel warning'
+      })
+      .mockResolvedValueOnce({
+        proxy_created: 0,
+        proxy_reused: 0,
+        proxy_failed: 0,
+        account_created: 1,
+        account_failed: 0
+      })
+    const wrapper = mountModal(importGroups)
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'mixed-channel.json',
+        JSON.stringify({
+          exported_at: '2026-07-05T00:00:00Z',
+          proxies: [],
+          accounts: [
+            {
+              name: 'openai',
+              platform: 'openai',
+              type: 'oauth',
+              credentials: { token: 'test' },
+              concurrency: 1,
+              priority: 1
+            }
+          ]
+        })
+      )
+    ])
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const confirmDialog = wrapper.getComponent(ConfirmDialog)
+    expect(confirmDialog.props('show')).toBe(true)
+    expect(adminAPI.accounts.importData).toHaveBeenNthCalledWith(1, {
+      data: expect.any(Object),
+      skip_default_group_bind: true,
+      group_ids: [11]
+    })
+
+    confirmDialog.vm.$emit('confirm')
+    await flushPromises()
+
+    expect(adminAPI.accounts.importData).toHaveBeenNthCalledWith(2, {
+      data: expect.any(Object),
+      skip_default_group_bind: true,
+      group_ids: [11],
+      confirm_mixed_channel_risk: true
+    })
+    expect(confirmDialog.props('show')).toBe(false)
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.dataImportSuccess')
+  })
+
+  it('混合渠道确认在群组变化后立即失效', async () => {
+    vi.mocked(adminAPI.accounts.importData).mockRejectedValueOnce({
+      status: 409,
+      code: 409,
+      reason: 'MIXED_CHANNEL_WARNING',
+      message: 'mixed channel warning'
+    })
+    const wrapper = mountModal(importGroups)
+    const groupCheckboxes = wrapper.findAll('input[type="checkbox"]')
+    await groupCheckboxes[0]!.setValue(true)
+
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'mixed-channel.json',
+        JSON.stringify({
+          exported_at: '2026-07-05T00:00:00Z',
+          proxies: [],
+          accounts: [
+            {
+              name: 'openai',
+              platform: 'openai',
+              type: 'oauth',
+              credentials: { token: 'test' },
+              concurrency: 1,
+              priority: 1
+            }
+          ]
+        })
+      )
+    ])
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const confirmDialog = wrapper.getComponent(ConfirmDialog)
+    expect(confirmDialog.props('show')).toBe(true)
+
+    await groupCheckboxes[1]!.setValue(true)
+    await flushPromises()
+    expect(confirmDialog.props('show')).toBe(false)
+
+    confirmDialog.vm.$emit('confirm')
+    await flushPromises()
+    expect(adminAPI.accounts.importData).toHaveBeenCalledOnce()
+  })
+
+  it('导入进行中禁用群组选择', async () => {
+    let resolveImport!: (result: AdminDataImportResult) => void
+    vi.mocked(adminAPI.accounts.importData).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveImport = resolve
+        })
+    )
+
+    const wrapper = mountModal(importGroups)
+    await wrapper.findAll('input[type="checkbox"]')[0]!.setValue(true)
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'accounts.json',
+        JSON.stringify({
+          exported_at: '2026-07-05T00:00:00Z',
+          proxies: [],
+          accounts: [{ name: 'a', platform: 'openai' }]
+        })
+      )
+    ])
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const groupFieldset = wrapper.get('[data-testid="import-groups"]')
+    expect(groupFieldset.attributes('disabled')).toBeDefined()
+
+    resolveImport({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 0
+    })
+    await flushPromises()
+    expect(groupFieldset.attributes('disabled')).toBeUndefined()
+  })
+
   it('部分成功时关闭弹窗仍通知父组件刷新', async () => {
     const { adminAPI } = await import('@/api/admin')
     vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
@@ -223,7 +612,7 @@ describe('ImportDataModal', () => {
     })
 
     const wrapper = mount(ImportDataModal, {
-      props: { show: true },
+      props: { show: true, groups: [] },
       global: {
         stubs: {
           BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }
