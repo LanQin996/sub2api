@@ -305,4 +305,21 @@ describe('KeyUsageView daily detail', () => {
     expect(frames.requestFrame).not.toHaveBeenCalled()
     expect(frames.callbacks.size).toBe(0)
   })
+
+  it('queries the current local calendar date near midnight', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 6, 13, 0, 30))
+
+    const wrapper = mountView()
+    const input = wrapper.find('input')
+    await input.setValue('sk-test-key')
+    await input.trigger('keydown.enter')
+    await flushPromises()
+
+    const requestUrl = String(vi.mocked(fetch).mock.calls[0][0])
+    expect(requestUrl).toContain('start_date=2026-07-13')
+    expect(requestUrl).toContain('end_date=2026-07-13')
+
+    wrapper.unmount()
+  })
 })
