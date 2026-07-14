@@ -33,6 +33,17 @@
     <!-- Row 2: Plan type + Privacy mode (only if either exists) -->
     <div v-if="planLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
       <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', planBadgeClass]">
+        <GrokFreeIcon
+          v-if="isGrokFreePlan"
+          data-testid="grok-free-plan-icon"
+        />
+        <Icon
+          v-else-if="planIconName"
+          :name="planIconName"
+          size="xs"
+          data-testid="grok-plan-icon"
+          aria-hidden="true"
+        />
         <span>{{ planLabel }}</span>
       </span>
       <span
@@ -66,6 +77,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AccountPlatform, AccountType } from '@/types'
+import GrokFreeIcon from './GrokFreeIcon.vue'
 import PlatformIcon from './PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -106,10 +118,13 @@ const typeLabel = computed(() => {
   }
 })
 
+const normalizedPlanType = computed(() =>
+  (props.planType || '').trim().toLowerCase().replace(/[\s_-]+/g, '')
+)
+
 const planLabel = computed(() => {
-  if (!props.planType) return ''
-  const lower = props.planType.toLowerCase()
-  switch (lower) {
+  if (!normalizedPlanType.value) return ''
+  switch (normalizedPlanType.value) {
     case 'plus':
       return 'Plus'
     case 'team':
@@ -118,12 +133,33 @@ const planLabel = computed(() => {
     case 'pro':
       return 'Pro'
     case 'free':
-      return 'Free'
+    case 'basic':
+      return props.platform === 'grok' ? 'Grok Free' : 'Free'
+    case 'supergrok':
+      return 'SuperGrok'
+    case 'supergrokheavy':
+      return 'SuperGrok Heavy'
     case 'abnormal':
       return t('admin.accounts.subscriptionAbnormal')
     default:
       return props.planType
   }
+})
+
+const isGrokFreePlan = computed(() =>
+  props.platform === 'grok' &&
+  (normalizedPlanType.value === 'free' || normalizedPlanType.value === 'basic')
+)
+
+const planIconName = computed<'bolt' | null>(() => {
+  if (props.platform !== 'grok') return null
+  if (
+    normalizedPlanType.value === 'supergrok' ||
+    normalizedPlanType.value === 'supergrokheavy'
+  ) {
+    return 'bolt'
+  }
+  return null
 })
 
 const platformClass = computed(() => {
@@ -159,7 +195,7 @@ const typeClass = computed(() => {
 })
 
 const planBadgeClass = computed(() => {
-  if (props.planType && props.planType.toLowerCase() === 'abnormal') {
+  if (normalizedPlanType.value === 'abnormal') {
     return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
   }
   return typeClass.value
@@ -167,7 +203,7 @@ const planBadgeClass = computed(() => {
 
 const subscriptionExpiresDate = computed(() => {
   if (!props.subscriptionExpiresAt || !props.planType) return null
-  if (props.planType.toLowerCase() === 'free') return null
+  if (normalizedPlanType.value === 'free' || normalizedPlanType.value === 'basic') return null
   try {
     const d = new Date(props.subscriptionExpiresAt)
     return isNaN(d.getTime()) ? null : d

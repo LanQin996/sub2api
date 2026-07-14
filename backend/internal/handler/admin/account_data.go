@@ -679,6 +679,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		if len(groupIDs) > 0 {
 			mixedChannelCheckedAtCreate[groupRiskKey] = true
 		}
+		h.scheduleGrokImportProbe(created)
 		result.AccountCreated++
 	}
 
