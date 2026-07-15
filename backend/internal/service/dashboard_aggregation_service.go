@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	apptimezone "github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/google/uuid"
 )
 
@@ -25,6 +26,13 @@ const (
 	// dashboardAggregationLeaderLockTTL must exceed the job's worst-case runtime
 	// (defaultDashboardAggregationTimeout) so the lock never expires mid-run.
 	dashboardAggregationLeaderLockTTL = 5 * time.Minute
+
+	tokenActivityScheduleCheckInterval = 10 * time.Minute
+	tokenActivityJobHour               = 3
+	tokenActivityRetentionDays         = 370
+	tokenActivityJobTimeout            = 30 * time.Minute
+	tokenActivityLeaderLockKey         = "dashboard:token-activity:leader"
+	tokenActivityLeaderLockTTL         = 35 * time.Minute
 )
 
 var (
@@ -49,12 +57,20 @@ type DashboardAggregationRepository interface {
 	EnsureUsageLogsPartitions(ctx context.Context, now time.Time) error
 }
 
+type tokenActivityAggregationRepository interface {
+	GetTokenActivityWatermark(ctx context.Context) (time.Time, error)
+	AggregateTokenActivityDay(ctx context.Context, day, start, end time.Time) error
+	UpdateTokenActivityWatermark(ctx context.Context, day time.Time) error
+	CleanupTokenActivity(ctx context.Context, cutoff time.Time) error
+}
+
 // DashboardAggregationService 负责定时聚合与回填。
 type DashboardAggregationService struct {
 	repo                 DashboardAggregationRepository
 	timingWheel          *TimingWheelService
 	cfg                  config.DashboardAggregationConfig
 	running              int32
+	activityRunning      int32
 	lastRetentionCleanup atomic.Value // time.Time
 
 	lockCache  LeaderLockCache
@@ -93,6 +109,12 @@ func (s *DashboardAggregationService) Start() {
 	if s == nil || s.repo == nil || s.timingWheel == nil {
 		return
 	}
+	if _, ok := s.repo.(tokenActivityAggregationRepository); ok {
+		s.timingWheel.ScheduleRecurring("dashboard:token-activity", tokenActivityScheduleCheckInterval, func() {
+			s.runTokenActivitySnapshot()
+		})
+		go s.runTokenActivitySnapshot()
+	}
 	if !s.cfg.Enabled {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业已禁用")
 		return
@@ -110,6 +132,59 @@ func (s *DashboardAggregationService) Start() {
 	logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业启动 (interval=%v, lookback=%ds)", interval, s.cfg.LookbackSeconds)
 	if !s.cfg.BackfillEnabled {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 回填已禁用，如需补齐保留窗口以外历史数据请手动回填")
+	}
+}
+
+// runTokenActivitySnapshot materializes missing settled days after 03:00 in
+// the configured server timezone. The frequent callback only reads one small
+// watermark row unless work is due.
+func (s *DashboardAggregationService) runTokenActivitySnapshot() {
+	repo, ok := s.repo.(tokenActivityAggregationRepository)
+	if !ok || !atomic.CompareAndSwapInt32(&s.activityRunning, 0, 1) {
+		return
+	}
+	defer atomic.StoreInt32(&s.activityRunning, 0)
+
+	location := apptimezone.Location()
+	now := apptimezone.Now()
+	if s.nowFn != nil {
+		now = s.nowFn().In(location)
+	}
+	if now.Hour() < tokenActivityJobHour {
+		return
+	}
+
+	target := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location).AddDate(0, 0, -1)
+	ctx, cancel := context.WithTimeout(context.Background(), tokenActivityJobTimeout)
+	defer cancel()
+	release, acquired := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, tokenActivityLeaderLockKey, s.instanceID, tokenActivityLeaderLockTTL)
+	if !acquired {
+		return
+	}
+	defer release()
+
+	watermark, err := repo.GetTokenActivityWatermark(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.dashboard_aggregation", "[TokenActivity] read watermark failed: %v", err)
+		return
+	}
+	cursor := time.Date(watermark.Year(), watermark.Month(), watermark.Day(), 0, 0, 0, 0, location).AddDate(0, 0, 1)
+	for !cursor.After(target) {
+		dayEnd := cursor.AddDate(0, 0, 1)
+		if err := repo.AggregateTokenActivityDay(ctx, cursor, cursor, dayEnd); err != nil {
+			logger.LegacyPrintf("service.dashboard_aggregation", "[TokenActivity] aggregate %s failed: %v", cursor.Format("2006-01-02"), err)
+			return
+		}
+		if err := repo.UpdateTokenActivityWatermark(ctx, cursor); err != nil {
+			logger.LegacyPrintf("service.dashboard_aggregation", "[TokenActivity] update watermark failed: %v", err)
+			return
+		}
+		cursor = dayEnd
+	}
+
+	cutoff := target.AddDate(0, 0, -(tokenActivityRetentionDays - 1))
+	if err := repo.CleanupTokenActivity(ctx, cutoff); err != nil {
+		logger.LegacyPrintf("service.dashboard_aggregation", "[TokenActivity] retention cleanup failed: %v", err)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
@@ -61,6 +62,10 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+}
+
+type tokenActivityReader interface {
+	GetUserTokenActivity(ctx context.Context, userID int64, startDate, endDate time.Time) ([]usagestats.TokenActivityDay, time.Time, *time.Time, error)
 }
 
 // NewUsageService 创建使用统计服务实例
@@ -298,6 +303,70 @@ func (s *UsageService) GetUserDashboardStats(ctx context.Context, userID int64) 
 	}
 	applyUserDashboardDerivedStats(stats)
 	return stats, nil
+}
+
+// GetUserTokenActivity returns the settled 12-month snapshot without reading
+// live usage logs.
+func (s *UsageService) GetUserTokenActivity(ctx context.Context, userID int64) (*usagestats.TokenActivityResponse, error) {
+	reader, ok := s.usageRepo.(tokenActivityReader)
+	if !ok {
+		return nil, errors.New("token activity repository is not configured")
+	}
+	today := timezone.Today()
+	latestSettledDay := today.AddDate(0, 0, -1)
+	startDate := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, today.Location()).AddDate(0, -11, 0)
+	days, dataThrough, updatedAt, err := reader.GetUserTokenActivity(ctx, userID, startDate, latestSettledDay)
+	if err != nil {
+		return nil, fmt.Errorf("get user token activity: %w", err)
+	}
+	dataThrough = time.Date(dataThrough.Year(), dataThrough.Month(), dataThrough.Day(), 0, 0, 0, 0, today.Location())
+	if dataThrough.After(latestSettledDay) {
+		dataThrough = latestSettledDay
+	}
+	return buildTokenActivityResponse(days, startDate, today, dataThrough, timezone.Name(), updatedAt), nil
+}
+
+func buildTokenActivityResponse(days []usagestats.TokenActivityDay, startDate, endDate, dataThrough time.Time, zone string, updatedAt *time.Time) *usagestats.TokenActivityResponse {
+	byDate := make(map[string]int64, len(days))
+	total := int64(0)
+	for _, day := range days {
+		byDate[day.Date] = day.TotalTokens
+		total += day.TotalTokens
+	}
+
+	longest := 0
+	running := 0
+	for day := startDate; !day.After(dataThrough); day = day.AddDate(0, 0, 1) {
+		if byDate[day.Format("2006-01-02")] > 0 {
+			running++
+			if running > longest {
+				longest = running
+			}
+		} else {
+			running = 0
+		}
+	}
+
+	current := 0
+	for day := dataThrough; !day.Before(startDate); day = day.AddDate(0, 0, -1) {
+		if byDate[day.Format("2006-01-02")] <= 0 {
+			break
+		}
+		current++
+	}
+	return &usagestats.TokenActivityResponse{
+		StartDate:       startDate.Format("2006-01-02"),
+		EndDate:         endDate.Format("2006-01-02"),
+		DataThroughDate: dataThrough.Format("2006-01-02"),
+		Timezone:        zone,
+		UpdatedAt:       updatedAt,
+		Summary: usagestats.TokenActivitySummary{
+			TotalTokens:       total,
+			CurrentStreakDays: current,
+			LongestStreakDays: longest,
+		},
+		Days: days,
+	}
 }
 
 // GetAPIKeyDashboardStats returns dashboard summary stats filtered by API Key.

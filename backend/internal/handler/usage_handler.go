@@ -539,6 +539,23 @@ func (h *UsageHandler) DashboardStats(c *gin.Context) {
 	response.Success(c, stats)
 }
 
+// DashboardActivity returns the current user's settled daily Token snapshots.
+// GET /api/v1/usage/dashboard/activity
+func (h *UsageHandler) DashboardActivity(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	activity, err := h.usageService.GetUserTokenActivity(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, activity)
+}
+
 // DashboardTrend handles getting user usage trend data
 // GET /api/v1/usage/dashboard/trend
 func (h *UsageHandler) DashboardTrend(c *gin.Context) {

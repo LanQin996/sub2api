@@ -128,6 +128,25 @@ export interface UsageDashboardSnapshotV2Response {
   groups?: GroupStat[]
 }
 
+export interface TokenActivityDay {
+  date: string
+  total_tokens: number
+}
+
+export interface TokenActivityResponse {
+  start_date: string
+  end_date: string
+  data_through_date: string
+  timezone: string
+  updated_at: string | null
+  summary: {
+    total_tokens: number
+    current_streak_days: number
+    longest_streak_days: number
+  }
+  days: TokenActivityDay[]
+}
+
 /**
  * List usage logs with optional filters
  * @param page - Page number (default: 1)
@@ -269,6 +288,11 @@ export async function getById(id: number): Promise<UsageLog> {
  */
 export async function getDashboardStats(): Promise<UserDashboardStats> {
   const { data } = await apiClient.get<UserDashboardStats>('/usage/dashboard/stats')
+  return data
+}
+
+export async function getDashboardActivity(): Promise<TokenActivityResponse> {
+  const { data } = await apiClient.get<TokenActivityResponse>('/usage/dashboard/activity')
   return data
 }
 
@@ -419,6 +443,7 @@ export const usageAPI = {
   getById,
   // Dashboard
   getDashboardStats,
+  getDashboardActivity,
   getDashboardTrend,
   getDashboardModels,
   getRanking,

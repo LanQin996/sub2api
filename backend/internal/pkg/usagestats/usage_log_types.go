@@ -94,6 +94,30 @@ type TrendDataPoint struct {
 	ActualCost          float64 `json:"actual_cost"` // 实际扣除
 }
 
+// TokenActivityDay is one settled day in the user Token activity snapshot.
+type TokenActivityDay struct {
+	Date        string `json:"date"`
+	TotalTokens int64  `json:"total_tokens"`
+}
+
+// TokenActivitySummary contains the stable summary derived from daily snapshots.
+type TokenActivitySummary struct {
+	TotalTokens       int64 `json:"total_tokens"`
+	CurrentStreakDays int   `json:"current_streak_days"`
+	LongestStreakDays int   `json:"longest_streak_days"`
+}
+
+// TokenActivityResponse is the user-facing, non-realtime activity snapshot.
+type TokenActivityResponse struct {
+	StartDate       string               `json:"start_date"`
+	EndDate         string               `json:"end_date"`
+	DataThroughDate string               `json:"data_through_date"`
+	Timezone        string               `json:"timezone"`
+	UpdatedAt       *time.Time           `json:"updated_at"`
+	Summary         TokenActivitySummary `json:"summary"`
+	Days            []TokenActivityDay   `json:"days"`
+}
+
 // ModelStat represents usage statistics for a single model
 type ModelStat struct {
 	Model               string  `json:"model"`
