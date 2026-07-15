@@ -20,12 +20,13 @@ import (
 )
 
 type contentModerationTestSettingRepo struct {
-	values          map[string]string
-	getValueCalls   atomic.Int64
-	getValueStarted chan struct{}
-	getValueRelease <-chan struct{}
-	getValueOnce    sync.Once
-	getValueErr     error
+	values           map[string]string
+	getValueCalls    atomic.Int64
+	getMultipleCalls atomic.Int64
+	getValueStarted  chan struct{}
+	getValueRelease  <-chan struct{}
+	getValueOnce     sync.Once
+	getValueErr      error
 }
 
 func (r *contentModerationTestSettingRepo) Get(ctx context.Context, key string) (*Setting, error) {
@@ -68,6 +69,7 @@ func (r *contentModerationTestSettingRepo) Set(ctx context.Context, key, value s
 }
 
 func (r *contentModerationTestSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	r.getMultipleCalls.Add(1)
 	out := map[string]string{}
 	for _, key := range keys {
 		if value, ok := r.values[key]; ok {
@@ -853,7 +855,8 @@ func TestContentModerationService_DefaultDisabledDoesNotAllocateQueueOrPollSetti
 		require.NoError(t, err)
 		require.True(t, decision.Allowed)
 	}
-	require.Equal(t, int64(1), settingRepo.getValueCalls.Load())
+	require.Zero(t, settingRepo.getValueCalls.Load())
+	require.Equal(t, int64(1), settingRepo.getMultipleCalls.Load())
 	require.True(t, svc.runtimePaused.Load())
 
 	svc.runtimeMu.Lock()
