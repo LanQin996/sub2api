@@ -3,6 +3,8 @@ package routes
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -22,7 +24,12 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 	if len(platform) > 0 && platform[0] != "" {
 		groupPlatform = platform[0]
 	}
+	registerGatewayRoutesForTest(router, groupPlatform)
 
+	return router
+}
+
+func registerGatewayRoutesForTest(router *gin.Engine, groupPlatform string) {
 	RegisterGatewayRoutes(
 		router,
 		&handler.Handlers{
@@ -44,8 +51,6 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 		nil,
 		&config.Config{},
 	)
-
-	return router
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
@@ -131,6 +136,37 @@ func TestGatewayRoutesAsyncImagesPathsAreRegistered(t *testing.T) {
 	} {
 		require.True(t, registered[route], "%s should be registered", route)
 	}
+}
+
+func TestPublicImagesCoexistWithGatewayImageRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	publicImagesDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(publicImagesDir, "generated.png"), []byte("image-data"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(publicImagesDir, "tasks"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(publicImagesDir, "tasks", "task-123"), []byte("should-not-win"), 0o600))
+
+	registerPublicImages(router, publicImagesDir)
+	registerGatewayRoutesForTest(router, service.PlatformOpenAI)
+
+	request := httptest.NewRequest(http.MethodGet, "/images/generated.png", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, "image-data", response.Body.String())
+
+	request = httptest.NewRequest(http.MethodGet, "/images/tasks/task-123", nil)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	require.Equal(t, http.StatusNotFound, response.Code)
+	require.Contains(t, response.Header().Get("Content-Type"), "application/json")
+	require.NotContains(t, response.Body.String(), "should-not-win")
+
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+	require.True(t, registered["GET /images/tasks/:task_id"])
 }
 
 func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
