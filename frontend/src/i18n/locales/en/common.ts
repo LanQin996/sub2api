@@ -150,7 +150,6 @@ export default {
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
-    playground: 'Playground',
     batchImage: 'Batch Images',
     usage: 'Usage',
     ranking: 'Ranking',

@@ -150,7 +150,6 @@ export default {
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',
-    playground: '在线工作台',
     batchImage: '批量生图',
     usage: '使用记录',
     ranking: '排行榜',
