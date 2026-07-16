@@ -170,7 +170,7 @@
             {{ t('admin.channels.form.defaultPrices') }}
             <span class="ml-1 font-normal text-gray-400">$/MTok</span>
           </label>
-          <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-6">
             <div>
               <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice') }}</label>
               <input :value="entry.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
@@ -189,6 +189,11 @@
             <div>
               <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadPrice') }}</label>
               <input :value="entry.cache_read_price" @input="emitField('cache_read_price', ($event.target as HTMLInputElement).value)"
+                type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder')" />
+            </div>
+            <div>
+              <label class="text-xs text-gray-400">{{ t('admin.channels.form.imageInputPrice') }}</label>
+              <input :value="entry.image_input_price" @input="emitField('image_input_price', ($event.target as HTMLInputElement).value)"
                 type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder')" />
             </div>
             <div>
@@ -331,6 +336,7 @@ type PriceField =
   | 'output_price'
   | 'cache_write_price'
   | 'cache_read_price'
+  | 'image_input_price'
   | 'image_output_price'
   | 'per_request_price'
 type PricePatch = Partial<Record<PriceField, number | null>>
@@ -340,6 +346,7 @@ const tokenPriceFields: PriceField[] = [
   'output_price',
   'cache_write_price',
   'cache_read_price',
+  'image_input_price',
   'image_output_price',
 ]
 const requestPriceFields: PriceField[] = ['per_request_price']
@@ -480,7 +487,6 @@ async function applyOfficialPricingForModels(
     pricingLookupMessage.value = t('admin.channels.form.officialPricingNoModel', '请先添加完整模型名')
     return
   }
-
   const runId = ++pricingLookupRunId
   pricingLookupState.value = 'loading'
   pricingLookupMessage.value = ''
@@ -531,6 +537,7 @@ function pricingPatchForMode(result: ModelDefaultPricing, mode: BillingMode): Pr
       output_price: perTokenToMTok(result.output_price ?? null),
       cache_write_price: perTokenToMTok(result.cache_write_price ?? null),
       cache_read_price: perTokenToMTok(result.cache_read_price ?? null),
+      image_input_price: perTokenToMTok(result.image_input_price ?? null),
       image_output_price: perTokenToMTok(result.image_output_price ?? null),
     }
   }

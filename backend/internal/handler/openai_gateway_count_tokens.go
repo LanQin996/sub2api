@@ -120,6 +120,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
 			false,
+			false,
 			routeRuntime.requestPlatform,
 		)
 		service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
