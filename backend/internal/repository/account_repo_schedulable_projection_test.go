@@ -67,6 +67,8 @@ func TestListSchedulableAccountLoadsUsesSingleProjectionQuery(t *testing.T) {
 	for _, predicateColumn := range []string{
 		"status",
 		"schedulable",
+		"owner_user_id",
+		"contribution_status",
 		"temp_unschedulable_until",
 		"expires_at",
 		"auto_pause_on_expired",

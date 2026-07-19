@@ -47,12 +47,8 @@ func NewAccountContributionService(accountRepo AccountContributionRepository, gr
 	return &AccountContributionService{accountRepo: accountRepo, groupRepo: groupRepo, rewardRepo: rewardRepo, oauth: oauth}
 }
 
-func ProvideAccountContributionService(accountRepo AccountRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, rewardRepo ContributorRewardRepository, oauth *OpenAIOAuthService, schedulerSnapshot *SchedulerSnapshotService) *AccountContributionService {
-	contributionRepo, ok := accountRepo.(AccountContributionRepository)
-	if !ok {
-		panic("account repository does not implement AccountContributionRepository")
-	}
-	svc := NewAccountContributionService(contributionRepo, groupRepo, rewardRepo, oauth)
+func ProvideAccountContributionService(accountRepo AccountContributionRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, rewardRepo ContributorRewardRepository, oauth *OpenAIOAuthService, schedulerSnapshot *SchedulerSnapshotService) *AccountContributionService {
+	svc := NewAccountContributionService(accountRepo, groupRepo, rewardRepo, oauth)
 	svc.proxyRepo = proxyRepo
 	svc.SetSchedulerRefresher(schedulerSnapshot)
 	return svc

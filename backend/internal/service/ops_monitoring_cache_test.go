@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -10,36 +9,28 @@ import (
 
 func TestOpsMonitoringEnabledCachesHotPathSetting(t *testing.T) {
 	repo := newRuntimeSettingRepoStub()
-	var calls atomic.Int32
-	repo.getValueFn = func(key string) (string, error) {
-		if key != SettingKeyOpsMonitoringEnabled {
-			t.Fatalf("unexpected setting key %q", key)
-		}
-		calls.Add(1)
-		return "false", nil
-	}
+	repo.values[SettingKeyOpsMonitoringEnabled] = "false"
 	svc := &OpsService{
 		settingRepo: repo,
 		cfg:         &config.Config{Ops: config.OpsConfig{Enabled: true}},
 	}
+	svc.initRuntimeSettings(context.Background())
 
 	for range 100 {
 		if svc.IsMonitoringEnabled(context.Background()) {
 			t.Fatal("expected monitoring to be disabled")
 		}
 	}
-	if got := calls.Load(); got != 1 {
-		t.Fatalf("GetValue calls = %d, want 1", got)
+	if got := repo.getMultipleCalls; got != 1 {
+		t.Fatalf("GetMultiple calls = %d, want 1", got)
+	}
+	if got := repo.getValueCalls; got != 0 {
+		t.Fatalf("GetValue calls = %d, want 0", got)
 	}
 }
 
 func TestOpsMonitoringHardSwitchSkipsSettingLookup(t *testing.T) {
 	repo := newRuntimeSettingRepoStub()
-	var calls atomic.Int32
-	repo.getValueFn = func(string) (string, error) {
-		calls.Add(1)
-		return "true", nil
-	}
 	svc := &OpsService{
 		settingRepo: repo,
 		cfg:         &config.Config{Ops: config.OpsConfig{Enabled: false}},
@@ -48,7 +39,10 @@ func TestOpsMonitoringHardSwitchSkipsSettingLookup(t *testing.T) {
 	if svc.IsMonitoringEnabled(context.Background()) {
 		t.Fatal("expected hard switch to disable monitoring")
 	}
-	if got := calls.Load(); got != 0 {
+	if got := repo.getValueCalls; got != 0 {
 		t.Fatalf("GetValue calls = %d, want 0", got)
+	}
+	if got := repo.getMultipleCalls; got != 0 {
+		t.Fatalf("GetMultiple calls = %d, want 0", got)
 	}
 }

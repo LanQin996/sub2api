@@ -43,7 +43,14 @@ func TestListModelAvailabilityCandidates_GroupQueryIgnoresTransientState(t *test
 	_, whereClause, found := strings.Cut(normalized, " WHERE ")
 	require.True(t, found, "expected WHERE clause in query: %s", normalized)
 	whereClause, _, _ = strings.Cut(whereClause, " ORDER BY ")
-	for _, configuredPredicate := range []string{"group_id", "status", "schedulable", "platform"} {
+	for _, configuredPredicate := range []string{
+		"group_id",
+		"status",
+		"schedulable",
+		"platform",
+		"owner_user_id",
+		"contribution_status",
+	} {
 		require.Contains(t, whereClause, configuredPredicate)
 	}
 	for _, transientPredicate := range []string{
