@@ -61,6 +61,8 @@ export default {
       createError: '创建渠道失败',
       updateError: '更新渠道失败',
       deleteError: '删除渠道失败',
+      noGroupsSelected: '请至少为 {platform} 选择一个分组',
+      emptyModelsInPricing: '请至少为 {platform} 添加一个定价模型',
       nameRequired: '请输入渠道名称',
       duplicateModels: '模型「{0}」在多个定价条目中重复',
       modelConflict: "模型模式 '{model1}' 和 '{model2}' 冲突：匹配范围重叠。模型名称按大小写不敏感匹配，已有条目已覆盖其所有大小写变体，无需重复添加。",

@@ -2,6 +2,12 @@ export default {
   common: {
     loading: '加载中...',
     submitting: '提交中...',
+    apply: '应用',
+    clear: '清除',
+    creating: '创建中...',
+    required: '为必填项',
+    sending: '发送中...',
+    tryAgain: '请重试',
     justNow: '刚刚',
     peakRateTooltip: '高峰倍率：{window}',
     peakRateImageNote: '；token 计费的图片 token 同样适用，图片按次计费不受高峰影响',

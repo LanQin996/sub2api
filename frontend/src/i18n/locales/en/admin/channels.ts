@@ -61,6 +61,8 @@ export default {
       createError: 'Failed to create channel',
       updateError: 'Failed to update channel',
       deleteError: 'Failed to delete channel',
+      noGroupsSelected: 'Select at least one group for {platform}',
+      emptyModelsInPricing: 'Add at least one pricing model for {platform}',
       nameRequired: 'Please enter a channel name',
       duplicateModels: 'Model "{0}" appears in multiple pricing entries',
       modelConflict: "Model patterns '{model1}' and '{model2}' conflict: overlapping match range. Model names are matched case-insensitively, so an existing entry already covers all case variants — no need to add the variant separately.",
