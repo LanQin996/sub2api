@@ -116,6 +116,11 @@ func (s *OpsSystemLogSink) IndexedEventsOnly() bool {
 }
 
 func (s *OpsSystemLogSink) shouldIndex(event *logger.LogEvent) bool {
+	if event != nil && event.Fields != nil {
+		if skip, _ := event.Fields[logger.OpsSystemLogSkipField].(bool); skip {
+			return false
+		}
+	}
 	level := strings.ToLower(strings.TrimSpace(event.Level))
 	switch level {
 	case "warn", "warning", "error", "fatal", "panic", "dpanic":

@@ -126,7 +126,7 @@ function clearPopupReadyListener() {
 
 onMounted(async () => {
   try {
-    const { loadStripe } = await import('@stripe/stripe-js')
+    const { loadStripe } = await import('@stripe/stripe-js/pure')
     if (isUnmounted) return
     const stripe = await loadStripe(props.publishableKey)
     if (isUnmounted) return

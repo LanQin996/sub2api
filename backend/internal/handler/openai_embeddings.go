@@ -74,6 +74,10 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	reqLog = reqLog.With(zap.String("model", reqModel))
 	setOpsRequestContext(c, reqModel, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
+	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, "openai_embeddings", reqModel, body); decision != nil && !decision.AllowNextStage {
+		h.openAISecurityAuditError(c, decision)
+		return
+	}
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	routeRuntime := newOpenAIRouteGroupRuntime(h, c, reqLog, apiKey, subscription, reqModel, body, h.gatewayService.ReplaceModelInBody)
