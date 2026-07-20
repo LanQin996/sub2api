@@ -691,7 +691,7 @@ func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {
 	require.Len(t, redeemRepo.useCalls, 1)
 }
 
-func TestReconcilePendingPaymentOrdersBackfillsPaidEasyPayOrder(t *testing.T) {
+func TestReconcilePendingPaymentOrdersBackfillsPaidPendingEasyPayOrder(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentOrderLifecycleTestClient(t)
 
@@ -815,6 +815,145 @@ func TestReconcilePendingPaymentOrdersBackfillsPaidEasyPayOrder(t *testing.T) {
 	require.Equal(t, "easypay-upstream-trade-123", reloaded.PaymentTradeNo)
 	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
 	require.Len(t, redeemRepo.useCalls, 1)
+}
+
+func TestExpireTimedOutOrdersExpiresEasyPayWithoutQuery(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("easypay-expiry-query-error@example.com").
+		SetPasswordHash("hash").
+		SetUsername("easypay-expiry-query-error").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(50).
+		SetPayAmount(50).
+		SetFeeRate(0).
+		SetRechargeCode("EASYPAY-EXPIRY-QUERY-ERROR").
+		SetOutTradeNo("sub2_easypay_expiry_query_error").
+		SetPaymentType(payment.TypeEasyPay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(-time.Minute)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	registry := payment.NewRegistry()
+	provider := &paymentOrderLifecycleQueryProvider{
+		key: payment.TypeEasyPay,
+	}
+	registry.Register(provider)
+	svc := &PaymentService{
+		entClient:       client,
+		registry:        registry,
+		providersLoaded: true,
+	}
+
+	expired, err := svc.ExpireTimedOutOrders(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, expired)
+	require.Zero(t, provider.queryCalls)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusExpired, reloaded.Status)
+}
+
+func TestReconcilePendingPaymentOrdersRotatesPastFirstBatch(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("easypay-reconcile-cursor@example.com").
+		SetPasswordHash("hash").
+		SetUsername("easypay-reconcile-cursor").
+		Save(ctx)
+	require.NoError(t, err)
+
+	excludedOrders := []struct {
+		suffix    string
+		status    string
+		expiresAt time.Time
+	}{
+		{suffix: "pending-expired", status: OrderStatusPending, expiresAt: time.Now().Add(-time.Minute)},
+		{suffix: "expired", status: OrderStatusExpired, expiresAt: time.Now().Add(-time.Minute)},
+		{suffix: "completed", status: OrderStatusCompleted, expiresAt: time.Now().Add(time.Hour)},
+	}
+	for _, excluded := range excludedOrders {
+		_, err = client.PaymentOrder.Create().
+			SetUserID(user.ID).
+			SetUserEmail(user.Email).
+			SetUserName(user.Username).
+			SetAmount(50).
+			SetPayAmount(50).
+			SetFeeRate(0).
+			SetRechargeCode("EASYPAY-RECONCILE-EXCLUDED-" + excluded.suffix).
+			SetOutTradeNo("sub2_easypay_reconcile_excluded_" + excluded.suffix).
+			SetPaymentType(payment.TypeEasyPay).
+			SetPaymentTradeNo("").
+			SetOrderType(payment.OrderTypeBalance).
+			SetStatus(excluded.status).
+			SetExpiresAt(excluded.expiresAt).
+			SetClientIP("127.0.0.1").
+			SetSrcHost("api.example.com").
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	for i := 0; i < pendingPaymentReconcileLimit+1; i++ {
+		suffix := strconv.Itoa(i)
+		_, err = client.PaymentOrder.Create().
+			SetUserID(user.ID).
+			SetUserEmail(user.Email).
+			SetUserName(user.Username).
+			SetAmount(50).
+			SetPayAmount(50).
+			SetFeeRate(0).
+			SetRechargeCode("EASYPAY-RECONCILE-CURSOR-" + suffix).
+			SetOutTradeNo("sub2_easypay_reconcile_cursor_" + suffix).
+			SetPaymentType(payment.TypeEasyPay).
+			SetPaymentTradeNo("").
+			SetOrderType(payment.OrderTypeBalance).
+			SetStatus(OrderStatusPending).
+			SetExpiresAt(time.Now().Add(time.Hour)).
+			SetClientIP("127.0.0.1").
+			SetSrcHost("api.example.com").
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	registry := payment.NewRegistry()
+	provider := &paymentOrderLifecycleQueryProvider{
+		key: payment.TypeEasyPay,
+		resp: &payment.QueryOrderResponse{
+			Status: payment.ProviderStatusPending,
+		},
+	}
+	registry.Register(provider)
+	svc := &PaymentService{
+		entClient:       client,
+		registry:        registry,
+		providersLoaded: true,
+	}
+
+	recovered, err := svc.ReconcilePendingPaymentOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	require.Equal(t, pendingPaymentReconcileLimit, provider.queryCalls)
+
+	recovered, err = svc.ReconcilePendingPaymentOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	require.Equal(t, pendingPaymentReconcileLimit+1, provider.queryCalls)
 }
 
 func TestReconcilePendingPaymentOrdersSkipsPlainAlipayOrder(t *testing.T) {

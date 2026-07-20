@@ -11,6 +11,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -152,6 +153,7 @@ func (s *PaymentService) reconcilePaid(ctx context.Context, o *dbent.PaymentOrde
 func (s *PaymentService) checkPaidWithOptions(ctx context.Context, o *dbent.PaymentOrder, opts checkPaidOptions) string {
 	prov, err := s.getOrderProvider(ctx, o)
 	if err != nil {
+		slog.Warn("load payment provider for order query failed", "orderID", o.ID, "error", err)
 		return ""
 	}
 	queryRef := paymentOrderQueryReference(o, prov)
@@ -163,6 +165,10 @@ func (s *PaymentService) checkPaidWithOptions(ctx context.Context, o *dbent.Paym
 	finishProviderCall()
 	if err != nil {
 		slog.Warn("query upstream failed", "orderID", o.ID, "error", err)
+		return ""
+	}
+	if resp == nil {
+		slog.Warn("query upstream returned empty response", "orderID", o.ID)
 		return ""
 	}
 	if resp.Status == payment.ProviderStatusPaid {
@@ -272,6 +278,20 @@ func paymentOrderShouldPersistUpstreamTradeNo(queryRef, upstreamTradeNo, current
 	return true
 }
 
+func isEasyPayPaymentOrder(order *dbent.PaymentOrder) bool {
+	if order == nil {
+		return false
+	}
+	providerKey := strings.TrimSpace(psStringValue(order.ProviderKey))
+	if snapshot := psOrderProviderSnapshot(order); snapshot != nil && strings.TrimSpace(snapshot.ProviderKey) != "" {
+		providerKey = strings.TrimSpace(snapshot.ProviderKey)
+	}
+	if providerKey == "" {
+		providerKey = strings.TrimSpace(order.PaymentType)
+	}
+	return strings.EqualFold(payment.GetBasePaymentType(providerKey), payment.TypeEasyPay)
+}
+
 // VerifyOrderByOutTradeNo actively queries the upstream provider to check
 // if a payment was made, and processes it if so. This handles the case where
 // the provider's notify callback was missed (e.g. EasyPay popup mode).
@@ -307,25 +327,52 @@ func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo
 // providers that support reliable upstream order queries, so missed provider
 // notifications do not wait until order expiry to fulfill.
 func (s *PaymentService) ReconcilePendingPaymentOrders(ctx context.Context) (int, error) {
+	s.reconcileMu.Lock()
+	defer s.reconcileMu.Unlock()
+
 	now := time.Now()
-	orders, err := s.entClient.PaymentOrder.Query().
-		Where(
+	queryBatch := func(cursorID int64) ([]*dbent.PaymentOrder, error) {
+		queryable := paymentorder.Or(
+			paymentorder.PaymentTypeEQ(payment.TypeWxpay),
+			paymentorder.PaymentTypeHasPrefix(payment.TypeWxpay+"_"),
+			paymentorder.ProviderKeyEQ(payment.TypeWxpay),
+			paymentorder.ProviderKeyHasPrefix(payment.TypeWxpay+"_"),
+			paymentorder.PaymentTypeEQ(payment.TypeEasyPay),
+			paymentorder.ProviderKeyEQ(payment.TypeEasyPay),
+		)
+		where := []predicate.PaymentOrder{
 			paymentorder.StatusEQ(OrderStatusPending),
 			paymentorder.ExpiresAtGT(now),
-			paymentorder.Or(
-				paymentorder.PaymentTypeEQ(payment.TypeWxpay),
-				paymentorder.PaymentTypeHasPrefix(payment.TypeWxpay+"_"),
-				paymentorder.ProviderKeyEQ(payment.TypeWxpay),
-				paymentorder.ProviderKeyHasPrefix(payment.TypeWxpay+"_"),
-				paymentorder.PaymentTypeEQ(payment.TypeEasyPay),
-				paymentorder.ProviderKeyEQ(payment.TypeEasyPay),
-			),
-		).
-		Order(dbent.Asc(paymentorder.FieldCreatedAt)).
-		Limit(pendingPaymentReconcileLimit).
-		All(ctx)
+			queryable,
+		}
+		if cursorID > 0 {
+			where = append(where, paymentorder.IDGT(cursorID))
+		}
+		return s.entClient.PaymentOrder.Query().
+			Where(where...).
+			Order(dbent.Asc(paymentorder.FieldID)).
+			Limit(pendingPaymentReconcileLimit).
+			All(ctx)
+	}
+
+	cursorID := s.reconcileCursorID
+	orders, err := queryBatch(cursorID)
 	if err != nil {
 		return 0, fmt.Errorf("query pending payment orders: %w", err)
+	}
+	// When the cursor reaches the end, start a new pass immediately. This
+	// keeps the bounded batch while allowing older pending orders and newer
+	// orders to share the reconciliation budget fairly.
+	if len(orders) == 0 && cursorID > 0 {
+		s.reconcileCursorID = 0
+		orders, err = queryBatch(0)
+		if err != nil {
+			return 0, fmt.Errorf("query pending payment orders from cursor start: %w", err)
+		}
+	}
+	if len(orders) > 0 {
+		last := orders[len(orders)-1]
+		s.reconcileCursorID = last.ID
 	}
 
 	recovered := 0
@@ -389,9 +436,28 @@ func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) 
 	}
 	n := 0
 	for _, o := range orders {
+		if isEasyPayPaymentOrder(o) {
+			updated, updateErr := s.entClient.PaymentOrder.Update().
+				Where(paymentorder.IDEQ(o.ID), paymentorder.StatusEQ(OrderStatusPending)).
+				SetStatus(OrderStatusExpired).
+				Save(ctx)
+			if updateErr != nil {
+				slog.Warn("failed to expire EasyPay order", "orderID", o.ID, "error", updateErr)
+				continue
+			}
+			if updated > 0 {
+				s.writeAuditLog(ctx, o.ID, "ORDER_EXPIRED", "system", map[string]any{"detail": "order expired"})
+				n++
+			}
+			continue
+		}
 		// Check upstream payment status before expiring — the user may have
 		// paid just before timeout and the webhook hasn't arrived yet.
-		outcome, _ := s.cancelCore(ctx, o, OrderStatusExpired, "system", "order expired")
+		outcome, err := s.cancelCore(ctx, o, OrderStatusExpired, "system", "order expired")
+		if err != nil {
+			slog.Warn("failed to expire payment order", "orderID", o.ID, "error", err)
+			continue
+		}
 		if outcome == checkPaidResultAlreadyPaid {
 			slog.Info("order was paid during expiry", "orderID", o.ID)
 			continue

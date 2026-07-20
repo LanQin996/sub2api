@@ -151,15 +151,22 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 	previousStatus := o.Status
 	now := time.Now()
 	grace := now.Add(-paymentGraceMinutes * time.Minute)
+	expiredRecovery := paymentorder.And(
+		paymentorder.StatusEQ(OrderStatusExpired),
+		paymentorder.UpdatedAtGTE(grace),
+	)
+	// EasyPay notifications are not reliable enough to make local expiry a
+	// final payment decision. A signed callback or successful upstream query is
+	// authoritative even after the normal late-callback grace period.
+	if strings.EqualFold(strings.TrimSpace(pk), payment.TypeEasyPay) {
+		expiredRecovery = paymentorder.StatusEQ(OrderStatusExpired)
+	}
 	c, err := s.entClient.PaymentOrder.Update().Where(
 		paymentorder.IDEQ(o.ID),
 		paymentorder.Or(
 			paymentorder.StatusEQ(OrderStatusPending),
 			paymentorder.StatusEQ(OrderStatusCancelled),
-			paymentorder.And(
-				paymentorder.StatusEQ(OrderStatusExpired),
-				paymentorder.UpdatedAtGTE(grace),
-			),
+			expiredRecovery,
 		),
 	).SetStatus(OrderStatusPaid).SetPayAmount(paid).SetPaymentTradeNo(tradeNo).SetPaidAt(now).ClearFailedAt().ClearFailedReason().Save(ctx)
 	if err != nil {

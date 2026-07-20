@@ -177,6 +177,8 @@ type TopUserStat struct {
 
 type PaymentService struct {
 	providerMu               sync.Mutex
+	reconcileMu              sync.Mutex
+	reconcileCursorID        int64
 	providersLoaded          bool
 	entClient                *dbent.Client
 	registry                 *payment.Registry

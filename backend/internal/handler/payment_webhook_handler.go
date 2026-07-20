@@ -90,6 +90,13 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	providers, err := h.paymentService.GetWebhookProviders(c.Request.Context(), providerKey, outTradeNo)
 	if err != nil {
 		slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
+		if providerKey == payment.TypeEasyPay {
+			// Do not acknowledge an EasyPay callback that could not be verified.
+			// EasyPay retries unless it receives the exact success response, which
+			// gives transient DB/config failures a chance to recover.
+			c.String(http.StatusServiceUnavailable, "provider unavailable")
+			return
+		}
 		if providerKey == payment.TypeWxpay {
 			c.String(http.StatusBadRequest, "verify failed")
 			return

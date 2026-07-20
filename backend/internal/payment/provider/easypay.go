@@ -284,21 +284,45 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("easypay parse query: %w", err)
 	}
+	if resp.Code != nil && !easyPayResponseCodeIsSuccess(resp.Code) {
+		msg := strings.TrimSpace(resp.Msg)
+		if isEasyPayOrderNotFoundMessage(msg) {
+			return &payment.QueryOrderResponse{
+				TradeNo:  tradeNo,
+				Status:   payment.ProviderStatusFailed,
+				Metadata: e.MerchantIdentityMetadata(),
+			}, nil
+		}
+		if msg == "" {
+			msg = "provider returned an unsuccessful response code"
+		}
+		return nil, fmt.Errorf("easypay query failed: %s", msg)
+	}
 	status := payment.ProviderStatusPending
+	statusKnown := false
 	if resp.TradeStatus != nil {
+		statusKnown = true
 		if *resp.TradeStatus == tradeStatusSuccess {
 			status = payment.ProviderStatusPaid
 		}
 	} else if resp.Data.TradeStatus != nil {
+		statusKnown = true
 		if *resp.Data.TradeStatus == tradeStatusSuccess {
 			status = payment.ProviderStatusPaid
 		}
 	} else if resp.Status != nil {
+		statusKnown = true
 		if *resp.Status == easypayStatusPaid {
 			status = payment.ProviderStatusPaid
 		}
-	} else if resp.Data.Status != nil && *resp.Data.Status == easypayStatusPaid {
-		status = payment.ProviderStatusPaid
+	} else if resp.Data.Status != nil {
+		statusKnown = true
+		if *resp.Data.Status == easypayStatusPaid {
+			status = payment.ProviderStatusPaid
+		}
+	}
+	if !statusKnown {
+		return nil, fmt.Errorf("easypay query returned no order status")
 	}
 
 	money := ""
@@ -336,6 +360,14 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 		PaidAt:   paidAt,
 		Metadata: e.MerchantIdentityMetadata(),
 	}, nil
+}
+
+func isEasyPayOrderNotFoundMessage(msg string) bool {
+	lower := strings.ToLower(strings.TrimSpace(msg))
+	return strings.Contains(msg, "订单编号不存在") ||
+		strings.Contains(msg, "订单不存在") ||
+		strings.Contains(lower, "order not found") ||
+		strings.Contains(lower, "not exist")
 }
 
 func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[string]string) (*payment.PaymentNotification, error) {
@@ -434,12 +466,7 @@ func isEasyPayRefundOrderNotFound(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
-	lower := strings.ToLower(msg)
-	return strings.Contains(msg, "订单编号不存在") ||
-		strings.Contains(msg, "订单不存在") ||
-		strings.Contains(lower, "order not found") ||
-		strings.Contains(lower, "not exist")
+	return isEasyPayOrderNotFoundMessage(err.Error())
 }
 
 func parseEasyPayRefundResponse(status int, body []byte) error {

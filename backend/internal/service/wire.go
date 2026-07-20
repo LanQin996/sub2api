@@ -825,7 +825,7 @@ func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, 
 
 // ProvidePaymentOrderExpiryService creates and starts PaymentOrderExpiryService.
 func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService, lockCache LeaderLockCache, db *sql.DB) *PaymentOrderExpiryService {
-	svc := NewPaymentOrderExpiryService(paymentSvc, 60*time.Second)
+	svc := NewPaymentOrderExpiryService(paymentSvc, 2*time.Second)
 	svc.SetLeaderLock(lockCache, db)
 	svc.Start()
 	return svc
