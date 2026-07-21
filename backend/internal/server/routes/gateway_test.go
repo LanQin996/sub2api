@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +18,10 @@ import (
 )
 
 func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
+	return newGatewayRoutesTestRouterWithConfig(&config.Config{}, platform...)
+}
+
+func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
@@ -24,12 +29,12 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 	if len(platform) > 0 && platform[0] != "" {
 		groupPlatform = platform[0]
 	}
-	registerGatewayRoutesForTest(router, groupPlatform)
+	registerGatewayRoutesForTest(router, groupPlatform, cfg)
 
 	return router
 }
 
-func registerGatewayRoutesForTest(router *gin.Engine, groupPlatform string) {
+func registerGatewayRoutesForTest(router *gin.Engine, groupPlatform string, cfg *config.Config) {
 	RegisterGatewayRoutes(
 		router,
 		&handler.Handlers{
@@ -49,7 +54,7 @@ func registerGatewayRoutesForTest(router *gin.Engine, groupPlatform string) {
 		nil,
 		nil,
 		nil,
-		&config.Config{},
+		cfg,
 	)
 }
 
@@ -147,7 +152,7 @@ func TestPublicImagesCoexistWithGatewayImageRoutes(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(publicImagesDir, "tasks", "task-123"), []byte("should-not-win"), 0o600))
 
 	registerPublicImages(router, publicImagesDir)
-	registerGatewayRoutesForTest(router, service.PlatformOpenAI)
+	registerGatewayRoutesForTest(router, service.PlatformOpenAI, &config.Config{})
 
 	request := httptest.NewRequest(http.MethodGet, "/images/generated.png", nil)
 	response := httptest.NewRecorder()
@@ -260,13 +265,22 @@ func TestGatewayRoutesGrokAllowsCLICompatibilityEntrypoints(t *testing.T) {
 		require.NotContains(t, w.Body.String(), "not supported for Grok groups")
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"grok","messages":[{"role":"user","content":"hi"}]}`))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
+	countTokensRouter := newGatewayRoutesTestRouterWithConfig(&config.Config{
+		Gateway: config.GatewayConfig{MaxBodySize: 1024 * 1024},
+	}, service.PlatformGrok)
+	for _, path := range []string{"/v1/messages/count_tokens", "/messages/count_tokens"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"grok","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
 
-	router.ServeHTTP(w, req)
-	require.Equal(t, http.StatusNotFound, w.Code)
-	require.Contains(t, w.Body.String(), "Token counting is not supported for this platform")
+		countTokensRouter.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code, "path=%s", path)
+		var response struct {
+			InputTokens int `json:"input_tokens"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response), "path=%s", path)
+		require.Positive(t, response.InputTokens, "path=%s", path)
+	}
 
 	for _, path := range []string{
 		"/v1/responses",
