@@ -74,9 +74,20 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		return
 	}
 	requestModel := parsed.Model
+	ensureCompositeTargetPlatform(c, apiKey, requestModel)
+	clientRequestModel := clientRequestedModel(c, requestModel)
+	routingModel := requestModel
+	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok {
+		routingModel = resolvedModel
+	}
+	if !compositeTargetPlatformAllowed(c, apiKey, requestModel, service.PlatformOpenAI) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
+		return
+	}
 
 	reqLog = reqLog.With(
-		zap.String("model", requestModel),
+		zap.String("model", clientRequestModel),
+		zap.String("routing_model", routingModel),
 		zap.Bool("stream", parsed.Stream),
 		zap.Bool("multipart", parsed.Multipart),
 		zap.String("capability", string(parsed.RequiredCapability)),
@@ -98,11 +109,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		defer imageReleaseFunc()
 	}
 
-	if parsed.Multipart {
-		setOpsRequestContext(c, requestModel, parsed.Stream)
-	} else {
-		setOpsRequestContext(c, requestModel, parsed.Stream)
-	}
+	setOpsRequestContext(c, clientRequestModel, parsed.Stream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsed.Stream, false)))
 
 	if h.errorPassthroughService != nil {
@@ -159,7 +166,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			requestCtx,
 			routeRuntime.currentAPIKey.GroupID,
 			sessionHash,
-			requestModel,
+			routingModel,
 			failedAccountIDs,
 			parsed.RequiredCapability,
 		)
@@ -177,7 +184,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					routeRuntime.resetFailoverState(&switchCount, &failedAccountIDs, &sameAccountRetryCount, &lastFailoverErr)
 					continue
 				}
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, routeRuntime.currentAPIKey, requestModel, requestModel, routeRuntime.requestPlatform)
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, routeRuntime.currentAPIKey, clientRequestModel, routingModel, routeRuntime.requestPlatform)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
@@ -204,7 +211,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				routeRuntime.resetFailoverState(&switchCount, &failedAccountIDs, &sameAccountRetryCount, &lastFailoverErr)
 				continue
 			}
-			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, routeRuntime.currentAPIKey, requestModel, requestModel, routeRuntime.requestPlatform)
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, routeRuntime.currentAPIKey, clientRequestModel, routingModel, routeRuntime.requestPlatform)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
 			}
@@ -407,14 +414,14 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
-				ChannelUsageFields: routeRuntime.channelMapping.ToUsageFields(requestModel, upstreamModel),
+				ChannelUsageFields: clientRequestedUsageFields(c, routeRuntime.channelMapping, requestModel, upstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.images"),
 					zap.Int64("user_id", subject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),
 					zap.Any("group_id", routeRuntime.currentAPIKey.GroupID),
-					zap.String("model", requestModel),
+					zap.String("model", clientRequestModel),
 					zap.Int64("account_id", account.ID),
 				).Error("openai.images.record_usage_failed", zap.Error(err))
 			}

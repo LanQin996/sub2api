@@ -202,7 +202,7 @@ func (rt *openAIRouteGroupRuntime) refreshDerived() {
 	if rt == nil || rt.h == nil || rt.h.gatewayService == nil || rt.currentAPIKey == nil {
 		return
 	}
-	rt.requestPlatform = openAICompatibleRequestPlatform(rt.currentAPIKey)
+	rt.requestPlatform = openAICompatibleRequestPlatform(rt.c.Request.Context(), rt.currentAPIKey)
 	rt.channelMapping, _ = rt.h.gatewayService.ResolveChannelMappingAndRestrict(rt.c.Request.Context(), rt.currentAPIKey.GroupID, rt.reqModel)
 	rt.forwardBody = openAIModelMappedBody(rt.body, rt.channelMapping.Mapped, rt.channelMapping.MappedModel, rt.replaceModel)
 }
@@ -387,7 +387,7 @@ func (rt *openAIRouteGroupRuntime) routeGroupCircuitKey(groupID int64) openAIRou
 		return key
 	}
 	if rt.originalAPIKey != nil {
-		key.platform = openAICompatibleRequestPlatform(rt.originalAPIKey)
+		key.platform = openAICompatibleRequestPlatform(rt.c.Request.Context(), rt.originalAPIKey)
 	}
 	key.model = strings.ToLower(strings.TrimSpace(rt.reqModel))
 	return key
